@@ -18,7 +18,7 @@ Use the `vibecad` MCP tools. Never write build123d or CadQuery code for a part, 
 Time goes into deliberating before the first tool call, not into the tools. Measured on a two-part mount: 5 minutes of thinking before the first edit, then a large batch that failed on conflicting constraints.
 
 - Write a short plan (a few lines: parts, sketches, features, key params), then start building. Don't work out every coordinate and constraint in your head; the solver positions geometry and the report tells you what is wrong, in seconds.
-- Use the sketch shortcuts `add_rectangle`, `add_circle`, `add_slot`, `add_polygon`. Each expands into fully constrained geometry. For any straight-edged profile (L, T, U, trapezoid, gusset triangle) use `add_polygon` with vertex coordinates written as param expressions; don't count degrees of freedom by hand. Hand-write lines, arcs and constraints only for shapes the shortcuts don't cover.
+- Use the sketch shortcuts `add_rectangle`, `add_circle`, `add_slot`, `add_polygon`, `add_regular_polygon`. Each expands into fully constrained geometry. For any straight-edged profile (L, T, U, trapezoid, gusset triangle) use `add_polygon` with vertex coordinates written as param expressions; don't count degrees of freedom by hand. For hexes and other regular polygons use `add_regular_polygon` (`"across": "flats"` for a wrench size); don't work out the trig. Hand-write lines, arcs and constraints only for shapes the shortcuts don't cover.
 - Keep batches to one sketch and its feature. A big batch that fails costs a full rewrite; a small one costs one fix.
 - Render when the main body exists and at the end, or when a number looks wrong. Between those, the report's volume and bbox changes are enough.
 

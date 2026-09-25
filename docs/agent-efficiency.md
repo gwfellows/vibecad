@@ -94,7 +94,28 @@ Findings from reading the traces (`vibecad-trace`), and what changed:
 - **Not adopted yet**; kept as variant `lean_low_incremental`.
 - `add_polygon` was used on its first outing (pulley, shelf bracket). Pulley total went from 321 s (before the shortcut) to 151–217 s.
 
+## 2026-09-25: create-then-edit testing, GUI smoke test, bugs fixed
+
+Worked through the tools by hand (the same Workspace code the agent calls): built a hex standoff, then applied a user edit ("M4: 7 mm AF, 4.5 mm bore, 15 mm long, chamfer the hex ends"). Also drove the GUI with a Playwright script. No model runs this time (see the last point).
+
+| Finding | Evidence | Change |
+|---|---|---|
+| Regular polygons needed hand trig | A hex took `add_polygon` with six `cos`/`sin` vertex pairs worked out by the agent | `add_regular_polygon` (`sides`, `diameter`, `across: corners/flats`, `center`, `angle`); vertices are expressions, so it resizes with params. New example `hex_standoff` |
+| One param typo wedged the session | `set_param hole_d = "2 *"` passed op validation, then regeneration raised after the doc was swapped in: every later edit failed and the GUI rollback returned 500 | `apply_ops` evaluates params and rejects the batch (also circular refs, and removing a param another uses) |
+| `open_part` served a stale part | A file rewritten by another process kept its old cached session: the tree showed the old part and `render` failed with "no solid yet" | Sessions record the file's mtime/size; `open_part` reloads when it changed |
+| Intermittent 500 on `/api/mesh` | The GUI asks for the mesh twice per edit; OCCT meshes in place and is not thread-safe (6/6 failures with 4 threads) | Meshing, rendering and STL export hold the workspace lock |
+| GUI showed values the model didn't have | A rejected param stayed in the field; rejected edits raised uncaught promise errors | Field resets; handled errors suppressed |
+| Stale intents after an edit | After the M4 edit the bore intent and design notes still said M3; nothing flags it | None yet (the guide already asks to keep intents accurate); a candidate for an automated check |
+
+The edit itself was one batch, no rejections: the param-driven structure made it a 3-param change plus one chamfer.
+
+**Benchmark: multi-turn tasks.** Tasks can now have `followups`, user edit requests sent in the same conversation after the design is built, each with checks (`volume_change` from `"@prev"` judges a turn against its starting point). Two tasks: `standoff_conversation` and `plate_conversation`. `tests/test_bench.py` drives them with a scripted stand-in for the model, including a case where an ignored request must fail.
+
+**Don't run `vibecad-bench` from inside a Claude Code on the web session.** The nested agent reported the parent session's id and the CLI logged "message history mutated" on it, despite `agent.py` clearing the session env vars; the account also returned a five-hour rate-limit event. Run the benchmark from a local terminal.
+
 ## Hypotheses to test next
+
+- Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
 
 - The build-incrementally instruction, with 3 repeats per arm, plus a rule that `underconstrained_sketches` in a report must be fixed before moving on.
 
