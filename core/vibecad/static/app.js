@@ -301,7 +301,8 @@ scene.add(partGroup);
 const axes = new THREE.AxesHelper(10);
 scene.add(axes);
 const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
-let pickedFace = null;  // the face last clicked in the 3D view: {mesh, labels, point}
+let pickedFaces = [];  // faces clicked in the 3D view, shift-click adds: {mesh, labels, point}
+const lastPicked = () => pickedFaces.at(-1) || null;
 let faceMeshes = [], edgeLines = null, meshRev = null, hovered = null;
 
 function resize() {
@@ -365,17 +366,18 @@ async function loadMesh(fit) {
   eg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
   edgeLines = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x1b1f27, transparent: true }));
   partGroup.add(edgeLines);
-  if (pickedFace) {
-    const same = faceMeshes.find((x) => x.userData.labels.join() === pickedFace.labels.join());
-    pickedFace = same ? { ...pickedFace, mesh: same } : null;
-  }
+  pickedFaces = pickedFaces.map((p) => {  // the new mesh has new face objects: keep picks whose labelled face still exists
+    const same = faceMeshes.find((x) => x.userData.labels.join() === p.labels.join());
+    return same && { ...p, mesh: same };
+  }).filter(Boolean);
+  pickUpdate();
   colorFaces();
   if (inSketch()) ghostPart(true);
   if (fit) pendingFit = !fitView("iso");
 }
 
 function colorFaces() {
-  for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : m === pickedFace?.mesh ? PICKED
+  for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : pickedFaces.some((p) => p.mesh === m) ? PICKED
     : selected && m.userData.features.includes(selected) ? HI : BASE);
 }
 
@@ -425,7 +427,14 @@ renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.client
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
   const hit = pickHit(ev), m = hit?.object;
-  pickedFace = m ? { mesh: m, labels: m.userData.labels, point: hit.point.toArray() } : null;
+  const face = m && { mesh: m, labels: m.userData.labels, point: hit.point.toArray() };
+  if (ev.shiftKey && m) {  // shift-click: add or remove a face, keep the feature selection
+    pickedFaces = pickedFaces.some((p) => p.mesh === m) ? pickedFaces.filter((p) => p.mesh !== m) : [...pickedFaces, face];
+    pickUpdate();
+    return colorFaces();
+  }
+  pickedFaces = m ? [face] : [];
+  pickUpdate();
   if (m) { const fs = m.userData.features, i = fs.indexOf(selected); select(fs[(i + 1) % fs.length]); }
   else select(null);
 });
@@ -601,7 +610,7 @@ const numOrExpr = (t) => (/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t.trim()) ? +t : t.tri
 
 $("#newSketchBtn").onclick = () => {
   if (!S) return note("Open or create a part first.", "err");
-  const m = $("#newMenu"), face = pickedFace?.labels?.[0];
+  const m = $("#newMenu"), pf = lastPicked(), face = pf?.labels?.[0];
   m.innerHTML = `<div class="ttl">New sketch on…</div>
     <button data-d="XY">XY plane (top, normal +Z)</button><button data-d="XZ">XZ plane (front, normal −Y)</button>
     <button data-d="YZ">YZ plane (right, normal +X)</button>
@@ -617,9 +626,10 @@ $("#newSketchBtn").onclick = () => {
   };
   m.querySelectorAll("[data-d]").forEach((b) => (b.onclick = () => make({ datum: b.dataset.d })));
   m.querySelector("[data-face]").onclick = () => {
-    const ref = faceRef(face, pickedFace.point);
+    const ref = faceRef(face, pf.point);
     if (!ref) return note(`can't make a face reference from ${face}`, "err");
-    pickedFace = null;
+    pickedFaces = [];
+    pickUpdate();
     make({ face: ref });
   };
 };
@@ -660,13 +670,53 @@ function featureForm(kind) {
   };
 }
 $("#extrudeBtn").onclick = () => featureForm("extrude");
+
+// fillet / chamfer from picked faces: two faces -> the edge between them; one face -> its edges
+function pickUpdate() {
+  const n = pickedFaces.length;
+  for (const b of [$("#filletBtn"), $("#chamferBtn")]) {
+    b.disabled = !(n === 1 || n === 2);
+    b.title = n === 2 ? `${b.dataset.kind} the edge between ${pickedFaces.map((p) => p.labels[0]).join(" and ")}`
+      : n === 1 ? `${b.dataset.kind} the edges of ${pickedFaces[0].labels[0]}` : `Click a face, shift-click a second: ${b.dataset.kind.toLowerCase()} the edge between them`;
+  }
+}
+function edgeForm(kind) {
+  const n = pickedFaces.length;
+  if (n !== 1 && n !== 2) return note(`${kind}: click one face (its edges) or two faces (the edge between them)`, "err");
+  const refs = pickedFaces.map((p) => faceRef(p.labels[0], p.point));
+  if (refs.some((r) => !r)) return note(`${kind}: can't reference one of the picked faces`, "err");
+  const m = $("#featMenu"), size = kind === "fillet" ? "radius" : "distance";
+  const what = n === 2 ? `edge between ${esc(pickedFaces[0].labels[0])} and ${esc(pickedFaces[1].labels[0])}` : `edges of ${esc(pickedFaces[0].labels[0])}`;
+  m.innerHTML = `<div class="ttl">${kind === "fillet" ? "Fillet" : "Chamfer"} the ${what}</div>
+    <div class="row"><label>${size}</label><input id="ffSize" value="1"></div>
+    ${n === 1 ? `<div class="row"><label>edges</label><select id="ffFilter"><option value="any">all</option><option value="line">straight only</option><option value="circle">round only</option></select></div>` : ""}
+    <button class="go" id="ffGo">${kind === "fillet" ? "Fillet" : "Chamfer"}</button>`;
+  popup(m, $(kind === "fillet" ? "#filletBtn" : "#chamferBtn"));
+  $("#ffGo").onclick = async () => {
+    const note_ = n === 2 ? `edge where ${pickedFaces[0].labels[0]} meets ${pickedFaces[1].labels[0]}, picked in the GUI`
+      : `edges of ${pickedFaces[0].labels[0]}, picked in the GUI`;
+    const edge = n === 2 ? { between: refs, note: note_ } : { of: refs[0], note: note_ };
+    if (n === 1 && $("#ffFilter").value !== "any") edge.filter = { type: $("#ffFilter").value };
+    const id = nextId(kind);
+    m.hidden = true;
+    if (await addFeature({ id, type: kind, edges: [edge], [size]: numOrExpr($("#ffSize").value) }, `${kind} ${what.replace(/<[^>]+>/g, "")}`)) {
+      pickedFaces = [];
+      pickUpdate();
+      select(id);
+    }
+  };
+}
+$("#filletBtn").onclick = () => edgeForm("fillet");
+$("#chamferBtn").onclick = () => edgeForm("chamfer");
+pickUpdate();
 $("#revolveBtn").onclick = () => featureForm("revolve");
 window.vibecadView = {  // for browser tests and the devtools console
   toScreen: (x, y, z) => {
     const p = new THREE.Vector3(x, y, z).project(camera), r = renderer.domElement.getBoundingClientRect();
     return [r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height];
   },
-  pickedFace: () => pickedFace && { labels: pickedFace.labels, point: pickedFace.point },
+  pickedFace: () => lastPicked() && { labels: lastPicked().labels, point: lastPicked().point },
+  pickedFaces: () => pickedFaces.map((p) => p.labels[0]),
 };
 
 // ── dialogs ───────────────────────────────────────────────────────
@@ -782,7 +832,7 @@ $("#promptForm").onsubmit = (ev) => {
   if (!text || busy) return;
   const entities = inSketch() && SK.selection().length ? SK.selection() : null;
   const marks = inSketch() && SK.marks().length ? SK.marks() : null;
-  const face = !inSketch() && pickedFace ? { labels: pickedFace.labels, point: pickedFace.point } : null;
+  const face = !inSketch() && lastPicked() ? { labels: lastPicked().labels, point: lastPicked().point } : null;
   send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities, marks, face });
   if (marks) SK.clearMarks();
   $("#prompt").value = "";

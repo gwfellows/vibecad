@@ -207,6 +207,42 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   await settle();
   check("undo brings it back", (await tree()).includes("extrude2"));
 
+  // fillet the edge between two picked faces, then chamfer the round edges of one face (the hole's rim)
+  await page.click("#fitBtn");
+  await page.waitForTimeout(600);
+  const clickWorld = async (x, y, z, shift = false) => {
+    const [px, py] = await page.evaluate(([x, y, z]) => window.vibecadView.toScreen(x, y, z), [x, y, z]);
+    if (shift) await page.keyboard.down("Shift");
+    await page.mouse.click(px, py);
+    if (shift) await page.keyboard.up("Shift");
+    await page.waitForTimeout(300);
+  };
+  check("fillet needs picked faces", await page.isDisabled("#filletBtn"));
+  await clickWorld(10, 15, 5);
+  await clickWorld(25, 0, 2.5, true);
+  check("shift-click picks a second face", JSON.stringify(await page.evaluate(() => window.vibecadView.pickedFaces())) === '["plate.end","plate.side[rect1_bottom]"]',
+    JSON.stringify(await page.evaluate(() => window.vibecadView.pickedFaces())));
+  const vBefore = await vol();
+  await page.click("#filletBtn");
+  await page.fill("#ffSize", "2");
+  await page.click("#ffGo");
+  await page.waitForTimeout(1500);
+  const filletLoss = (1 - Math.PI / 4) * 4 * 50;
+  check("fillet on the edge between the faces", Math.abs(vBefore - (await vol()) - filletLoss) < 0.05, `${vBefore} -> ${await vol()} (expected -${filletLoss.toFixed(2)})`);
+  const fl = await page.evaluate(() => fetch("/api/feature/fillet1").then((r) => r.json()));
+  check("fillet saved as an edge between two face refs", fl.edges?.[0]?.between?.map((r) => r.feature + "." + r.role + (r.entity ? `[${r.entity}]` : "")).join() === "plate.end,plate.side[rect1_bottom]",
+    JSON.stringify(fl.edges));
+  await clickWorld(10, 15, 5);
+  const v2 = await vol();
+  await page.click("#chamferBtn");
+  await page.selectOption("#ffFilter", "circle");
+  await page.fill("#ffSize", "0.5");
+  await page.click("#ffGo");
+  await page.waitForTimeout(1500);
+  const rim = 0.5 * 0.25 * 2 * Math.PI * (3 + 0.5 / 3);
+  check("chamfer on the round edge of the top face only", Math.abs(v2 - (await vol()) - rim) < 0.02, `${v2} -> ${await vol()} (expected -${rim.toFixed(3)})`);
+  await shot("4_fillet");
+
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} passed`);
