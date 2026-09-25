@@ -97,6 +97,8 @@ Parts are edited through ops, applied in batches as one undoable transaction (`a
 {"op": "update_constraint", "sketch": "<id>", "match": {"id" | "name" | "index": ...}, "set": {...}}
 {"op": "remove_constraint", "sketch": "<id>", "match": {"id" | "name" | "index": ...}}
 {"op": "set_dimension", "sketch": "<id>", "name": "<dimension name>", "value": "12 mm"}
+{"op": "rename_feature", "id": "<feature id>", "to": "<new id>"}          (updates profiles, face/edge refs, pattern lists)
+{"op": "rename_entity", "sketch": "<id>", "id": "<entity id>", "to": "<new id>"}   (updates constraints, regions, face refs)
 ```
 
 Sketch shortcuts (expand into fully constrained primitives, stored as ordinary entities and constraints):

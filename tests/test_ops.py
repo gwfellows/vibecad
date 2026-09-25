@@ -120,3 +120,53 @@ def test_tool_errors_name_the_problem(tmp_path):
     with pytest.raises(ToolError, match="no part file"):
         ws.check_fit(["missing.vcad.json"])
     assert ws.to_world("base_sketch", 1, 2) == [1, 2, 0]
+
+
+def test_rename_feature_updates_every_reference(lb):
+    v = lb.result.part.volume
+    r = lb.apply([{"op": "rename_feature", "id": "base", "to": "plate"},
+                  {"op": "rename_feature", "id": "slot_cut", "to": "slot"},
+                  {"op": "rename_feature", "id": "slot_sketch", "to": "slot_profile"}], "rename")
+    assert r["ok"], r
+    ids = [f.id for f in lb.doc.features]
+    assert "base" not in ids and {"plate", "slot", "slot_profile"} <= set(ids)
+    assert lb.doc.feature("slot_profile").plane.face.feature == "plate"
+    assert lb.doc.feature("slot").profile.sketch == "slot_profile"
+    assert lb.doc.feature("slot_mirror").features == ["slot"]
+    assert lb.doc.feature("corner_fillet").edges[0].between[0].feature == "plate"
+    assert lb.result.part.volume == pytest.approx(v)
+
+
+def test_rename_pattern_updates_instance_refs(lb):
+    lb.apply([{"op": "add_feature", "feature": {"id": "mirror_ch", "type": "chamfer", "distance": 0.5, "edges": [
+        {"of": {"feature": "slot_cut", "role": "side", "instance": "slot_mirror#1"}, "filter": {"type": "line"}}]}}], "chamfer copy")
+    v = lb.result.part.volume
+    r = lb.apply([{"op": "rename_feature", "id": "slot_mirror", "to": "slot_copy"}], "rename")
+    assert r["ok"], r
+    assert lb.doc.feature("mirror_ch").edges[0].of.instance == "slot_copy#1"
+    assert lb.result.part.volume == pytest.approx(v)
+
+
+def test_rename_entity_updates_constraints_and_face_refs(lb):
+    lb.apply([{"op": "add_feature", "feature": {"id": "top_ch", "type": "chamfer", "distance": 1, "edges": [
+        {"of": {"feature": "wall", "role": "side", "entity": "wall_top"}, "filter": {"parallel_to": "X"}}]}}], "chamfer")
+    v = lb.result.part.volume
+    r = lb.apply([{"op": "rename_entity", "sketch": "wall_sketch", "id": "wall_top", "to": "wall_crest"}], "rename")
+    assert r["ok"], r
+    sk = lb.doc.feature("wall_sketch")
+    assert "wall_top" not in {e.id for e in sk.entities}
+    assert ["wall_right.p2", "wall_crest.p1"] in [c.on for c in sk.constraints]
+    assert lb.doc.feature("top_ch").edges[0].of.entity == "wall_crest"
+    assert lb.result.part.volume == pytest.approx(v)
+
+
+@pytest.mark.parametrize("op,msg", [
+    ({"op": "rename_feature", "id": "base", "to": "wall"}, "already exists"),
+    ({"op": "rename_feature", "id": "base", "to": "base.top"}, "letters, digits"),
+    ({"op": "rename_feature", "id": "nope", "to": "x"}, "no feature"),
+    ({"op": "rename_entity", "sketch": "wall_sketch", "id": "wall_top", "to": "wall_left"}, "already exists"),
+    ({"op": "rename_entity", "sketch": "wall_sketch", "id": "wall_top", "to": "origin"}, "reserved"),
+])
+def test_bad_renames_rejected(lb, op, msg):
+    r = lb.apply([op], "bad rename")
+    assert not r["ok"] and msg in r["error"], r

@@ -17,6 +17,8 @@ transaction: all apply and the result validates against the schema, or nothing c
     {"op": "update_constraint", "sketch": "<id>", "match": {"id"|"name"|"index": ...}, "set": {...}}
     {"op": "remove_constraint", "sketch": "<id>", "match": {"id"|"name"|"index": ...}}
     {"op": "set_dimension", "sketch": "<id>", "name": "<dimension name>", "value": "12 mm"}
+    {"op": "rename_feature", "id": "<feature id>", "to": "<new id>"}          updates every reference to it
+    {"op": "rename_entity", "sketch": "<id>", "id": "<entity id>", "to": "<new id>"}   same, for a sketch entity
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from typing import Any
 from pydantic import ValidationError
 
 import keyword
+import re
 
 from . import schema as S
 from .expr import CONSTS, FUNCS, ExprError, evaluate_params
@@ -41,7 +44,9 @@ OP_KINDS = {
     "set_param", "remove_param", "set_meta", "add_feature", "update_feature", "remove_feature", "move_feature",
     "add_entity", "update_entity", "remove_entity", "add_constraint", "update_constraint", "remove_constraint",
     "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon",
+    "rename_feature", "rename_entity",
 }
+ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 META_FIELDS = {"name", "design_notes", "material", "process"}
 
 
@@ -54,7 +59,7 @@ def touched_features(op: dict) -> set[str]:
         return {"*meta*"}
     if k in ("add_feature",):
         return {op.get("feature", {}).get("id", "?")}
-    if k in ("update_feature", "remove_feature", "move_feature"):
+    if k in ("update_feature", "remove_feature", "move_feature", "rename_feature"):
         return {op.get("id", "?")}
     return {op.get("sketch", "?")}
 
@@ -252,6 +257,12 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
         sk["entities"] += ents
         sk["constraints"] += cons
         notes.append(f"{kind} {op['id']!r}: added {', '.join(e['id'] for e in ents)}")
+    elif kind == "rename_feature":
+        n = _rename_feature(raw, op["id"], op["to"])
+        notes.append(f"renamed feature {op['id']!r} to {op['to']!r}; updated {n} reference(s)")
+    elif kind == "rename_entity":
+        n = _rename_entity(raw, op["sketch"], op["id"], op["to"])
+        notes.append(f"renamed {op['sketch']}.{op['id']} to {op['to']!r}; updated {n} reference(s)")
     elif kind == "set_dimension":
         sk = _sketch(raw, op["sketch"])
         c = sk["constraints"][_match_constraint(sk, {"name": op["name"]})]
@@ -262,6 +273,82 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
             notes.append(f"dimension {op['name']!r} is driven by param {cur.strip()!r}; set that param to {op['value']!r}")
         else:
             c["value"] = op["value"]
+
+
+def _check_new_id(to, taken, what: str) -> None:
+    if not isinstance(to, str) or not ID_RE.match(to):
+        raise OpError(f"new {what} id {to!r} must be letters, digits and underscores, not starting with a digit")
+    if to in ("origin", "x_axis", "y_axis"):
+        raise OpError(f"{to!r} is reserved")
+    if to in taken:
+        raise OpError(f"{what} id {to!r} already exists")
+
+
+def _face_refs(obj):
+    """Every FaceRef-shaped dict (has "feature" and "role") inside a feature."""
+    if isinstance(obj, dict):
+        if "feature" in obj and "role" in obj:
+            yield obj
+        for v in obj.values():
+            yield from _face_refs(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _face_refs(v)
+
+
+def _rename_feature(raw: dict, old: str, new: str) -> int:
+    f = raw["features"][_feat_index(raw, old)]
+    _check_new_id(new, {x["id"] for x in raw["features"]}, "feature")
+    f["id"] = new
+    n = 0
+    for g in raw["features"]:
+        if g.get("profile", {}).get("sketch") == old:
+            g["profile"]["sketch"] = new
+            n += 1
+        if old in g.get("features", []) and g["type"] in ("linear_pattern", "circular_pattern", "mirror"):
+            g["features"] = [new if x == old else x for x in g["features"]]
+            n += 1
+        for ref in _face_refs(g):
+            if ref["feature"] == old:
+                ref["feature"] = new
+                n += 1
+            inst = ref.get("instance")
+            if isinstance(inst, str) and inst.startswith(old + "#"):
+                ref["instance"] = new + inst[len(old):]
+                n += 1
+    return n
+
+
+def _rename_entity(raw: dict, sid: str, old: str, new: str) -> int:
+    sk = _sketch(raw, sid)
+    ent = next((e for e in sk["entities"] if e["id"] == old), None)
+    if ent is None:
+        raise OpError(f"no entity {old!r} in sketch {sid!r}")
+    _check_new_id(new, {e["id"] for e in sk["entities"]}, "entity")
+    ent["id"] = new
+    n = 0
+    for c in sk["constraints"]:
+        refs = [new + r[len(old):] if r == old or r.startswith(old + ".") else r for r in c["on"]]
+        n += refs != c["on"]
+        c["on"] = refs
+    makers = set()  # extrudes/revolves built from this sketch: their side faces are labelled with its entities
+    for g in raw["features"]:
+        prof = g.get("profile", {})
+        if prof.get("sketch") != sid:
+            continue
+        makers.add(g["id"])
+        if isinstance(prof.get("regions"), list) and old in prof["regions"]:
+            prof["regions"] = [new if x == old else x for x in prof["regions"]]
+            n += 1
+        if g.get("axis") == old:
+            g["axis"] = new
+            n += 1
+    for g in raw["features"]:
+        for ref in _face_refs(g):
+            if ref["feature"] in makers and ref.get("entity") == old:
+                ref["entity"] = new
+                n += 1
+    return n
 
 
 def _users_of(raw, fid) -> list[str]:

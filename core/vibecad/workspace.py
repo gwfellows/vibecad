@@ -252,8 +252,9 @@ def tile(imgs: list) -> bytes:
 # ── tool specs, shared by every transport ─────────────────────────────
 _OPS_DOC = ("Apply a batch of edit ops as one undoable transaction, regenerate, and report. Op kinds: set_param, "
             "remove_param, set_meta, add_feature, update_feature, remove_feature, move_feature, add_entity, "
-            "update_entity, remove_entity, add_constraint, update_constraint, remove_constraint, set_dimension "
-            "(shapes in the IR reference). The report has ok, errors, warnings, underconstrained_sketches, notes, "
+            "update_entity, remove_entity, add_constraint, update_constraint, remove_constraint, set_dimension, "
+            "rename_feature, rename_entity, and the sketch shortcuts add_rectangle, add_circle, add_slot, add_polygon, "
+            "add_regular_polygon (shapes in the IR reference). The report has ok, errors, warnings, underconstrained_sketches, notes, "
             "change (volume/bbox before->after) and the tree. `message` says what the batch does.")
 
 S_STR = {"type": "string"}
