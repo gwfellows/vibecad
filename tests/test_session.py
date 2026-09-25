@@ -2,6 +2,7 @@
 import asyncio
 import json
 import shutil
+from math import pi, sin, tan
 from pathlib import Path
 
 import pytest
@@ -151,6 +152,35 @@ def test_add_polygon_l_profile(tmp_path):
     assert s.result.part.volume == pytest.approx((40 * 4 + 36 * 4) * 20)
     s.apply([{"op": "set_param", "name": "leg", "value": "50 mm"}], "longer")
     assert s.result.part.volume == pytest.approx((50 * 4 + 46 * 4) * 20)
+
+
+@pytest.mark.parametrize("sides,across,diam,expected_area", [
+    (6, "flats", 20, 6 * 10 ** 2 * tan(pi / 6)),           # hex standoff, wrench size (across flats)
+    (5, "corners", 20, 0.5 * 5 * 10 ** 2 * sin(2 * pi / 5)),  # pentagon, circumscribed diameter
+    (3, "corners", 20, 0.5 * 3 * 10 ** 2 * sin(2 * pi / 3)),  # triangle
+])
+def test_add_regular_polygon_area(tmp_path, sides, across, diam, expected_area):
+    s = Session(tmp_path / "m.vcad.json", create_name="m")
+    r = s.apply([{"op": "set_param", "name": "D", "value": f"{diam} mm"},
+                 {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+                 {"op": "add_regular_polygon", "sketch": "sk", "id": "hex", "sides": sides, "diameter": "D",
+                  "across": across, "center": [3, -2], "angle": 17},
+                 {"op": "add_feature", "feature": {"id": "ex", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 5}}],
+                "polygon")
+    assert r["ok"], r
+    assert s.result.sketches["sk"][0].report.dof == 0
+    assert s.result.part.volume == pytest.approx(expected_area * 5, rel=1e-6)
+    # resizes when the driving param changes, and stays fully constrained
+    s.apply([{"op": "set_param", "name": "D", "value": f"{diam * 1.5} mm"}], "bigger")
+    assert s.result.sketches["sk"][0].report.dof == 0
+    assert s.result.part.volume == pytest.approx(expected_area * 1.5 ** 2 * 5, rel=1e-6)
+
+
+def test_add_regular_polygon_rejects_too_few_sides(tmp_path):
+    s = Session(tmp_path / "m.vcad.json", create_name="m")
+    r = s.apply([{"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+                 {"op": "add_regular_polygon", "sketch": "sk", "id": "p", "sides": 2, "diameter": 10}], "bad")
+    assert not r["ok"] and "at least 3 sides" in r["error"]
 
 
 def test_point_id_as_coordinate_gets_hint(lb):

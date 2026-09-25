@@ -111,6 +111,10 @@ Sketch shortcuts (expand into fully constrained primitives, stored as ordinary e
 {"op": "add_slot", "sketch": "<id>", "id": "slot", "length": "slot_len", "width": "slot_w", "center": [x, y], "angle": 90}
       length is center-to-center; angle of the slot axis from sketch +x
       -> arcs slot_end1/2, lines slot_side1/2, construction slot_axis + point slot_mid; dims slot_width, slot_length
+{"op": "add_regular_polygon", "sketch": "<id>", "id": "hex", "sides": 6, "diameter": "hex_af",
+ "across": "flats", "center": [0, 0], "angle": 0}
+      across: "corners" (default, circumscribed diameter) or "flats" (wrench size); angle rotates the
+      first vertex from sketch +x -> one line per side, every vertex fixed by expression (center + R*cos/sin)
 ```
 
 Positions are measured from the sketch origin and accept expressions. Omit `center`/`corner` to leave the shape free to position with your own constraints.

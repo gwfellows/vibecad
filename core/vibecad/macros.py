@@ -20,6 +20,12 @@ see ordinary entities. The shortcuts exist to save the agent from hand-writing a
   -> one line per edge (closed by default); every vertex is fixed at its given coordinates, so the
      profile is fully constrained and resizes when the params in its coordinates change
 
+  {"op": "add_regular_polygon", "sketch": S, "id": "hex", "sides": 6, "diameter": "hex_af",
+   "across": "flats", "center": [0, 0], "angle": 0}   # across: "corners" (default) or "flats"
+  -> one line per side (hex nut/standoff flats, splined/star profiles, ...); vertices are placed by
+     expression (center + R*cos/sin), so the agent never derives polygon trig by hand and the shape
+     resizes correctly when `diameter`, `center` or `angle` are expressions over params
+
 Positions are measured from the sketch origin and accept expressions.
 """
 from __future__ import annotations
@@ -148,9 +154,36 @@ def expand(op: dict, raw: dict) -> tuple[list[dict], list[dict]]:
         for i, (x, y) in enumerate(pts):  # fix every vertex: fully constrained, no redundancy
             ref = f"{names[i]}.p1" if i < n_edges else f"{names[-1]}.p2"
             at(ref, [x, y])
+    elif kind == "add_regular_polygon":
+        n = int(round(_num(op.get("sides"), env, 6)))
+        if n < 3:
+            raise ValueError("add_regular_polygon needs at least 3 sides")
+        D = op["diameter"]
+        across = op.get("across", "corners")
+        if across not in ("corners", "flats"):
+            raise ValueError("add_regular_polygon: across must be 'corners' or 'flats'")
+        R = f"(({D}) / 2)" if across == "corners" else f"((({D}) / 2) / cos(180 / {n}))"
+        ang0 = op.get("angle", 0)
+        cx, cy = op.get("center", [0, 0])
+        names = op.get("names") or [f"{pid}_{i + 1}" for i in range(n)]
+        if len(names) != n:
+            raise ValueError(f"add_regular_polygon: {n} sides but {len(names)} names")
+        pts = []
+        for i in range(n):
+            a = f"({ang0}) + {i * 360 / n}"
+            pts.append((f"({cx}) + ({R}) * cos({a})", f"({cy}) + ({R}) * sin({a})"))
+        guess = [(_num(x, env, 0.0), _num(y, env, 0.0)) for x, y in pts]
+        for i in range(n):
+            a, b = guess[i], guess[(i + 1) % n]
+            ents.append({"id": names[i], "type": "line", "p1": list(a), "p2": list(b),
+                         "construction": bool(op.get("construction", False))})
+        for i in range(n):
+            cons.append({"type": "coincident", "on": [f"{names[i]}.p2", f"{names[(i + 1) % n]}.p1"]})
+        for i, (x, y) in enumerate(pts):  # fix every vertex: fully constrained, no redundancy
+            at(f"{names[i]}.p1", [x, y])
     else:
         raise KeyError(kind)
     return ents, cons
 
 
-MACROS = {"add_rectangle", "add_circle", "add_slot", "add_polygon"}
+MACROS = {"add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon"}

@@ -30,7 +30,7 @@ def summarize_ops(ops: list[dict]) -> list[str]:
             out.append(f"add {f.get('type')} `{f.get('id')}`{extra}" + (f" — {f['intent']}" if f.get("intent") else ""))
         elif k == "set_param":
             out.append(f"param {o.get('name')} = {o.get('value')}")
-        elif k in ("add_rectangle", "add_circle", "add_slot"):
+        elif k in ("add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon"):
             out.append(f"{k} `{o.get('id')}` in {o.get('sketch')}")
         elif k == "update_feature":
             out.append(f"update `{o.get('id')}`: {json.dumps(o.get('set'))[:160]}")

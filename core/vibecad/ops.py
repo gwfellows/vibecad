@@ -35,7 +35,7 @@ class OpError(ValueError):
 OP_KINDS = {
     "set_param", "remove_param", "set_meta", "add_feature", "update_feature", "remove_feature", "move_feature",
     "add_entity", "update_entity", "remove_entity", "add_constraint", "update_constraint", "remove_constraint",
-    "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon",
+    "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon",
 }
 META_FIELDS = {"name", "design_notes", "material", "process"}
 
@@ -217,7 +217,7 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
     elif kind == "remove_constraint":
         sk = _sketch(raw, op["sketch"])
         sk["constraints"].pop(_match_constraint(sk, op["match"]))
-    elif kind in ("add_rectangle", "add_circle", "add_slot", "add_polygon"):
+    elif kind in ("add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon"):
         from .macros import expand
 
         sk = _sketch(raw, op["sketch"])
