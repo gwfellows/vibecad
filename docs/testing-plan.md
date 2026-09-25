@@ -122,3 +122,21 @@ Runs use the Claude login's usage.
 | Model matrix | after major changes | slice × 3 models × 2 efforts | ~$5 |
 
 Single runs are noisy: judge changes on 3+ repeats before trusting a difference smaller than about 30%.
+
+## 9. GUI tests
+
+The GUI is tested in a real browser (Playwright + Chromium, software WebGL) by `scripts/gui_smoke.sh`, against throwaway copies of `examples/` and a scripted agent (`tests/gui/fake_agent_app.py`: fixed tool calls, or `(echo)` to return the prompt's context lines). `ONLY=modeling,smoke` runs a subset.
+
+| Suite | Covers |
+|---|---|
+| `smoke.js` | open, param edit, undo/redo, sketch mode, feature JSON edit, bad input, rollback bar, history, renders, per-feature parameters in the tree |
+| `modeling.js` | a part modelled by hand from an empty file: sketch, extrude, sketch on a face, cut, revolve, fillet/chamfer from picked faces and from one picked edge, projected face outline |
+| `sketch_editor.js` | drawing, snapping, constraints, dragging, dimension edits, conflicts, box select, construction, delete, ask agent, freehand marks, @ Reference in a sketch |
+| `agent_panel.js` | streamed tool rows, busy state, selection and scope context, clicked face, @ Reference chips for an edge and a face, transcript replay |
+
+Rules that keep these tests honest:
+
+- Check geometry, not status: every modelling step asserts the volume change against a hand formula (for example, a 1 mm fillet on one 5 mm edge removes (1 − π/4)·1²·5 mm³).
+- Click where the geometry is: positions come from `window.vibecadView.toScreen(x, y, z)` and `window.vibecadSketch.toScreen(u, v)`. Hard-coded pixels break when the solver moves things.
+- References sent to the agent are checked in the echoed context, so a broken ref format fails a test, not a user's run.
+- Every suite ends with "no uncaught page errors".
