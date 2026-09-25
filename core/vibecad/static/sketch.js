@@ -3,9 +3,9 @@
 // sketch-local (u, v); the server returns them with the plane's frame and we map them into the scene.
 import * as THREE from "three";
 
-const COLORS = { ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
-const GLYPH = { horizontal: "H", vertical: "V", parallel: "∥", perpendicular: "⊥", equal: "=", tangent: "tan", concentric: "◎",
-  midpoint: "mid", symmetric: "sym", point_on: "on", fix: "fix", coincident: "•" };
+const COLORS = { dim: 0x2563eb, ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const GLYPH = { horizontal: "H", vertical: "V", parallel: "∥", perpendicular: "⊥", equal: "=", tangent: "T", concentric: "◎",
+  midpoint: "M", symmetric: "⇔", point_on: "∈", fix: "⚲", coincident: "•" };
 const DIMS = new Set(["distance", "distance_x", "distance_y", "radius", "diameter", "angle"]);
 const PICK_PX = 8;
 
@@ -142,6 +142,7 @@ export function createSketchEditor(ctx) {
         : e.external ? COLORS.ext : e.construction ? COLORS.cons : e.fixed ? COLORS.fixed : COLORS.free;
       addLine(polyline(e), color, e.construction);
     }
+    renderDims(bad);
     const plain = [], hi = [], hov = [];
     for (const p of D.points) (sel.has(p.ref) ? hi : hover === p.ref ? hov : plain).push(p.at);
     addPoints(plain, COLORS.point, 5);
@@ -167,7 +168,105 @@ export function createSketchEditor(ctx) {
     addPoints([c], snapInfo?.ref || snapInfo?.on ? COLORS.sel : COLORS.hover, 7);
   }
 
-  // ── labels: dimensions, constraint glyphs, entity ids ─────────
+  // ── dimensions, drawn like a CAD sketcher: extension lines, dimension line, arrows, value ──
+  // Offsets are in model units (a fraction of the sketch's size), so zooming doesn't reshuffle them.
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+  const mul = (a, k) => [a[0] * k, a[1] * k], unit = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l]; };
+  const perp = (a) => [-a[1], a[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+  function extent() {
+    let x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+    for (const p of D.points) { x0 = Math.min(x0, p.at[0]); x1 = Math.max(x1, p.at[0]); y0 = Math.min(y0, p.at[1]); y1 = Math.max(y1, p.at[1]); }
+    for (const e of D.entities) if (e.r) { x0 = Math.min(x0, e.center[0] - e.r); x1 = Math.max(x1, e.center[0] + e.r); y0 = Math.min(y0, e.center[1] - e.r); y1 = Math.max(y1, e.center[1] + e.r); }
+    return { size: Math.max(Math.hypot(x1 - x0, y1 - y0), 1), c: [(x0 + x1) / 2, (y0 + y1) / 2] };
+  }
+  const P = (ref) => ref === "origin" ? [0, 0] : D.points.find((p) => p.ref === ref)?.at;
+  function dimGeometry(c, ext) {
+    const off = 0.07 * ext.size, gap = 0.012 * ext.size, ar = 0.02 * ext.size, segs = [];
+    const arrow = (tip, dir) => { const d = unit(dir), n = perp(d); segs.push([tip, add(sub(tip, mul(d, ar)), mul(n, ar * 0.4))], [tip, sub(sub(tip, mul(d, ar)), mul(n, ar * 0.4))]); };
+    const between = (A, B) => { segs.push([A, B]); if (Math.hypot(...sub(B, A)) > 2.5 * ar) { arrow(A, sub(A, B)); arrow(B, sub(B, A)); } };
+    const outward = (m, n) => (dot(n, sub(m, ext.c)) < 0 ? mul(n, -1) : n);
+    const e0 = ent(c.on[0]);
+    let a, b;
+    if (c.type === "diameter" || c.type === "radius") {
+      if (!e0?.center) return null;
+      const ang = e0.type === "arc" ? (((e0.start_angle + e0.end_angle + (e0.end_angle < e0.start_angle ? 360 : 0)) / 2) * Math.PI) / 180 : Math.PI / 4;
+      const u = [Math.cos(ang), Math.sin(ang)], rim = add(e0.center, mul(u, e0.r)), out = add(e0.center, mul(u, e0.r + off * 0.8));
+      if (c.type === "diameter") { const rim2 = sub(e0.center, mul(u, e0.r)); segs.push([rim2, out]); arrow(rim, u); arrow(rim2, mul(u, -1)); }
+      else { segs.push([e0.center, out]); arrow(rim, u); }
+      return { segs, text: add(out, mul(u, off * 0.25)) };
+    }
+    if (c.type === "angle") {
+      const lines = c.on.map(ent).filter((e) => e?.type === "line");
+      if (!lines.length) return null;
+      const [l1, l2] = lines.length === 2 ? lines : [{ p1: lines[0].p1, p2: add(lines[0].p1, [1, 0]) }, lines[0]];
+      const d1 = sub(l1.p2, l1.p1), d2 = sub(l2.p2, l2.p1), den = d1[0] * d2[1] - d1[1] * d2[0];
+      if (Math.abs(den) < 1e-12) return { segs, text: l2.p1 };
+      const t = ((l2.p1[0] - l1.p1[0]) * d2[1] - (l2.p1[1] - l1.p1[1]) * d2[0]) / den, I = add(l1.p1, mul(d1, t));
+      const far = (l) => (Math.hypot(...sub(l.p1, I)) > Math.hypot(...sub(l.p2, I)) ? l.p1 : l.p2);
+      let a1 = Math.atan2(...sub(far(l1), I).reverse()), a2 = Math.atan2(...sub(far(l2), I).reverse());
+      if (a2 < a1) a2 += 2 * Math.PI;
+      if (a2 - a1 > Math.PI) [a1, a2] = [a2 - 2 * Math.PI, a1];
+      const R = off * 1.8, n = 16, pts = Array.from({ length: n + 1 }, (_, k) => add(I, mul([Math.cos(a1 + ((a2 - a1) * k) / n), Math.sin(a1 + ((a2 - a1) * k) / n)], R)));
+      for (let k = 0; k < n; k++) segs.push([pts[k], pts[k + 1]]);
+      const m = (a1 + a2) / 2;
+      return { segs, text: add(I, mul([Math.cos(m), Math.sin(m)], R + off * 0.45)) };
+    }
+    if (c.on.length === 1 && e0?.type === "line") [a, b] = [e0.p1, e0.p2];
+    else if (c.on.length === 2 && P(c.on[0]) && P(c.on[1])) [a, b] = [P(c.on[0]), P(c.on[1])];
+    else if (c.on.length === 2) {  // point to line
+      const [pr, lr] = ent(c.on[0])?.type === "line" ? [c.on[1], c.on[0]] : [c.on[0], c.on[1]];
+      const p = P(pr), l = ent(lr);
+      if (!p || !l) return null;
+      const d = unit(sub(l.p2, l.p1)), f = add(l.p1, mul(d, dot(sub(p, l.p1), d)));
+      between(p, f);
+      const near = Math.hypot(...sub(l.p1, f)) < Math.hypot(...sub(l.p2, f)) ? l.p1 : l.p2;
+      if (Math.hypot(...sub(near, f)) > gap) segs.push([near, f]);
+      return { segs, text: add(mul(add(p, f), 0.5), mul(perp(unit(sub(f, p))), off * 0.3)) };
+    } else return null;
+    if (c.type === "distance_x" || c.type === "distance_y") {
+      const k = c.type === "distance_x" ? 1 : 0;  // the coordinate the dimension line sits at
+      const side = (a[k] + b[k]) / 2 >= ext.c[k] ? 1 : -1;
+      const lvl = side > 0 ? Math.max(a[k], b[k]) + off : Math.min(a[k], b[k]) - off;
+      const A = k ? [a[0], lvl] : [lvl, a[1]], B = k ? [b[0], lvl] : [lvl, b[1]], n = k ? [0, side] : [side, 0];
+      segs.push([add(a, mul(n, gap)), add(A, mul(n, gap))], [add(b, mul(n, gap)), add(B, mul(n, gap))]);
+      between(A, B);
+      return { segs, text: add(mul(add(A, B), 0.5), mul(n, off * 0.3)) };
+    }
+    const d = sub(b, a);
+    if (Math.hypot(...d) < 1e-9) return { segs, text: a };
+    const n = outward(mul(add(a, b), 0.5), perp(unit(d)));
+    const A = add(a, mul(n, off)), B = add(b, mul(n, off));
+    segs.push([add(a, mul(n, gap)), add(A, mul(n, gap))], [add(b, mul(n, gap)), add(B, mul(n, gap))]);
+    between(A, B);
+    return { segs, text: add(mul(add(A, B), 0.5), mul(n, off * 0.3)) };
+  }
+  let dimCache = null;
+  function dims() {  // geometry of every dimension for the current data (recomputed when D changes)
+    if (dimCache?.D === D) return dimCache.list;
+    const ext = extent();
+    const list = D.constraints.filter((c) => DIMS.has(c.type)).map((c) => ({ c, g: dimGeometry(c, ext) }));
+    dimCache = { D, list };
+    return list;
+  }
+  function renderDims() {
+    const bad = new Set(D.conflicting_idx || []);
+    for (const { c, g } of dims()) {
+      if (!g?.segs.length) continue;
+      const key = `#${c.index}`;
+      const color = sel.has(key) ? COLORS.sel : hover === key ? COLORS.hover : bad.has(c.index) ? COLORS.bad : COLORS.dim;
+      const geo = new THREE.BufferGeometry().setFromPoints(g.segs.flatMap(([p, q]) => [W(...p), W(...q)]));
+      const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.85 }));
+      ls.renderOrder = 9;
+      group.add(ls);
+    }
+  }
+  const fmtNum = (v) => (v == null ? "?" : String(+(+v).toFixed(3)));
+  function dimText(c) {
+    const v = fmtNum(c.type === "radius" || c.type === "diameter" || c.type === "angle" ? c.value : Math.abs(c.value));
+    return c.type === "diameter" ? `⌀${v}` : c.type === "radius" ? `R${v}` : c.type === "angle" ? `${v}°` : v;
+  }
+
+  // ── labels: dimension values, constraint glyphs, entity ids ─────────
   // Elements are built when the sketch data changes and only restyled on selection/hover, so a label
   // survives between the two clicks of a double-click.
   let labelsFor = null;
@@ -185,11 +284,12 @@ export function createSketchEditor(ctx) {
       el.dataset.key = key;
       el.dataset.on = c.on.map((r) => r.split(".")[0]).join(" ");
       if (DIMS.has(c.type)) {
-        const val = c.value == null ? "?" : `${+c.value.toFixed(4)}${c.type === "angle" ? "°" : ""}`;
-        const via = c.param && c.param !== c.name ? ` (${c.param})` : !c.param && c.expr && isNaN(+c.expr) ? ` (${c.expr})` : "";
-        el.className = "lbl dim pick";
-        el.textContent = `${c.name ? c.name + " = " : ""}${val}${via}`;
-        el.title = "Click to select, double-click to change";
+        const driven = c.param || (c.expr && isNaN(+c.expr) ? c.expr : null);
+        el.className = "lbl dim pick" + (driven ? " driven" : "");
+        el.textContent = dimText(c);
+        if (driven) el.insertAdjacentHTML("afterbegin", `<i>ƒ</i>`);
+        if (c.name) el.dataset.name = c.name;
+        el.title = `${c.name || c.type}${driven ? ` = ${driven}` : ""} = ${fmtNum(c.value)}\nclick to select, double-click to change`;
         el.ondblclick = (ev) => { ev.stopPropagation(); editDim(c, el); };
       } else {
         el.className = "lbl glyph pick" + (c.type === "coincident" ? " coinc" : "");
@@ -199,12 +299,18 @@ export function createSketchEditor(ctx) {
       if (bad.has(c.index)) el.classList.add("bad");
       else if (red.has(c.index)) el.classList.add("redundant");
       el.onpointerdown = (ev) => ev.stopPropagation();
+      el.onpointerenter = () => { hover = key; render(); };
+      el.onpointerleave = () => { if (hover === key) { hover = null; render(); } };
       el.onclick = (ev) => { ev.stopPropagation(); pick(key, ev.shiftKey || ev.metaKey || ev.ctrlKey); };
-      const k = c.at.map((v) => v.toFixed(3)).join(",");
-      const n = stack.get(k) || 0;
-      stack.set(k, n + 1);
-      const off = DIMS.has(c.type) ? [0, n * 16] : [12 + n * 18, -12];
-      labels.push([W(...c.at), el, off]);
+      if (DIMS.has(c.type)) {
+        const g = dims().find((x) => x.c === c)?.g;
+        labels.push([W(...(g?.text || c.at)), el, [0, 0]]);
+      } else {
+        const k = c.at.map((v) => v.toFixed(3)).join(",");
+        const n = stack.get(k) || 0;
+        stack.set(k, n + 1);
+        labels.push([W(...c.at), el, [11 + n * 15, -11]]);
+      }
       box.appendChild(el);
     }
     for (const e of D.entities) {
@@ -219,7 +325,7 @@ export function createSketchEditor(ctx) {
     if (labelsFor !== D) buildLabels();
     const near = new Set([...sel, ...(hover ? [hover] : [])].map((k) => k.split(".")[0]));
     for (const [, el] of labels) {
-      if (el.dataset.ent) { el.hidden = !near.has(el.dataset.ent); continue; }
+      if (el.dataset.ent) { el.hidden = hover?.split(".")[0] !== el.dataset.ent; continue; }
       el.classList.toggle("sel", sel.has(el.dataset.key));
       if (el.classList.contains("coinc")) el.hidden = !sel.has(el.dataset.key) && !el.dataset.on.split(" ").some((r) => near.has(r));
     }

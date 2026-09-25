@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createSketchEditor, TOOLS as SKETCH_TOOLS, CONSTRAINTS as SKETCH_CONSTRAINTS } from "./sketch.js";
+import { ICON } from "./icons.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -461,7 +462,8 @@ async function enterSketch(id) {
   const reframe = SK.active() !== id;
   if (!inSketch()) savedView = { pos: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone(), radius: viewRadius,
                                  persp: camera === persp, empty: new THREE.Box3().setFromObject(partGroup).isEmpty() };
-  $("#sketchBar").hidden = $("#sketchTools").hidden = false;
+  $("#sketchBar").hidden = $("#sketchTools").hidden = $("#sketchHint").hidden = false;
+  $("#modelTools").hidden = true;
   $("#sketchName").textContent = id;
   if (camera === persp) $("#projBtn").click();  // sketches are always viewed orthographic
   controls.mouseButtons.LEFT = null;  // in a sketch the left button selects and draws; right-drag pans, wheel zooms
@@ -499,7 +501,8 @@ function viewSketch() {
 function exitSketch() {
   if (!inSketch()) return;
   SK.exit();
-  $("#sketchBar").hidden = $("#sketchTools").hidden = true;
+  $("#sketchBar").hidden = $("#sketchTools").hidden = $("#sketchHint").hidden = true;
+  $("#modelTools").hidden = false;
   controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   ghostPart(false);
   if (savedView?.empty) {  // the part was empty when the sketch opened: show whatever it has become
@@ -521,21 +524,22 @@ function ghostPart(on) {
 // sketch toolbar: drawing tools, constraints (enabled when the selection fits), edit actions
 (function buildSketchTools() {
   const bar = $("#sketchTools");
-  const btn = (label, title, onclick, data) => {
-    const b = Object.assign(document.createElement("button"), { textContent: label, title, onclick });
+  const btn = (icon, title, onclick, data) => {
+    const b = Object.assign(document.createElement("button"), { className: "ico", innerHTML: ICON[icon] || icon, title, onclick });
     Object.assign(b.dataset, data);
     return b;
   };
   const group = (items) => { const g = document.createElement("span"); g.className = "skgroup"; items.forEach((i) => g.appendChild(i)); bar.appendChild(g); };
-  group(SKETCH_TOOLS.map((t) => btn(t.label, t.title, () => SK.setTool(t.id), { tool: t.id })));
-  group(SKETCH_CONSTRAINTS.map((c) => btn(c.label, c.title, () => SK.constrain(c.id), { con: c.id })));
-  group([btn("Project", "Add the outline of the face this sketch is on as reference geometry you can constrain to; it follows the part", () => SK.projectOutline(), { act: "project" }),
-         btn("Clear marks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
-         btn("Rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
-         btn("→ Param", "Drive the selected dimension from a new part parameter (shows in the Parameters table)", () => SK.toParam(), { act: "param" }),
-         btn("Constr.", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
-         btn("Delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
-         btn("Ask agent", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
+  group(SKETCH_TOOLS.map((t) => btn(t.id, t.title, () => SK.setTool(t.id), { tool: t.id })));
+  group(SKETCH_CONSTRAINTS.map((c) => btn(c.id, c.title, () => SK.constrain(c.id), { con: c.id })));
+  group([btn("project", "Project the outline of this sketch's face as reference geometry to constrain to (it follows the part)", () => SK.projectOutline(), { act: "project" }),
+         btn("construction", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
+         btn("rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
+         btn("param", "Drive the selected dimension from a new part parameter", () => SK.toParam(), { act: "param" }),
+         btn("clearmarks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
+         btn("delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
+         btn("ask", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
+  for (const b of document.querySelectorAll("button.ico[data-icon]")) b.innerHTML = ICON[b.dataset.icon];
 })();
 function askAboutSketch() {
   const sel = SK.selection();

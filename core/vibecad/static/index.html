@@ -45,21 +45,25 @@
       <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
       <button data-view="top">Top</button><button data-view="right">Right</button>
       <button id="fitBtn" title="Fit the part in view">Fit</button>
-      <button id="newSketchBtn" title="Start a sketch on a datum plane or on the face you clicked">+ Sketch</button>
-      <button id="filletBtn" data-kind="Fillet">Fillet…</button>
-      <button id="chamferBtn" data-kind="Chamfer">Chamfer…</button>
+    </div>
+    <div id="modelTools" class="sktools mtools">
+      <span class="skgroup">
+        <button id="newSketchBtn" class="ico" data-icon="sketch" title="New sketch: on a datum plane, or on the face you clicked"></button>
+        <button id="filletBtn" class="ico" data-icon="fillet" data-kind="Fillet"></button>
+        <button id="chamferBtn" class="ico" data-icon="chamfer" data-kind="Chamfer"></button>
+      </span>
     </div>
     <div class="vtools right">
       <button id="projBtn" title="Switch between orthographic and perspective">Orthographic</button>
     </div>
     <div id="sketchBar" class="sketchbar" hidden>
       <div class="skhead"><span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
-        <span class="skacts"><button id="extrudeBtn" title="Extrude this sketch's closed profiles: add, cut or a new body">Extrude…</button>
-        <button id="revolveBtn" title="Revolve this sketch's closed profiles about a line">Revolve…</button>
-        <button id="exitSketch">Exit sketch (Esc)</button></span></div>
-      <div id="sketchHint" class="skhint"></div>
+        <span class="skacts"><button id="extrudeBtn" class="ico" data-icon="extrude" title="Extrude this sketch's closed profiles: add, cut or a new body"></button>
+        <button id="revolveBtn" class="ico" data-icon="revolve" title="Revolve this sketch's closed profiles about a line"></button>
+        <button id="exitSketch" class="ico" data-icon="finish" title="Finish sketch (Esc)"></button></span></div>
     </div>
     <div id="sketchTools" class="sktools" hidden></div>
+    <div id="sketchHint" class="skhint" hidden></div>
     <div id="labels"></div>
     <div id="boxSel" class="boxsel" hidden></div>
     <div id="newMenu" class="popmenu" hidden></div>

@@ -115,7 +115,7 @@ const near = (a, b, tol = 1e-3) => a && b && Math.abs(a[0] - b[0]) < tol && Math
   await page.keyboard.press("Escape");
 
   // change a dimension by double-clicking its label
-  await page.locator("#labels .dim", { hasText: "rect1_bottom_len" }).dblclick();
+  await page.locator("#labels .dim[data-name=rect1_bottom_len]").dblclick();
   await page.waitForSelector("#dimEdit:not([hidden])", { timeout: 3000 });
   check("double-click opens the value editor", (await page.inputValue("#dimEdit input")) === "30");
   await page.fill("#dimEdit input", "40");
@@ -145,6 +145,10 @@ const near = (a, b, tol = 1e-3) => a && b && Math.abs(a[0] - b[0]) < tol && Math
   await click(16, -12);
   check("Dim default for a circle is its diameter", Math.abs(+(await dimTo(8)) - 12) < 0.05);
   check("diameter applied", Math.abs((await entity("circle1")).r - 4) < 1e-3, `r = ${(await entity("circle1")).r}`);
+  const dl = page.locator("#labels .dim[data-name=circle1_d]");
+  check("diameter shown CAD-style as ⌀ value", (await dl.textContent()) === "⌀8", await dl.textContent());
+  check("dimension name in its tooltip", (await dl.getAttribute("title")).startsWith("circle1_d"));
+  check("palette buttons are icons with tooltips", await page.$$eval("#sketchTools button", (l) => l.every((b) => b.querySelector("svg") && b.title)));
 
   // box select, construction toggle, delete
   await drag([-5, 22], [15, 37]);

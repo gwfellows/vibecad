@@ -69,23 +69,35 @@ section { min-height: 0; overflow: auto; }
 .vtools.left { left: 10px; } .vtools.right { right: 10px; }
 .vtools button { background: rgba(255,255,255,.92); font-size: 12px; padding: 2px 8px; }
 .sketchbar { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 140px);
-  background: rgba(37,99,235,.96); color: #fff; border-radius: 8px; padding: 5px 10px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
-.sketchbar .skhead { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-.sketchbar .muted { color: #dbeafe; } .sketchbar .okc { color: #bbf7d0; } .sketchbar .bad { color: #fecaca; font-weight: 600; }
-.sketchbar button { background: #fff; border: 0; font-size: 12px; padding: 2px 8px; }
-.sktools { position: absolute; left: 10px; top: 44px; z-index: 3; display: flex; flex-direction: column; gap: 8px;
+  background: rgba(30,41,59,.92); color: #fff; border-radius: 8px; padding: 3px 4px 3px 10px; font-size: 12px; }
+.sketchbar .skhead { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.sketchbar .muted { color: #cbd5e1; } .sketchbar .okc { color: #86efac; } .sketchbar .bad { color: #fca5a5; font-weight: 600; }
+.sketchbar .skacts { display: flex; gap: 2px; }
+.sketchbar button.ico { background: transparent; color: #e2e8f0; border: 0; }
+.sketchbar button.ico:hover { background: rgba(255,255,255,.14); }
+.sketchbar #exitSketch { color: #86efac; }
+.sktools { position: absolute; left: 10px; top: 44px; z-index: 3; display: flex; flex-direction: column; gap: 6px;
   max-height: calc(100% - 54px); overflow: auto; }
-.skgroup { display: flex; flex-direction: column; gap: 2px; background: rgba(37,99,235,.96); padding: 3px; border-radius: 7px; }
-.sktools button { padding: 2px 4px; min-width: 50px; font-size: 12px; border: 0; background: #fff; }
-.sktools button.on { background: #fde68a; font-weight: 600; }
-.sktools button:disabled { opacity: .45; }
-.skhint { color: #dbeafe; font-size: 11px; min-height: 14px; }
+.skgroup { display: grid; grid-template-columns: repeat(2, 30px); gap: 2px; background: rgba(255,255,255,.95); padding: 3px;
+  border-radius: 8px; box-shadow: 0 1px 4px rgba(15,23,42,.18); }
+.mtools .skgroup { grid-template-columns: 30px; }
+button.ico { width: 30px; height: 30px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: #334155; display: grid; place-items: center; }
+button.ico svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+button.ico:hover:not(:disabled) { background: #eef2ff; color: #1d4ed8; }
+button.ico.on { background: #dbeafe; color: #1d4ed8; box-shadow: inset 0 0 0 1px #93c5fd; }
+button.ico:disabled { opacity: .3; }
+.skhint { position: absolute; left: 90px; bottom: 10px; z-index: 3; max-width: calc(100% - 110px); color: #475569; font-size: 11px;
+  background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 5px; }
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #labels .lbl { position: absolute; transform: translate(-50%, -50%); font: 11px ui-monospace, Menlo, monospace; white-space: nowrap; }
 #labels .pick { pointer-events: auto; cursor: pointer; user-select: none; }
 #labels .ent { color: #9a3412; }
-#labels .dim { color: #1d4ed8; background: rgba(255,255,255,.88); padding: 0 3px; border-radius: 3px; border: 1px solid transparent; }
-#labels .glyph { color: #334155; background: rgba(255,255,255,.92); border: 1px solid #cbd5e1; padding: 0 3px; border-radius: 3px; font-size: 10px; }
+#labels .dim { color: #1d4ed8; background: rgba(246,247,249,.92); padding: 0 3px; border-radius: 3px; border: 1px solid transparent; font-size: 11px; }
+#labels .dim i { font-style: italic; color: #7c3aed; margin-right: 2px; }
+#labels .dim:hover { border-color: #93c5fd; }
+#labels .glyph { color: #475569; background: rgba(255,255,255,.9); border: 1px solid #cbd5e1; min-width: 13px; height: 13px; line-height: 11px;
+  text-align: center; padding: 0 2px; border-radius: 3px; font-size: 9px; opacity: .8; }
+#labels .glyph:hover { opacity: 1; border-color: #93c5fd; }
 #labels .sel { border-color: var(--selbar); background: #fff3e6; color: #9a3412; }
 #labels .bad { border-color: var(--err); color: var(--err); }
 #labels .redundant { border-color: var(--warn); color: var(--warn); }

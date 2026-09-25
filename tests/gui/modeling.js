@@ -153,7 +153,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   await clickTree("sketch1");
   await page.waitForSelector("#sketchBar:not([hidden])");
   await settle();
-  await page.locator("#labels .dim", { hasText: "rect1_bottom_len" }).click();
+  await page.locator("#labels .dim[data-name=rect1_bottom_len]").click();
   check("→ Param enabled for a plain dimension", !(await page.isDisabled("#sketchTools [data-act=param]")));
   answer("plate_w");
   await page.click("#sketchTools [data-act=param]");
