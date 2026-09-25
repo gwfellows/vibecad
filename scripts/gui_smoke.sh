@@ -4,7 +4,7 @@
 #   tests/gui/agent_panel.js  the agent panel, driven by a scripted agent (tests/gui/fake_agent_app.py; no model)
 #   tests/gui/sketch_editor.js  drawing, constraining, dragging and dimensioning in a sketch (same server)
 #   tests/gui/modeling.js     a part modelled by hand from an empty file: sketch, extrude, sketch on face, cut, revolve
-#   scripts/gui_smoke.sh [screenshot_dir]
+#   scripts/gui_smoke.sh [screenshot_dir]      (ONLY=modeling,smoke to run a subset)
 # Needs node with playwright (npm i -g playwright) and a Chromium it can find.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -32,9 +32,13 @@ fi
 
 export NODE_PATH=$(npm root -g)
 status=0
-node "$REPO/tests/gui/smoke.js" "http://127.0.0.1:$PORT" "$SHOTS" $THREE || status=1
-node "$REPO/tests/gui/modeling.js" "http://127.0.0.1:$PORT" "$SHOTS" $THREE || status=1
-node "$REPO/tests/gui/agent_panel.js" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
-node "$REPO/tests/gui/sketch_editor.js" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
+run() {  # ONLY=modeling,sketch_editor runs a subset
+  [[ -z "${ONLY:-}" || ",$ONLY," == *",$1,"* ]] || return 0
+  node "$REPO/tests/gui/$1.js" "http://127.0.0.1:$2" "$SHOTS" $THREE || status=1
+}
+run smoke "$PORT"
+run modeling "$PORT"
+run agent_panel $((PORT + 1))
+run sketch_editor $((PORT + 1))
 echo "screenshots: $SHOTS   server logs: $WORK/*.log"
 exit $status

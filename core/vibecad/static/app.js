@@ -304,7 +304,11 @@ scene.add(axes);
 const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
 let pickedFaces = [];  // faces clicked in the 3D view, shift-click adds: {mesh, labels, point}
 const lastPicked = () => pickedFaces.at(-1) || null;
-let faceMeshes = [], edgeLines = null, meshRev = null, hovered = null;
+let faceMeshes = [], edgeObjs = [], meshRev = null, hovered = null, hoveredEdge = null;
+let pickedEdges = [];  // edges clicked in the 3D view: {i, ref, label, point}; fillet/chamfer act on them
+const EDGE = new THREE.Color(0x1b1f27), EDGE_HOVER = new THREE.Color(0x2f6fe0), EDGE_PICKED = new THREE.Color(0xea580c);
+const edgeMarks = new THREE.Group();  // thick tubes over hovered and picked edges (WebGL lines are 1px)
+scene.add(edgeMarks);
 
 function resize() {
   const w = host.clientWidth, h = host.clientHeight;
@@ -361,12 +365,19 @@ async function loadMesh(fit) {
     partGroup.add(mesh);
     faceMeshes.push(mesh);
   }
-  const pts = [];
-  for (const e of m.edges) for (let i = 0; i + 5 < e.length; i += 3) pts.push(e[i], e[i + 1], e[i + 2], e[i + 3], e[i + 4], e[i + 5]);
-  const eg = new THREE.BufferGeometry();
-  eg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-  edgeLines = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x1b1f27, transparent: true }));
-  partGroup.add(edgeLines);
+  edgeObjs = [];
+  m.edges.forEach((e, i) => {  // one pickable line per edge; the index is the server's edge index
+    if (m.edge_seam?.[i]) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(e, 3));
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: EDGE.clone(), transparent: true }));
+    line.userData = { i };
+    partGroup.add(line);
+    edgeObjs.push(line);
+  });
+  // edge indices are only stable for the same body: keep picks whose edge sits where it did
+  pickedEdges = pickedEdges.filter((p) => { const o = edgeObjs.find((x) => x.userData.i === p.i); return o && nearLine(o, p.point); });
+  hoveredEdge = null;
   pickedFaces = pickedFaces.map((p) => {  // the new mesh has new face objects: keep picks whose labelled face still exists
     const same = faceMeshes.find((x) => x.userData.labels.join() === p.labels.join());
     return same && { ...p, mesh: same };
@@ -377,7 +388,33 @@ async function loadMesh(fit) {
   if (fit) pendingFit = !fitView("iso");
 }
 
+function nearLine(o, pt) {  // does the polyline pass through pt (the edge's midpoint from the server)?
+  const a = o.geometry.attributes.position, v = new THREE.Vector3(...pt), seg = new THREE.Line3(), q = new THREE.Vector3();
+  const tol = 1e-4 * (viewRadius || 10) + 1e-3;
+  for (let k = 0; k + 1 < a.count; k++) {
+    seg.start.fromBufferAttribute(a, k); seg.end.fromBufferAttribute(a, k + 1);
+    if (seg.closestPointToPoint(v, true, q).distanceTo(v) < Math.max(tol, seg.distance() * 0.01)) return true;
+  }
+  return false;
+}
+function colorEdges() {
+  edgeMarks.clear();
+  const r = (viewRadius || 10) * 0.006;
+  for (const o of edgeObjs) {
+    const picked = pickedEdges.some((p) => p.i === o.userData.i);
+    o.material.color.copy(picked ? EDGE_PICKED : o === hoveredEdge ? EDGE_HOVER : EDGE);
+    if (!picked && o !== hoveredEdge) continue;
+    const a = o.geometry.attributes.position, pts = [];
+    for (let k = 0; k < a.count; k++) pts.push(new THREE.Vector3().fromBufferAttribute(a, k));
+    const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(2, pts.length * 2), r, 6, false),
+      new THREE.MeshBasicMaterial({ color: picked ? EDGE_PICKED : EDGE_HOVER, depthTest: false, transparent: true, opacity: 0.9 }));
+    tube.renderOrder = 5;
+    edgeMarks.add(tube);
+  }
+}
 function colorFaces() {
+  colorEdges();
   for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : pickedFaces.some((p) => p.mesh === m) ? PICKED
     : selected && m.userData.features.includes(selected) ? HI : BASE);
 }
@@ -414,19 +451,39 @@ function pickHit(ev) {
   ray.setFromCamera(ptr, camera);
   return ray.intersectObjects(faceMeshes)[0] || null;
 }
+function unitsPerPixel() {
+  const h = renderer.domElement.clientHeight || 1;
+  if (camera === ortho) return (ortho.top - ortho.bottom) / ortho.zoom / h;
+  return camera.position.distanceTo(controls.target) * 2 * Math.tan((persp.fov * Math.PI) / 360) / h;
+}
+function edgeHit(ev) {  // the edge within a few pixels of the pointer, unless a face hides it
+  const face = pickHit(ev);
+  ray.params.Line.threshold = unitsPerPixel() * 6;
+  const hits = ray.intersectObjects(edgeObjs);
+  if (!hits.length) return null;
+  // the ray's closest approach to the edge, not the face behind it: allow for the threshold
+  const e = hits.reduce((a, b) => (a.distanceToRay < b.distanceToRay - 1e-9 ? a : b));
+  if (face && e.distance > face.distance + ray.params.Line.threshold * 2) return null;
+  return e;
+}
 const pick = (ev) => pickHit(ev)?.object || null;
 renderer.domElement.addEventListener("pointermove", (ev) => {
   if (inSketch()) return;
-  const m = pick(ev);
-  if (m !== hovered) { hovered = m; colorFaces(); }
-  if (m) { tip.style.display = "block"; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; tip.textContent = m.userData.labels.join("  ·  "); }
+  const eh = edgeHit(ev), eo = eh?.object || null;
+  const m = eo ? null : pick(ev);
+  if (m !== hovered || eo !== hoveredEdge) { hovered = m; hoveredEdge = eo; colorFaces(); }
+  if (eo) { tip.style.display = "block"; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; tip.textContent = `edge ${eo.userData.i}: click to pick, shift-click to add`; }
+  else if (m) { tip.style.display = "block"; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; tip.textContent = m.userData.labels.join("  ·  "); }
   else tip.style.display = "none";
 });
-renderer.domElement.addEventListener("pointerleave", () => { hovered = null; tip.style.display = "none"; colorFaces(); });
+renderer.domElement.addEventListener("pointerleave", () => { hovered = null; hoveredEdge = null; tip.style.display = "none"; colorFaces(); });
 let downAt = null;
 renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.clientX, ev.clientY]));
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
+  const eh = edgeHit(ev);
+  if (eh) return pickEdge(eh.object.userData.i, ev.shiftKey);
+  if (!ev.shiftKey) pickedEdges = [];
   const hit = pickHit(ev), m = hit?.object;
   const face = m && { mesh: m, labels: m.userData.labels, point: hit.point.toArray() };
   if (ev.shiftKey && m) {  // shift-click: add or remove a face, keep the feature selection
@@ -439,6 +496,20 @@ renderer.domElement.addEventListener("pointerup", (ev) => {
   if (m) { const fs = m.userData.features, i = fs.indexOf(selected); select(fs[(i + 1) % fs.length]); }
   else select(null);
 });
+
+async function pickEdge(i, add) {
+  if (add && pickedEdges.some((p) => p.i === i)) {
+    pickedEdges = pickedEdges.filter((p) => p.i !== i);
+    pickUpdate(); return colorFaces();
+  }
+  let r;
+  try { r = await api(`/api/edge/${i}`); } catch (e) { return note(`That edge can't be referenced: ${e.message}`, "err"); }
+  const rec = { i, ref: r.ref, label: r.label, point: r.point };
+  if (add) pickedEdges = [...pickedEdges, rec];
+  else { pickedEdges = [rec]; pickedFaces = []; }
+  pickUpdate();
+  colorFaces();
+}
 
 // ── sketch mode: the sketch editor (static/sketch.js) on the sketch's plane, viewed straight on ──
 let savedView = null;
@@ -518,7 +589,8 @@ function exitSketch() {
 $("#exitSketch").onclick = () => { selected = null; exitSketch(); renderTree(null); renderDetails(); colorFaces(); };
 function ghostPart(on) {
   for (const m of faceMeshes) { m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
-  if (edgeLines) edgeLines.material.opacity = on ? 0.45 : 1;
+  for (const o of edgeObjs) o.material.opacity = on ? 0.45 : 1;
+  edgeMarks.visible = !on;
 }
 
 // sketch toolbar: drawing tools, constraints (enabled when the selection fits), edit actions
@@ -677,36 +749,49 @@ function featureForm(kind) {
 }
 $("#extrudeBtn").onclick = () => featureForm("extrude");
 
-// fillet / chamfer from picked faces: two faces -> the edge between them; one face -> its edges
+// fillet / chamfer from picks: picked edges (each exactly), plus picked faces. Faces alone: two faces -> the edge
+// between them; one face -> its edges
+function edgeTargets() {  // [{ref, what}] or null when the picks don't make an edge set
+  const nf = pickedFaces.length, ne = pickedEdges.length;
+  if (ne) {
+    const faces = pickedFaces.map((p) => ({ of: faceRef(p.labels[0], p.point), note: `edges of ${p.labels[0]}, picked in the GUI` }));
+    return [...pickedEdges.map((p) => ({ ref: p.ref, what: `edge ${p.label}` })), ...faces.map((r, k) => ({ ref: r, what: `edges of ${pickedFaces[k].labels[0]}` }))];
+  }
+  if (nf === 2) {
+    const [a, b] = pickedFaces.map((p) => faceRef(p.labels[0], p.point));
+    return [{ ref: { between: [a, b], note: `edge where ${pickedFaces[0].labels[0]} meets ${pickedFaces[1].labels[0]}, picked in the GUI` },
+      what: `edge between ${pickedFaces[0].labels[0]} and ${pickedFaces[1].labels[0]}` }];
+  }
+  if (nf === 1) return [{ ref: { of: faceRef(pickedFaces[0].labels[0], pickedFaces[0].point), note: `edges of ${pickedFaces[0].labels[0]}, picked in the GUI` },
+    what: `edges of ${pickedFaces[0].labels[0]}`, face: true }];
+  return null;
+}
 function pickUpdate() {
-  const n = pickedFaces.length;
+  const t = edgeTargets();
   for (const b of [$("#filletBtn"), $("#chamferBtn")]) {
-    b.disabled = !(n === 1 || n === 2);
-    b.title = n === 2 ? `${b.dataset.kind} the edge between ${pickedFaces.map((p) => p.labels[0]).join(" and ")}`
-      : n === 1 ? `${b.dataset.kind} the edges of ${pickedFaces[0].labels[0]}` : `Click a face, shift-click a second: ${b.dataset.kind.toLowerCase()} the edge between them`;
+    b.disabled = !t;
+    b.title = t ? `${b.dataset.kind} the ${t.map((x) => x.what).join(", ")}`
+      : `Click an edge (shift-click for more), or a face for all its edges, or two faces for the edge between them`;
   }
 }
 function edgeForm(kind) {
-  const n = pickedFaces.length;
-  if (n !== 1 && n !== 2) return note(`${kind}: click one face (its edges) or two faces (the edge between them)`, "err");
-  const refs = pickedFaces.map((p) => faceRef(p.labels[0], p.point));
-  if (refs.some((r) => !r)) return note(`${kind}: can't reference one of the picked faces`, "err");
+  const t = edgeTargets();
+  if (!t) return note(`${kind}: click an edge, a face (its edges) or two faces (the edge between them)`, "err");
+  if (t.some((x) => !x.ref || (x.ref.of === null) || (x.ref.between && x.ref.between.some((r) => !r)))) return note(`${kind}: can't reference one of the picked faces`, "err");
   const m = $("#featMenu"), size = kind === "fillet" ? "radius" : "distance";
-  const what = n === 2 ? `edge between ${esc(pickedFaces[0].labels[0])} and ${esc(pickedFaces[1].labels[0])}` : `edges of ${esc(pickedFaces[0].labels[0])}`;
-  m.innerHTML = `<div class="ttl">${kind === "fillet" ? "Fillet" : "Chamfer"} the ${what}</div>
+  const what = t.length === 1 ? t[0].what : `${t.length} picked edges`;
+  m.innerHTML = `<div class="ttl">${kind === "fillet" ? "Fillet" : "Chamfer"} the ${esc(what)}</div>
     <div class="row"><label>${size}</label><input id="ffSize" value="1"></div>
-    ${n === 1 ? `<div class="row"><label>edges</label><select id="ffFilter"><option value="any">all</option><option value="line">straight only</option><option value="circle">round only</option></select></div>` : ""}
+    ${t.length === 1 && t[0].face ? `<div class="row"><label>edges</label><select id="ffFilter"><option value="any">all</option><option value="line">straight only</option><option value="circle">round only</option></select></div>` : ""}
     <button class="go" id="ffGo">${kind === "fillet" ? "Fillet" : "Chamfer"}</button>`;
   popup(m, $(kind === "fillet" ? "#filletBtn" : "#chamferBtn"));
   $("#ffGo").onclick = async () => {
-    const note_ = n === 2 ? `edge where ${pickedFaces[0].labels[0]} meets ${pickedFaces[1].labels[0]}, picked in the GUI`
-      : `edges of ${pickedFaces[0].labels[0]}, picked in the GUI`;
-    const edge = n === 2 ? { between: refs, note: note_ } : { of: refs[0], note: note_ };
-    if (n === 1 && $("#ffFilter").value !== "any") edge.filter = { type: $("#ffFilter").value };
+    const edges = t.map((x) => ({ ...x.ref }));
+    if ($("#ffFilter") && $("#ffFilter").value !== "any") edges[0].filter = { type: $("#ffFilter").value };
     const id = nextId(kind);
     m.hidden = true;
-    if (await addFeature({ id, type: kind, edges: [edge], [size]: numOrExpr($("#ffSize").value) }, `${kind} ${what.replace(/<[^>]+>/g, "")}`)) {
-      pickedFaces = [];
+    if (await addFeature({ id, type: kind, edges, [size]: numOrExpr($("#ffSize").value) }, `${kind} ${what}`)) {
+      pickedFaces = []; pickedEdges = [];
       pickUpdate();
       select(id);
     }
@@ -723,6 +808,7 @@ window.vibecadView = {  // for browser tests and the devtools console
   },
   pickedFace: () => lastPicked() && { labels: lastPicked().labels, point: lastPicked().point },
   pickedFaces: () => pickedFaces.map((p) => p.labels[0]),
+  pickedEdges: () => pickedEdges.map((p) => ({ i: p.i, label: p.label, ref: p.ref })),
 };
 
 // ── dialogs ───────────────────────────────────────────────────────

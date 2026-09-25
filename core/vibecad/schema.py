@@ -110,16 +110,22 @@ class EdgeFilter(_M):
 
 
 class EdgeRef(_M):
-    """Either the edges shared by two face sets (`between`), or the edges of a face set (`of`)."""
+    """Either the edges shared by two face sets (`between`), or the edges of a face set (`of`).
+    pick "nearest" with `near: [x, y, z]` keeps only the edge closest to that point (two faces can meet
+    along several edges)."""
     between: tuple[FaceRef, FaceRef] | None = None
     of: FaceRef | None = None
     filter: EdgeFilter | None = None
+    pick: Literal["all", "nearest"] = "all"
+    near: Vec3 | None = None
     note: str | None = None
 
     @model_validator(mode="after")
     def _one(self):
         if (self.between is None) == (self.of is None):
             raise ValueError("EdgeRef needs exactly one of `between` or `of`")
+        if self.pick == "nearest" and self.near is None:
+            raise ValueError("EdgeRef pick 'nearest' needs `near: [x, y, z]`")
         return self
 
 

@@ -133,7 +133,10 @@ class App:
                 "features": sorted({l.feature for l in labels}),
                 "labels": sorted({str(l) for l in labels}),
             })
+        face_edges = [list_edges(f) for f in list_faces(body.shape)]
+        out["edge_seam"] = []  # a cylinder's seam lies inside one face: drawn by nobody, pickable by nobody
         for e in list_edges(body.shape):
+            out["edge_seam"].append(sum(any(x.IsSame(e) for x in fe) for fe in face_edges) < 2)
             edge = bd.Edge(TopoDS.Edge(e))
             k = 2 if edge.geom_type == bd.GeomType.LINE else 40
             pts = edge.positions([i / (k - 1) for i in range(k)])
@@ -178,6 +181,62 @@ class App:
                 "dof": rep.dof, "status": rep.status, "conflicting": rep.conflicting, "redundant": rep.redundant,
                 "conflicting_idx": rep.conflicting_idx, "redundant_idx": rep.redundant_idx,
                 "params": sorted(s.doc.params), "on_face": feat.plane.__class__.__name__ == "FacePlane"}
+
+    def edge_ref(self, i: int) -> dict:
+        """A semantic EdgeRef for edge `i` of the shown body (the index the mesh uses), checked to resolve
+        to exactly that edge: the edge between its two faces, narrowed by pick/filter when needed."""
+        from itertools import product
+
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from . import schema as S
+        from .topo import face_center, list_edges, list_faces, resolve_edges
+
+        body = self.view_result().body
+        edges = list_edges(body.shape) if body.shape is not None else []
+        if not 0 <= i < len(edges):
+            raise ToolError(f"no edge {i}")
+        edge = edges[i]
+        faces = [f for f in list_faces(body.shape) if any(edge.IsSame(x) for x in list_edges(f))]
+
+        def as_ref(lab, face, near):
+            r = {"feature": lab.feature, "role": lab.role}
+            if lab.entity:
+                r["entity"] = lab.entity
+            if lab.instance:
+                r["instance"] = lab.instance
+            if near:
+                c = face_center(face)
+                r.update(pick="nearest", near=[round(c.X, 4), round(c.Y, 4), round(c.Z, 4)])
+            return r
+
+        mid = bd.Edge(TopoDS.Edge(edge)).position_at(0.5)
+        at = [round(mid.X, 4), round(mid.Y, 4), round(mid.Z, 4)]
+        if len(faces) == 2:
+            for near, (la, lb), flt in product((False, True), product(body.labels_of(faces[0]), body.labels_of(faces[1])),
+                                               (None, {"type": "line"}, {"type": "circle"})):
+                ref = {"between": [as_ref(la, faces[0], near), as_ref(lb, faces[1], near)], **({"filter": flt} if flt else {})}
+                try:
+                    hits = resolve_edges(body, S.EdgeRef.model_validate(ref))
+                except Exception:
+                    continue
+                if len(hits) == 1 and hits[0].IsSame(edge):
+                    ref["note"] = f"edge between {la} and {lb}, picked in the GUI"
+                    return {"ref": ref, "label": f"{la} | {lb}", "point": at}
+            # the two faces meet along more than one edge: keep the one nearest where it was picked
+            for la, lb in product(body.labels_of(faces[0]), body.labels_of(faces[1])):
+                ref = {"between": [as_ref(la, faces[0], True), as_ref(lb, faces[1], True)], "pick": "nearest", "near": at}
+                try:
+                    hits = resolve_edges(body, S.EdgeRef.model_validate(ref))
+                except Exception:
+                    continue
+                if len(hits) == 1 and hits[0].IsSame(edge):
+                    ref["note"] = f"edge between {la} and {lb} nearest {at}, picked in the GUI"
+                    return {"ref": ref, "label": f"{la} | {lb}", "point": at}
+        if len(faces) < 2:
+            raise ToolError(f"edge {i} is a seam inside one face, not an edge between faces")
+        raise ToolError(f"edge {i} can't be named uniquely from its faces' labels")
 
     def face_outline(self, sid: str) -> dict:
         """External entities for every edge of the face a sketch sits on, each named as the edge between
@@ -530,6 +589,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     @api.get("/api/sketch/{sid}.json")
     async def sketch_json(sid: str):
         return await asyncio.to_thread(guard, A.sketch_geometry, sid)
+
+    @api.get("/api/edge/{i}")
+    async def edge(i: int):
+        return await asyncio.to_thread(guard, A.edge_ref, i)
 
     @api.get("/api/sketch/{sid}/outline")
     async def sketch_outline(sid: str):

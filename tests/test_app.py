@@ -140,3 +140,21 @@ def test_face_outline_projects_every_edge_of_a_face_sketch(tmp_path):
     assert solved.report.dof == 0
     with pytest.raises(Exception, match="only a sketch on a face"):
         a.face_outline("base_sketch")
+
+
+def test_every_edge_of_the_examples_gets_a_verified_ref(tmp_path):
+    from vibecad import schema as S
+    from vibecad.topo import list_edges, resolve_edges
+
+    for part in ("l_bracket.vcad.json", "pillow_block.vcad.json", "edge_holes_plate.vcad.json", "enclosure_lid.vcad.json"):
+        a = _app(tmp_path, part)
+        body = a.view_result().body
+        edges = list_edges(body.shape)
+        seams = a.mesh()["edge_seam"]
+        assert len(seams) == len(edges)
+        for i, e in enumerate(edges):
+            if seams[i]:  # a cylinder's seam lies inside one face: not an edge you can pick
+                continue
+            r = a.edge_ref(i)
+            hits = resolve_edges(body, S.EdgeRef.model_validate(r["ref"]))
+            assert len(hits) == 1 and hits[0].IsSame(e), (part, i, r)

@@ -168,6 +168,9 @@ def resolve_edges(body: Body, ref: S.EdgeRef) -> list[TopoDS_Shape]:
     if not uniq:
         raise RefError(f"edge ref {what}" + (f" with filter {ref.filter.model_dump(exclude_none=True)}" if ref.filter else "")
                        + " matched no edges")
+    if ref.pick == "nearest":
+        p = bd.Vertex(*ref.near)
+        uniq = [min(uniq, key=lambda e: bd.Edge(TopoDS.Edge(e)).distance_to(p))]
     return uniq
 
 

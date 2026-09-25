@@ -76,6 +76,7 @@ EdgeRef: {"between": [FaceRef, FaceRef], "note": "..."}
 - Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner`; `new` for faces with no better origin.
 - `instance`: omitted = the original only; `"*"` = original and all copies; `"<pattern_id>#<n>"` = one copy.
 - `pick`: `largest`, `smallest`, or `nearest` (with `near: [x, y, z]`) when one face is required.
+- EdgeRef `pick: "nearest"` with `near: [x, y, z]` keeps the one edge closest to that point, for two faces that meet along more than one edge.
 - Always write a `note` saying in plain words what the reference means, so a later reader can repair it if it breaks.
 - `report.json` → `face_labels` lists every label present on the final body.
 

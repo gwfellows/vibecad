@@ -243,6 +243,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   check("chamfer on the round edge of the top face only", Math.abs(v2 - (await vol()) - rim) < 0.02, `${v2} -> ${await vol()} (expected -${rim.toFixed(3)})`);
   await shot("4_fillet");
 
+
   // project the top face's outline into a new sketch on it; geometry tied to it follows the part
   await clickWorld(10, 15, 5);
   await newSketch("[data-face]");
@@ -271,6 +272,30 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   await settle();
   const moved = await page.evaluate((id) => fetch(`/api/sketch/${id}.json`).then((r) => r.json()).then((d) => d.entities.find((e) => e.id === "circle1").center), sk4);
   check("projected geometry follows a parameter change", Math.abs(moved[0] - 60) < 1e-6 && Math.abs(moved[1] - 20) < 1e-6, JSON.stringify(moved));
+
+  // pick one edge directly (the back right vertical edge) and fillet just it
+  if (await page.isVisible("#exitSketch")) await page.click("#exitSketch");
+  await page.click("#fitBtn");
+  await page.waitForTimeout(600);
+  const exactVol = () => page.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => s.state.volume));
+  const [ex, ey] = await page.evaluate(() => window.vibecadView.toScreen(60, 20, 2.5));
+  await page.mouse.move(ex + 30, ey + 30);
+  await page.mouse.move(ex, ey, { steps: 3 });
+  await page.waitForTimeout(200);
+  check("hovering an edge says so", (await page.textContent(".tip")).startsWith("edge"), await page.textContent(".tip"));
+  await page.mouse.click(ex, ey);
+  await page.waitForTimeout(600);
+  const pe = await page.evaluate(() => window.vibecadView.pickedEdges());
+  check("clicking an edge picks it with a verified ref", pe.length === 1 && !!pe[0].ref?.between, JSON.stringify(pe));
+  check("an edge pick enables fillet", !(await page.isDisabled("#filletBtn")));
+  const v3 = await exactVol();
+  await page.click("#filletBtn");
+  await page.fill("#ffSize", "1");
+  await page.click("#ffGo");
+  await page.waitForTimeout(1500);
+  const cornerLoss = (1 - Math.PI / 4) * 1 * 5;
+  check("fillet on the one picked edge", Math.abs(v3 - (await exactVol()) - cornerLoss) < 0.01, `${v3} -> ${await exactVol()} (expected -${cornerLoss.toFixed(3)})`);
+  check("picks clear after the feature", (await page.evaluate(() => window.vibecadView.pickedEdges())).length === 0);
 
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   const failed = results.filter((r) => !r.ok).length;
