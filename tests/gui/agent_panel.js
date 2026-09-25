@@ -105,6 +105,16 @@ const pixelDiff = (page, a, b) => page.evaluate(async ([a, b]) => {
   await page.waitForTimeout(1500);
   check("undo reverts the agent's last edit", Math.abs((await vol()) - v2) < 0.1, `${await vol()}`);
 
+  // a clicked face goes with the prompt as ready-made face references
+  const [fx, fy] = await page.evaluate(() => window.vibecadView.toScreen(20, 10, 4));
+  await page.mouse.click(fx, fy);
+  await page.waitForTimeout(300);
+  await ask("What is this face? (echo)");
+  const faceReply = await page.$$eval("#log .msg.agent", (l) => l.at(-1).textContent);
+  check("agent gets the clicked face", faceReply.includes("clicked a face in the 3D view at (20.00, 10.00, 4.00)"), faceReply.slice(0, 300));
+  check("as a face reference", faceReply.includes('plate.end = {"feature": "plate", "role": "end"}'), faceReply.slice(0, 400));
+  check("user message names the face", (await page.$$eval("#log .msg.user .sel", (l) => l.at(-1).textContent)).includes("face plate.end"));
+
   // reload mid-conversation: transcript is replayed
   await page.reload();
   await page.waitForSelector("#conn.live", { timeout: 15000 });

@@ -188,6 +188,36 @@ class App:
         out, moved = drag(feat, r.env, ref, to, grab, guess)
         return {"moved": moved, "ok": out.report.ok, "entities": sketch_entities(out, {}), "ir": out.to_ir_entities()}
 
+    def marks_context(self, sid: str, marks: list) -> str:
+        """Freehand strokes the user drew on a sketch, as coordinates plus the geometry each passes near."""
+        r = self.view_result()
+        solved = r.sketches.get(sid, (None,))[0]
+        lines = []
+        for i, stroke in enumerate(marks, start=1):
+            pts = [(float(u), float(v)) for u, v in stroke][:200]
+            if not pts:
+                continue
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            size = max(max(xs) - min(xs), max(ys) - min(ys))
+            step = max(1, len(pts) // 24)  # ~24 points is plenty to convey a shape
+            path = " -> ".join(f"({u:.1f}, {v:.1f})" for u, v in pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else []))
+            near = []
+            if solved is not None:
+                tol = max(0.5, 0.15 * size)
+                for e in solved.entities.values():
+                    d = min(e.distance_to(p) for p in pts)
+                    if d <= tol:
+                        near.append((d, e.id))
+            closed = len(pts) > 2 and ((pts[0][0] - pts[-1][0]) ** 2 + (pts[0][1] - pts[-1][1]) ** 2) ** 0.5 < 0.2 * max(size, 1e-9)
+            desc = f"mark {i} ({'closed loop' if closed else 'stroke'}, spans x {min(xs):.1f}..{max(xs):.1f}, y {min(ys):.1f}..{max(ys):.1f}): {path}"
+            if near:
+                desc += "; passes near " + ", ".join(eid for _, eid in sorted(near)[:6])
+            lines.append(desc)
+        if not lines:
+            return ""
+        return (f"[The user drew {len(lines)} freehand mark(s) on sketch `{sid}` to show what they mean (sketch coordinates, mm; "
+                f"not part of the model): " + " | ".join(lines) + "]\n")
+
     # ── agent ──────────────────────────────────────────────────────
     async def ensure_runner(self):
         if self.runner is None:
@@ -211,7 +241,8 @@ class App:
         self.transcript = []
         self.publish({"type": "conversation_reset"})
 
-    async def prompt(self, text: str, selection: str | None, scope: bool, entities: list[str] | None = None) -> None:
+    async def prompt(self, text: str, selection: str | None, scope: bool, entities: list[str] | None = None,
+                     face: dict | None = None, marks: list | None = None) -> None:
         if self.run_task and not self.run_task.done():
             self.publish({"type": "error", "message": "the agent is still working; stop it or wait"})
             return
@@ -229,11 +260,16 @@ class App:
             prefix += f"[The user selected feature `{selection}` ({f.type}: {f.intent or 'no intent'}).]\n"
             if entities and f.type == "sketch":
                 prefix += sketch_selection_context(f, entities)
+            if marks and f.type == "sketch":
+                prefix += self.marks_context(selection, marks)
             if scope:
                 self.ws.scope = {selection, *deps}
                 prefix += f"[Edits are limited to `{selection}` and features that depend on it: {sorted(deps) or 'none'}.]\n"
+        if face and face.get("labels") and self.ws.active:
+            prefix += face_context(face)
         self.publish({"type": "user_prompt", "text": text, "selection": selection, "scope": scope,
-                      "entities": entities or None})
+                      "entities": entities or None, "face": (face or {}).get("labels", [None])[0],
+                      "marks": len(marks) if marks else None})
 
         async def go():
             try:
@@ -300,6 +336,25 @@ def sketch_selection_context(sketch, entities: list[str]) -> str:
     s = f"[In sketch `{sketch.id}` the user selected: {', '.join(entities)}."
     s += f" Constraints on them: {'; '.join(touching)}.]\n" if touching else " No constraints touch them.]\n"
     return s
+
+
+def face_context(face: dict) -> str:
+    """The face the user clicked in the 3D view, with a ready-made FaceRef for each of its labels."""
+    import re
+
+    refs = []
+    for lab in face["labels"][:4]:
+        m = re.match(r"^([^.]+)\.([a-z_]+)(?:\[([^\]]+)\])?(?:@(.+))?$", lab)
+        if m:
+            ref = {"feature": m.group(1), "role": m.group(2)}
+            if m.group(3):
+                ref["entity"] = m.group(3)
+            if m.group(4):
+                ref["instance"] = m.group(4)
+            refs.append(f"{lab} = {json.dumps(ref)}")
+    at = face.get("point")
+    where = f" at ({at[0]:.2f}, {at[1]:.2f}, {at[2]:.2f})" if at and len(at) == 3 else ""
+    return f"[The user clicked a face in the 3D view{where}: {'; '.join(refs) or ', '.join(face['labels'])}.]\n"
 
 
 def dependents(doc, fid: str) -> set[str]:
@@ -445,7 +500,8 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
             while True:
                 msg = json.loads(await sock.receive_text())
                 if msg["type"] == "prompt":
-                    await A.prompt(msg["text"], msg.get("selection"), bool(msg.get("scope")), msg.get("entities"))
+                    await A.prompt(msg["text"], msg.get("selection"), bool(msg.get("scope")), msg.get("entities"),
+                                   msg.get("face"), msg.get("marks"))
                 elif msg["type"] == "stop" and A.runner:
                     await A.runner.interrupt()
                 elif msg["type"] == "reset":

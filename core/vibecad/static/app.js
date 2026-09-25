@@ -67,7 +67,7 @@ function onEvent(e) {
       if (fresh) loadParts();
       break;
     }
-    case "user_prompt": addUser(e.text, e.selection, e.scope, e.entities); break;
+    case "user_prompt": addUser(e.text, e.selection, e.scope, e.entities, e.face, e.marks); break;
     case "run_start": setBusy(true, e.t); break;
     case "agent_text": addAgent(e.text); break;
     case "agent_thinking": addThinking(e.text); break;
@@ -175,14 +175,16 @@ function renderParams() {
   }
 }
 
+let detailsToken = 0;  // only the newest render may build the panel (several can be in flight after an edit)
 async function renderDetails() {
+  const tok = ++detailsToken;
   const d = $("#details");
   $("#selName").textContent = selected || "";
   if (!selected) { d.innerHTML = "Click a feature in the tree or a face in the view."; d.className = "muted small"; return; }
   const f = S.features.find((x) => x.id === selected);
   if (!f) return;
   const json = await api(`/api/feature/${encodeURIComponent(selected)}`);
-  if (json.id !== selected) return;  // selection changed while loading
+  if (tok !== detailsToken || json.id !== selected) return;  // a newer render or selection took over
   const i = S.features.indexOf(f), off = f.status === "suppressed";
   d.className = "";
   d.innerHTML = `<div class="factions">
@@ -207,8 +209,14 @@ async function renderDetails() {
       }
     },
     suppress: () => edit([{ op: "update_feature", id: f.id, set: { suppressed: !off } }], `${off ? "unsuppress" : "suppress"} ${f.id}`),
-    up: () => edit([{ op: "move_feature", id: f.id, before: S.features[i - 1].id }], `move ${f.id} up`),
-    down: () => edit([{ op: "move_feature", id: f.id, after: S.features[i + 1].id }], `move ${f.id} down`),
+    up: () => {  // positions from the tree as it is now, not as it was when the panel was drawn
+      const k = S.features.findIndex((x) => x.id === f.id);
+      if (k > 0) edit([{ op: "move_feature", id: f.id, before: S.features[k - 1].id }], `move ${f.id} up`);
+    },
+    down: () => {
+      const k = S.features.findIndex((x) => x.id === f.id);
+      if (k >= 0 && k < S.features.length - 1) edit([{ op: "move_feature", id: f.id, after: S.features[k + 1].id }], `move ${f.id} down`);
+    },
     delete: async () => {
       if (await edit([{ op: "remove_feature", id: f.id }], `delete ${f.id}`)) select(null);
     },
@@ -512,7 +520,8 @@ function ghostPart(on) {
   const group = (items) => { const g = document.createElement("span"); g.className = "skgroup"; items.forEach((i) => g.appendChild(i)); bar.appendChild(g); };
   group(SKETCH_TOOLS.map((t) => btn(t.label, t.title, () => SK.setTool(t.id), { tool: t.id })));
   group(SKETCH_CONSTRAINTS.map((c) => btn(c.label, c.title, () => SK.constrain(c.id), { con: c.id })));
-  group([btn("Rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
+  group([btn("Clear marks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
+         btn("Rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
          btn("→ Param", "Drive the selected dimension from a new part parameter (shows in the Parameters table)", () => SK.toParam(), { act: "param" }),
          btn("Constr.", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
          btn("Delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
@@ -529,6 +538,7 @@ const HINTS = {
   rect: (n) => (n ? "Click the opposite corner" : "Click the first corner"),
   circle: (n) => (n ? "Click a point on the rim" : "Click the centre"),
   arc: (n) => ["Click the centre", "Click the start point", "Click the end point (counterclockwise)"][n] || "",
+  mark: () => `Draw on the sketch to show the agent what you mean (${SK.marks().length} mark(s)); they go with your next prompt and are never saved to the part`,
 };
 function sketchBarUpdate() {
   const d = SK.data();
@@ -547,6 +557,7 @@ function sketchBarUpdate() {
   $("#sketchTools [data-act=delete]").disabled = !sel.some((k) => k.startsWith("#") || !k.includes(".") && k !== "origin");
   $("#sketchTools [data-act=construction]").disabled = !sel.some((k) => !k.startsWith("#") && !k.includes(".") && k !== "origin");
   $("#sketchTools [data-act=rename]").disabled = !SK.canRename();
+  $("#sketchTools [data-act=clearmarks]").disabled = !SK.marks().length;
   $("#sketchTools [data-act=param]").disabled = !SK.canParam();
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;
@@ -678,11 +689,12 @@ const log = $("#log");
 function scrollDown() { if (log.scrollHeight - log.scrollTop - log.clientHeight < 200) log.scrollTop = log.scrollHeight; }
 function add(el) { log.appendChild(el); scrollDown(); return el; }
 function md(t) { return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>"); }
-function addUser(text, sel, scope, entities) {
+function addUser(text, sel, scope, entities, face, marks) {
   const d = document.createElement("div");
   d.className = "msg user";
-  const what = sel ? esc(sel) + (entities?.length ? `: ${esc(entities.join(", "))}` : "") : "";
-  d.innerHTML = esc(text) + (sel ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "");
+  const what = (sel ? esc(sel) + (entities?.length ? `: ${esc(entities.join(", "))}` : "") : "")
+    + (face ? `${sel ? " · " : ""}face ${esc(face)}` : "") + (marks ? ` · ${marks} mark${marks > 1 ? "s" : ""}` : "");
+  d.innerHTML = esc(text) + (what ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "");
   add(d);
 }
 function addAgent(text) { const d = document.createElement("div"); d.className = "msg agent"; d.innerHTML = md(text); add(d); }
@@ -769,7 +781,10 @@ $("#promptForm").onsubmit = (ev) => {
   const text = $("#prompt").value.trim();
   if (!text || busy) return;
   const entities = inSketch() && SK.selection().length ? SK.selection() : null;
-  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities });
+  const marks = inSketch() && SK.marks().length ? SK.marks() : null;
+  const face = !inSketch() && pickedFace ? { labels: pickedFace.labels, point: pickedFace.point } : null;
+  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities, marks, face });
+  if (marks) SK.clearMarks();
   $("#prompt").value = "";
 };
 $("#prompt").onkeydown = (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("#promptForm").requestSubmit(); } };

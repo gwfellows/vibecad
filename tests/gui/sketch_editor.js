@@ -180,6 +180,31 @@ const near = (a, b, tol = 1e-3) => a && b && Math.abs(a[0] - b[0]) < tol && Math
   check("user message shows the selection", (await page.$$eval("#log .msg.user .sel", (l) => l.at(-1).textContent)).includes("rect1_top"));
   await shot("3_done");
 
+  // freehand marks go with the next prompt, then disappear; they never enter the part
+  await page.evaluate(() => document.activeElement.blur());  // the prompt box still has focus from the last message
+  await page.keyboard.press("m");
+  check("M picks the mark tool", (await SK((sk) => sk.tool())) === "mark");
+  const top = await entity("rect1_top");
+  const [mx0, my0] = await scr(top.p2[0] + 2, top.p2[1] + 1), [mx1, my1] = await scr(top.p1[0] - 2, top.p1[1] + 1);
+  await page.mouse.move(mx0, my0);
+  await page.mouse.down();
+  for (let k = 1; k <= 12; k++) await page.mouse.move(mx0 + ((mx1 - mx0) * k) / 12, my0 + ((my1 - my0) * k) / 12 - Math.sin((Math.PI * k) / 12) * 6);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  check("a stroke is recorded", (await SK((sk) => sk.marks().length)) === 1);
+  check("Clear marks enabled", !(await page.isDisabled("#sketchTools [data-act=clearmarks]")));
+  const before = await page.$$eval("#log .msg.agent", (l) => l.length);
+  await page.fill("#prompt", "Round this edge (echo)");
+  await page.press("#prompt", "Enter");
+  await page.waitForFunction((n) => document.querySelectorAll("#log .msg.agent").length > n, before, { timeout: 30000 });
+  const markReply = await page.$$eval("#log .msg.agent", (l) => l.at(-1).textContent);
+  check("agent gets the mark as sketch coordinates", markReply.includes("drew 1 freehand mark(s) on sketch sk"), markReply.slice(0, 160));
+  check("with the geometry it passes near", /passes near rect1_top/.test(markReply), markReply.slice(0, 400));
+  check("marks cleared once sent", (await SK((sk) => sk.marks().length)) === 0);
+  check("marks never reach the part", !JSON.stringify(await page.evaluate(() => fetch("/api/feature/sk").then((r) => r.json()))).includes("mark"));
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press("Escape");
+
   // Esc clears the selection, then leaves the sketch
   await page.click("#viewer canvas", { position: { x: 5, y: 5 } }).catch(() => {});
   await page.keyboard.press("Escape");

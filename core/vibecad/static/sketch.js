@@ -3,7 +3,7 @@
 // sketch-local (u, v); the server returns them with the plane's frame and we map them into the scene.
 import * as THREE from "three";
 
-const COLORS = { fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const COLORS = { mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
 const GLYPH = { horizontal: "H", vertical: "V", parallel: "∥", perpendicular: "⊥", equal: "=", tangent: "tan", concentric: "◎",
   midpoint: "mid", symmetric: "sym", point_on: "on", fix: "fix", coincident: "•" };
 const DIMS = new Set(["distance", "distance_x", "distance_y", "radius", "diameter", "angle"]);
@@ -15,6 +15,7 @@ export const TOOLS = [
   { id: "rect", label: "Rect", key: "r", title: "Rectangle: click two opposite corners (R)" },
   { id: "circle", label: "Circle", key: "c", title: "Circle: click centre, click a point on the rim (C)" },
   { id: "arc", label: "Arc", key: "a", title: "Arc: click centre, start, end (counterclockwise) (A)" },
+  { id: "mark", label: "Mark", key: "m", title: "Mark: draw freehand to show the agent what you mean; goes with your next prompt, never into the part (M)" },
 ];
 export const CONSTRAINTS = [
   { id: "coincident", label: "•", title: "Coincident: two points, or a point and a curve (point on curve)" },
@@ -43,6 +44,7 @@ export function createSketchEditor(ctx) {
   let dragS = null, boxS = null, committing = false;
   let labels = [];
   const made = new Set();            // ids created this session but maybe not yet in D
+  let marks = [], stroke = null;     // freehand annotation strokes (sketch coords), sent with the next prompt
 
   // ── coordinates ───────────────────────────────────────────────
   const W = (u, v) => F.o.clone().addScaledVector(F.x, u).addScaledVector(F.y, v);
@@ -145,11 +147,12 @@ export function createSketchEditor(ctx) {
     addPoints(plain, COLORS.point, 5);
     addPoints(hov, COLORS.hover, 8);
     addPoints(hi, COLORS.sel, 8);
+    for (const m of [...marks, ...(stroke ? [stroke] : [])]) if (m.length > 1) addLine(m, COLORS.mark, false, 20);
     renderPreview();
     styleLabels();
   }
   function renderPreview() {
-    if (!cursor || tool === "select") return;
+    if (!cursor || tool === "select" || tool === "mark") return;
     const c = snapInfo?.uv || cursor, pv = COLORS.hover;
     if (tool === "line" && pending.length) addLine([pending[0].uv, c], pv, false, 14);
     if (tool === "rect" && pending.length) {
@@ -610,6 +613,7 @@ export function createSketchEditor(ctx) {
     const uv = toUV(ev);
     if (!uv) return;
     down = { x: ev.clientX, y: ev.clientY, uv };
+    if (tool === "mark") { stroke = [uv]; stroke.last = [ev.clientX, ev.clientY]; dom.setPointerCapture(ev.pointerId); return; }
     if (tool !== "select" || committing) return;
     const hit = hitTest(uv);
     const add = ev.shiftKey || ev.metaKey || ev.ctrlKey;
@@ -628,6 +632,11 @@ export function createSketchEditor(ctx) {
     if (!uv) return;
     cursor = uv;
     const far = down && Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 4;
+    if (stroke) {
+      if (Math.hypot(ev.clientX - stroke.last[0], ev.clientY - stroke.last[1]) >= 3) { stroke.push(uv); stroke.last = [ev.clientX, ev.clientY]; render(); }
+      return;
+    }
+    if (tool === "mark") return;
     if (dragS && far) { dragS.moved = true; ctx.tip(null); return void dragTo(uv); }
     if (boxS && far) return showBox(ev);
     if (tool !== "select") {
@@ -644,6 +653,12 @@ export function createSketchEditor(ctx) {
     const wasClick = down && Math.hypot(ev.clientX - down.x, ev.clientY - down.y) <= 4;
     const uv = toUV(ev);
     down = null;
+    if (stroke) {
+      if (stroke.length > 1) marks.push(stroke);
+      stroke = null;
+      render();
+      return ctx.onChange?.();
+    }
     if (dragS) { if (dragS.moved) return endDrag(); dragS = null; return; }
     if (boxS) {
       const b = boxS;
@@ -736,7 +751,8 @@ export function createSketchEditor(ctx) {
   function exit() {
     sid = null;
     D = null;
-    dragS = boxS = null;
+    dragS = boxS = stroke = null;
+    marks = [];
     pending = [];
     sel = new Set();
     group.clear();
@@ -755,6 +771,8 @@ export function createSketchEditor(ctx) {
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
     rename, toParam, canRename, canParam,
+    marks: () => marks.map((m) => m.map(([u, v]) => [+u.toFixed(2), +v.toFixed(2)])),
+    clearMarks: () => { marks = []; stroke = null; render(); ctx.onChange?.(); },
     active: () => sid,
     data: () => D,
     tool: () => tool,

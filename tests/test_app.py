@@ -103,3 +103,24 @@ def test_sketch_selection_context_lists_touching_constraints(tmp_path):
     s = sketch_selection_context(a.ws.session().doc.feature("slot_sketch"), ["slot_left"])
     assert s.startswith("[In sketch `slot_sketch` the user selected: slot_left.")
     assert "slot_w" in s or "slot_left" in s.split("Constraints on them:")[1]
+
+
+def test_face_context_gives_ready_face_refs():
+    from vibecad.app import face_context
+
+    s = face_context({"labels": ["wall.side[wall_top]@slot_mirror#1", "base.end"], "point": [1, 2, 3.456]})
+    assert "at (1.00, 2.00, 3.46)" in s
+    assert '{"feature": "wall", "role": "side", "entity": "wall_top", "instance": "slot_mirror#1"}' in s
+    assert 'base.end = {"feature": "base", "role": "end"}' in s
+
+
+def test_marks_context_names_nearby_geometry(tmp_path):
+    a = _app(tmp_path)
+    # a stroke drawn along the base's front edge (y = 0, x 10..50) and a small closed loop near the far corner
+    stroke = [[10 + i, 0.3] for i in range(41)]
+    loop = [[58 + 1.5 * __import__("math").cos(t / 4), 38 + 1.5 * __import__("math").sin(t / 4)] for t in range(26)]
+    s = a.marks_context("base_sketch", [stroke, loop])
+    assert s.startswith("[The user drew 2 freehand mark(s) on sketch `base_sketch`")
+    first, second = s.split(" | ")
+    assert "stroke" in first and "passes near base_front" in first
+    assert "closed loop" in second and ("base_right" in second or "base_back" in second)
