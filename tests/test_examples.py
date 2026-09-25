@@ -60,6 +60,18 @@ def expected_volume(name, p):
         bolts = 2 * pi * (p["bolt_d"] / 2) ** 2 * p["base_t"]
         c, rp = 0.6, p["brg_od"] / 2
         return base + housing - pocket - shaft - bolts - 2 * pi * (rp + c / 3) * c * c / 2
+    if name == "battery_tray":
+        tray_len = p["bat_l"] + 2 * p["sheet_t"]
+        tray_wid = p["bat_w"] + 2 * (p["clr"] + p["sheet_t"])
+        base = tray_len * tray_wid * p["sheet_t"]
+        wall = tray_len * p["wall_h"] * p["sheet_t"] - 2 * pi * (p["bolt_d"] / 2) ** 2 * p["sheet_t"]
+        return base + 2 * wall
+    if name == "battery_strap":
+        strap_len = p["bat_l"] + 2 * p["sheet_t"]
+        strap_wid = p["bat_w"] + 2 * p["clr"] + 4 * p["sheet_t"]
+        top = strap_len * strap_wid * p["sheet_t"]
+        flange = strap_len * p["flange_h"] * p["sheet_t"] - 2 * pi * (p["bolt_d"] / 2) ** 2 * p["sheet_t"]
+        return top + 2 * flange
     raise KeyError(name)
 
 
