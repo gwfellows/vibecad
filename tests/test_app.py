@@ -124,3 +124,19 @@ def test_marks_context_names_nearby_geometry(tmp_path):
     first, second = s.split(" | ")
     assert "stroke" in first and "passes near base_front" in first
     assert "closed loop" in second and ("base_right" in second or "base_back" in second)
+
+
+def test_face_outline_projects_every_edge_of_a_face_sketch(tmp_path):
+    a = _app(tmp_path)
+    out = a.face_outline("slot_sketch")  # on the base's top face: 4 outer edges + the wall's foot... all named
+    assert out["entities"] and all(e["type"] == "external" for e in out["entities"])
+    rep = a.ws.apply_ops([{"op": "add_entity", "sketch": "slot_sketch", "entity": e} for e in out["entities"]], "outline", "user")
+    assert '"ok": true' in rep, rep
+    solved = a.ws.session().result.sketches["slot_sketch"][0]
+    ext = [solved.entities[e["id"]] for e in out["entities"]]
+    assert all(e.construction for e in ext)
+    xs = sorted({round(p[0], 6) for e in ext for p in (e.p1, e.p2)})
+    assert xs[0] == 0 and xs[-1] == 60  # the base is 60 wide
+    assert solved.report.dof == 0
+    with pytest.raises(Exception, match="only a sketch on a face"):
+        a.face_outline("base_sketch")

@@ -207,7 +207,7 @@ class Session:
                 continue
             upd = {e["id"]: e for e in solved.to_ir_entities()}
             for e in f["entities"]:
-                if e["id"] in upd:
+                if e["id"] in upd and e.get("type") != "external":  # projected geometry has no stored coordinates
                     new = {k: v for k, v in upd[e["id"]].items() if k != "id"}
                     if any(e.get(k) != v for k, v in new.items()):
                         e.update(new)

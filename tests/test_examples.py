@@ -76,6 +76,8 @@ def expected_volume(name, p):
         a, rb, c, L = p["af"] / 2, p["bore_d"] / 2, p["chamfer"], p["length"]
         hex_area = 6 * a * a * tan(pi / 6)
         return (hex_area - pi * rb**2) * L - 2 * 2 * pi * (rb + c / 3) * c * c / 2
+    if name == "edge_holes_plate":
+        return p["w"] * p["d"] * p["t"] - 2 * pi * (p["hole_d"] / 2) ** 2 * p["t"]
     raise KeyError(name)
 
 
@@ -124,3 +126,10 @@ def test_cache_reuses_upstream():
     res = rg.run(doc, {"corner_r": 3})
     cached = {f.id for f in res.features if f.cached}
     assert "base" in cached and "hole_cut" in cached and "corner_fillet" not in cached
+
+
+def test_edge_holes_keep_their_inset_when_the_plate_grows():
+    doc = load(EX / "edge_holes_plate.vcad.json")
+    res = Regenerator().run(doc, {"w": 90, "d": 40})
+    c = res.sketches["hole_sk"][0].entities["hole"].center
+    assert c == pytest.approx((-45 + 8, -20 + 8))

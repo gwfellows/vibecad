@@ -529,7 +529,8 @@ function ghostPart(on) {
   const group = (items) => { const g = document.createElement("span"); g.className = "skgroup"; items.forEach((i) => g.appendChild(i)); bar.appendChild(g); };
   group(SKETCH_TOOLS.map((t) => btn(t.label, t.title, () => SK.setTool(t.id), { tool: t.id })));
   group(SKETCH_CONSTRAINTS.map((c) => btn(c.label, c.title, () => SK.constrain(c.id), { con: c.id })));
-  group([btn("Clear marks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
+  group([btn("Project", "Add the outline of the face this sketch is on as reference geometry you can constrain to; it follows the part", () => SK.projectOutline(), { act: "project" }),
+         btn("Clear marks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
          btn("Rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
          btn("→ Param", "Drive the selected dimension from a new part parameter (shows in the Parameters table)", () => SK.toParam(), { act: "param" }),
          btn("Constr.", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
@@ -567,6 +568,7 @@ function sketchBarUpdate() {
   $("#sketchTools [data-act=construction]").disabled = !sel.some((k) => !k.startsWith("#") && !k.includes(".") && k !== "origin");
   $("#sketchTools [data-act=rename]").disabled = !SK.canRename();
   $("#sketchTools [data-act=clearmarks]").disabled = !SK.marks().length;
+  $("#sketchTools [data-act=project]").disabled = !d.on_face;
   $("#sketchTools [data-act=param]").disabled = !SK.canParam();
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;

@@ -30,6 +30,7 @@ Time goes into deliberating before the first tool call, not into the tools. Meas
 - A line meeting an arc at an endpoint: use the 3-reference `tangent` `[curve_a, curve_b, shared_point]` plus the `coincident`. A 2-reference tangent there is degenerate.
 - Mark helper geometry `"construction": true`. Every non-construction entity must be part of a closed loop.
 - Coordinates in the sketch are initial guesses. Make them roughly right so the solver lands on the intended configuration.
+- To place geometry relative to an existing edge rather than the sketch origin (a hole a set distance from an edge that moves with a fillet or another feature), add an `external` entity for that edge and constrain to it. Prefer params when the position is a design dimension.
 
 ## Directions and frames (the most common source of silent mistakes)
 

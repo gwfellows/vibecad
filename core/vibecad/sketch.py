@@ -67,6 +67,7 @@ class SolvedSketch:
     id: str
     entities: dict[str, SolvedEntity]
     report: SolveReport
+    source: S.Sketch | None = None  # the sketch as solved: external geometry resolved into fixed entities
 
     def entity_at(self, p: tuple[float, float], tol: float = 1e-3) -> str | None:
         best, best_d = None, tol
@@ -119,6 +120,8 @@ def solve_sketch(sk: S.Sketch, env: dict[str, float]) -> SolvedSketch:
         return ev(v[0]), ev(v[1])
 
     for e in sk.entities:
+        if isinstance(e, S.External):
+            raise SketchError(f"sketch {sk.id!r}: external {e.id!r} must be projected from the part before solving")
         if isinstance(e, S.Point):
             p = g.add_point(*xy(e.at))
             refs[e.id] = ("point", p)

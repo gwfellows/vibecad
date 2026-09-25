@@ -243,6 +243,35 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   check("chamfer on the round edge of the top face only", Math.abs(v2 - (await vol()) - rim) < 0.02, `${v2} -> ${await vol()} (expected -${rim.toFixed(3)})`);
   await shot("4_fillet");
 
+  // project the top face's outline into a new sketch on it; geometry tied to it follows the part
+  await clickWorld(10, 15, 5);
+  await newSketch("[data-face]");
+  const sk4 = await SK((sk) => sk.active());
+  check("Project enabled on a face sketch", !(await page.isDisabled("#sketchTools [data-act=project]")));
+  await page.click("#sketchTools [data-act=project]");
+  await settle();
+  const ext = await SK((sk) => sk.data().entities.filter((e) => e.external).map((e) => e.id));
+  check("face outline projected as external geometry", ext.length >= 4, ext.join());
+  check("projection adds no DOF", /0 DOF/.test(await info()), await info());
+  const corner = await SK((sk) => sk.data().points.find((p) => p.ref.startsWith("proj") && Math.abs(p.at[0] - 50) < 1e-6 && Math.abs(p.at[1] - 20) < 1e-6)?.ref);  // back right
+  check("a projected corner is pickable", !!corner, String(corner));
+  await page.keyboard.press("c");
+  await at(40, 12);
+  await at(42, 12);
+  await page.keyboard.press("Escape");
+  await atRef(await pt("circle1.center"));
+  await atRef(await pt(corner), true);
+  await page.click("#sketchTools [data-con=coincident]");
+  await settle();
+  check("circle centre pinned to the projected corner", JSON.stringify(await pt("circle1.center")) === "[50,20]", JSON.stringify(await pt("circle1.center")));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await pw.fill("60");
+  await pw.press("Enter");
+  await settle();
+  const moved = await page.evaluate((id) => fetch(`/api/sketch/${id}.json`).then((r) => r.json()).then((d) => d.entities.find((e) => e.id === "circle1").center), sk4);
+  check("projected geometry follows a parameter change", Math.abs(moved[0] - 60) < 1e-6 && Math.abs(moved[1] - 20) < 1e-6, JSON.stringify(moved));
+
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} passed`);

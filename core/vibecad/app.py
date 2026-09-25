@@ -154,8 +154,8 @@ class App:
             raise ToolError(f"sketch {sid!r} is not built at this point in the tree")
         solved, frame = r.sketches[sid]
         feat = s.doc.feature(sid)
-        fixed = freedom(feat, r.env, solved)
-        ents = sketch_entities(solved, fixed)
+        fixed = freedom(solved.source or feat, r.env, solved)
+        ents = sketch_entities(solved, fixed, {e.id for e in feat.entities if e.type == "external"})
         anchors = _anchors(solved)
         cons = []
         for i, c in enumerate(feat.constraints):
@@ -177,14 +177,63 @@ class App:
         return {"id": sid, "frame": frame.describe(), "entities": ents, "points": points, "constraints": cons,
                 "dof": rep.dof, "status": rep.status, "conflicting": rep.conflicting, "redundant": rep.redundant,
                 "conflicting_idx": rep.conflicting_idx, "redundant_idx": rep.redundant_idx,
-                "params": sorted(s.doc.params)}
+                "params": sorted(s.doc.params), "on_face": feat.plane.__class__.__name__ == "FacePlane"}
+
+    def face_outline(self, sid: str) -> dict:
+        """External entities for every edge of the face a sketch sits on, each named as the edge between
+        that face and its neighbour. Edges that can't be named uniquely are skipped and counted."""
+        from . import schema as S
+        from .topo import list_edges, list_faces, resolve_edges, resolve_faces
+
+        s = self.ws.session()
+        feat = s.doc.feature(sid)
+        if not isinstance(feat.plane, S.FacePlane):
+            raise ToolError("only a sketch on a face can project that face's outline")
+        i = s.doc.features.index(feat)
+        body = s.regen.run(s.doc.model_copy(update={"features": s.doc.features[:i]})).body  # the part as the sketch sees it
+        plane_ref = feat.plane.face.model_dump(exclude_none=True, exclude={"note"})
+        if plane_ref.get("pick") == "all":
+            plane_ref.pop("pick")
+        taken = {e.id for e in feat.entities}
+        out, skipped, n = [], 0, 1
+        for face in resolve_faces(body, feat.plane.face):
+            for edge in list_edges(face):
+                neighbours = [f for f in list_faces(body.shape) if not f.IsSame(face) and any(edge.IsSame(x) for x in list_edges(f))]
+                labs = body.labels_of(neighbours[0]) if neighbours else []
+                if not labs:
+                    skipped += 1
+                    continue
+                lab = labs[0]
+                other = {"feature": lab.feature, "role": lab.role, **({"entity": lab.entity} if lab.entity else {}),
+                         **({"instance": lab.instance} if lab.instance else {})}
+                ref = {"between": [plane_ref, other]}
+                for flt in (None, {"type": "line"}, {"type": "circle"}):
+                    trial = {**ref, **({"filter": flt} if flt else {})}
+                    try:
+                        hits = resolve_edges(body, S.EdgeRef.model_validate(trial))
+                    except Exception:
+                        continue
+                    if len(hits) == 1 and hits[0].IsSame(edge):
+                        ref = trial
+                        break
+                else:
+                    skipped += 1
+                    continue
+                while f"proj{n}" in taken:
+                    n += 1
+                taken.add(f"proj{n}")
+                ref["note"] = f"edge where {sid}'s face meets {lab}, projected in the GUI"
+                out.append({"id": f"proj{n}", "type": "external", "edge": ref})
+        return {"entities": out, "skipped": skipped}
 
     def sketch_drag(self, sid: str, ref: str, to, grab=None, guess=None) -> dict:
         """Preview a drag without saving it: the client shows it live and commits `ir` as update_entity ops."""
         from .sketch import drag
 
         r = self.view_result()
-        feat = self.ws.session().doc.feature(sid)
+        if sid not in r.sketches:
+            raise ToolError(f"sketch {sid!r} is not built at this point in the tree")
+        feat = r.sketches[sid][0].source or self.ws.session().doc.feature(sid)  # externals already projected
         out, moved = drag(feat, r.env, ref, to, grab, guess)
         return {"moved": moved, "ok": out.report.ok, "entities": sketch_entities(out, {}), "ir": out.to_ir_entities()}
 
@@ -289,10 +338,12 @@ def _r(p):
     return [round(p[0], 6) + 0.0, round(p[1], 6) + 0.0]
 
 
-def sketch_entities(solved, fixed: dict[str, bool]) -> list[dict]:
+def sketch_entities(solved, fixed: dict[str, bool], external: set[str] = frozenset()) -> list[dict]:
     out = []
     for e in solved.entities.values():
         d = {"id": e.id, "type": e.type, "construction": e.construction, "fixed": fixed.get(e.id, False)}
+        if e.id in external:
+            d["external"] = True
         if e.type in ("line", "point"):
             d["p1"] = _r(e.p1)
             if e.type == "line":
@@ -479,6 +530,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     @api.get("/api/sketch/{sid}.json")
     async def sketch_json(sid: str):
         return await asyncio.to_thread(guard, A.sketch_geometry, sid)
+
+    @api.get("/api/sketch/{sid}/outline")
+    async def sketch_outline(sid: str):
+        return await asyncio.to_thread(guard, A.face_outline, sid)
 
     @api.post("/api/sketch/{sid}/drag")
     async def sketch_drag(sid: str, body: dict = Body(...)):

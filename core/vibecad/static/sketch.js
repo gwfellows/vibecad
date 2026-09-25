@@ -3,7 +3,7 @@
 // sketch-local (u, v); the server returns them with the plane's frame and we map them into the scene.
 import * as THREE from "three";
 
-const COLORS = { mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const COLORS = { ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
 const GLYPH = { horizontal: "H", vertical: "V", parallel: "∥", perpendicular: "⊥", equal: "=", tangent: "tan", concentric: "◎",
   midpoint: "mid", symmetric: "sym", point_on: "on", fix: "fix", coincident: "•" };
 const DIMS = new Set(["distance", "distance_x", "distance_y", "radius", "diameter", "angle"]);
@@ -139,7 +139,7 @@ export function createSketchEditor(ctx) {
     for (const e of D.entities) {
       if (e.type === "point") continue;
       const color = sel.has(e.id) ? COLORS.sel : hover === e.id ? COLORS.hover : bad.has(e.id) ? COLORS.bad
-        : e.construction ? COLORS.cons : e.fixed ? COLORS.fixed : COLORS.free;
+        : e.external ? COLORS.ext : e.construction ? COLORS.cons : e.fixed ? COLORS.fixed : COLORS.free;
       addLine(polyline(e), color, e.construction);
     }
     const plain = [], hi = [], hov = [];
@@ -542,6 +542,13 @@ export function createSketchEditor(ctx) {
                   { op: "update_constraint", sketch: sid, match: { index: c.index }, set: { value: name, name } }],
                  `make ${name} a parameter driving ${c.name || c.type} in ${sid}`);
   }
+  async function projectOutline() {  // the outline of the face this sketch sits on, as external geometry
+    if (!D?.on_face) return ctx.note("Project: only a sketch on a face can project that face's outline", "err");
+    const r = await ctx.api(`/api/sketch/${encodeURIComponent(sid)}/outline`);
+    if (!r.entities.length) return ctx.note("Project: no edges of this face could be named", "err");
+    await commit(r.entities.map((entity) => ({ op: "add_entity", sketch: sid, entity })), `project the face outline into ${sid}`);
+    if (r.skipped) ctx.note(`${r.skipped} edge(s) of the face couldn't be named uniquely and were left out`, "note");
+  }
   async function toggleConstruction() {
     const { curves } = selected();
     if (!curves.length) return ctx.note("Construction: select lines, circles or arcs", "err");
@@ -770,7 +777,7 @@ export function createSketchEditor(ctx) {
 
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
-    rename, toParam, canRename, canParam,
+    rename, toParam, canRename, canParam, projectOutline,
     marks: () => marks.map((m) => m.map(([u, v]) => [+u.toFixed(2), +v.toFixed(2)])),
     clearMarks: () => { marks = []; stroke = null; render(); ctx.onChange?.(); },
     active: () => sid,

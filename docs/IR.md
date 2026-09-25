@@ -24,8 +24,9 @@ Entities (non-construction geometry forms profiles; set `"construction": true` f
 | line | `p1`, `p2` | `id.p1`, `id.p2` |
 | circle | `center`, `r` | `id.center` |
 | arc | `center`, `r`, `start_angle`, `end_angle` (CCW, degrees) | `id.center`, `id.start`, `id.end` |
+| external | `edge: EdgeRef` naming one edge of the part built so far | as the projected line (`id.p1`, `id.p2`), circle or arc; a point if the edge is perpendicular to the plane |
 
-Built-in references: `origin`, `x_axis`, `y_axis`.
+Built-in references: `origin`, `x_axis`, `y_axis`. `external` entities are re-projected on every build: fixed construction geometry that follows the part, so constraints to them (a hole centred on a projected corner, a slot a set distance from a projected edge) stay attached when upstream params change. The edge ref must match exactly one edge (usually `between` two faces).
 
 Constraints: `{"type": ..., "on": [refs], "value": Num, "name": "shown_to_user", "note": "..."}`
 

@@ -70,8 +70,64 @@ def test_freedom_flags():
 
 def test_freedom_of_every_example_sketch_is_fully_constrained():
     for p in sorted(EX.glob("*.vcad.json")):
-        doc = load(p)
-        env = Regenerator().run(doc).env
-        for f in doc.features:
-            if f.type == "sketch":
-                assert all(freedom(f, env).values()), (p.name, f.id)
+        res = Regenerator().run(load(p))
+        for sid, (solved, _) in res.sketches.items():  # as built: external geometry already projected
+            assert all(freedom(solved.source, res.env, solved).values()), (p.name, sid)
+
+
+# ── external (projected) geometry ─────────────────────────────────
+from vibecad.session import Session  # noqa: E402
+
+FRONT_TOP = {"between": [{"feature": "base", "role": "end"}, {"feature": "base", "role": "side", "entity": "base_front"}],
+             "note": "front top edge of the base"}
+
+
+@pytest.fixture
+def lb(tmp_path):
+    import shutil
+    p = tmp_path / "lb.vcad.json"
+    shutil.copy(EX / "l_bracket.vcad.json", p)
+    return Session(p)
+
+
+def test_external_edge_is_projected_and_follows_the_part(lb):
+    r = lb.apply([
+        {"op": "add_feature", "after": "base", "feature": {"id": "pin_sk", "type": "sketch",
+                                                          "plane": {"face": {"feature": "base", "role": "end"}}}},
+        {"op": "add_entity", "sketch": "pin_sk", "entity": {"id": "front", "type": "external", "edge": FRONT_TOP}},
+        {"op": "add_circle", "sketch": "pin_sk", "id": "pin", "diameter": 3},  # centre left free for the coincident
+        {"op": "add_constraint", "sketch": "pin_sk", "constraint": {"type": "coincident", "on": ["pin.center", "front.p2"]}},
+    ], "pin at the front right corner")
+    assert r["ok"], r
+    solved = lb.result.sketches["pin_sk"][0]
+    assert solved.report.dof == 0
+    ext = solved.entities["front"]
+    assert ext.construction and {ext.p1, ext.p2} == {(0.0, 0.0), (60.0, 0.0)}
+    corner = ext.p2
+    assert solved.entities["pin"].center == pytest.approx(corner)
+    lb.apply([{"op": "set_param", "name": "width", "value": "80 mm"}], "wider")
+    solved = lb.result.sketches["pin_sk"][0]
+    assert max(solved.entities["front"].p1[0], solved.entities["front"].p2[0]) == pytest.approx(80)
+    assert solved.entities["pin"].center[0] in (pytest.approx(0), pytest.approx(80))  # still on the edge's end
+
+
+def test_external_circle_projects_the_hole_rim(lb):
+    rim = {"of": {"feature": "hole_cut", "role": "side"}, "filter": {"type": "circle"}}
+    r = lb.apply([{"op": "add_feature", "feature": {"id": "rim_sk", "type": "sketch", "plane": {"datum": "XZ"}}},
+                  {"op": "add_entity", "sketch": "rim_sk", "entity": {"id": "rim", "type": "external", "edge": rim}}], "rim")
+    # both holes have two circular edges each: the ref must name one edge
+    assert any("matched 4 edges" in e for e in r["errors"]), r
+    one = {"between": [{"feature": "wall", "role": "start"}, {"feature": "hole_cut", "role": "side"}], "filter": {"type": "circle"}}
+    lb.undo()
+    r = lb.apply([{"op": "add_feature", "feature": {"id": "rim_sk", "type": "sketch", "plane": {"datum": "XZ"}}},
+                  {"op": "add_entity", "sketch": "rim_sk", "entity": {"id": "rim", "type": "external", "edge": one}}], "rim")
+    assert any("matched 2 edges" in e for e in r["errors"]), r  # still two holes on that face
+
+
+def test_external_needs_a_body():
+    from vibecad.regen import Regenerator
+
+    doc = S.Document(name="x", features=[S.Sketch(id="s", plane={"datum": "XY"}, entities=[
+        {"id": "e", "type": "external", "edge": {"of": {"feature": "nope", "role": "end"}}}])])
+    res = Regenerator().run(doc)
+    assert res.features[0].status == "error" and "needs an existing body" in res.features[0].message

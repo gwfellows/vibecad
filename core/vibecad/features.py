@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import build123d as bd
 from OCP.BRep import BRep_Builder
+from OCP.BRepAdaptor import BRepAdaptor_Curve
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Common, BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCP.BRepFilletAPI import BRepFilletAPI_MakeChamfer, BRepFilletAPI_MakeFillet
@@ -77,7 +78,9 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
             if fr.n.dot(frame.n) < 0.9999 or abs((fr.origin - frame.origin).dot(frame.n)) > 1e-6:
                 raise FeatureError(f"sketch plane face ref matched {len(faces)} faces that are not coplanar; "
                                    "add `entity`, or `pick: largest|smallest|nearest`")
-    solved = solve_sketch(f, ctx.env)
+    src = _resolve_externals(ctx, f, frame)
+    solved = solve_sketch(src, ctx.env)
+    solved.source = src
     ctx.sketches[f.id] = (solved, frame)
     rep = solved.report
     info = {"dof": rep.dof, "solve": rep.status, "frame": frame.describe()}
@@ -92,6 +95,59 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
             msg += f". These dimensions are <= 0, which no geometry can satisfy: {', '.join(bad)}"
         raise FeatureError(msg)
     return info
+
+
+def _resolve_externals(ctx: Ctx, f: S.Sketch, frame: Frame) -> S.Sketch:
+    """Replace `external` entities by the projection of their edge: fixed construction geometry. The fixing
+    constraints go after the user's, so constraint indices don't change."""
+    if not any(isinstance(e, S.External) for e in f.entities):
+        return f
+    if ctx.body.shape is None:
+        raise FeatureError("external geometry needs an existing body to project")
+    ents, cons = [], []
+    fix = lambda ref, uv: cons.append(S.Constraint(type="fix", on=[ref], at=(uv[0], uv[1])))
+    for e in f.entities:
+        if not isinstance(e, S.External):
+            ents.append(e)
+            continue
+        edges = resolve_edges(ctx.body, e.edge)
+        if len(edges) != 1:
+            raise FeatureError(f"external {e.id!r}: its edge ref matched {len(edges)} edges; it must name one "
+                               "(use `between` two faces, or a `filter`)")
+        edge = bd.Edge(TopoDS.Edge(edges[0]))
+        uv = lambda p: tuple(round(c, 9) for c in frame.to_local(p)[:2])
+        a, b, mid = uv(edge.position_at(0)), uv(edge.position_at(1)), uv(edge.position_at(0.5))
+        if edge.geom_type == bd.GeomType.LINE:
+            if math.dist(a, b) < 1e-7:  # perpendicular to the plane: projects to a point
+                ents.append(S.Point(id=e.id, at=a))
+                fix(e.id, a)
+            else:
+                ents.append(S.Line(id=e.id, p1=a, p2=b, construction=True))
+                fix(f"{e.id}.p1", a)
+                fix(f"{e.id}.p2", b)
+            continue
+        if edge.geom_type != bd.GeomType.CIRCLE:
+            raise FeatureError(f"external {e.id!r}: can only project straight or circular edges, not {edge.geom_type.name.lower()}")
+        ax = BRepAdaptor_Curve(edge.wrapped).Circle().Axis().Direction()
+        if abs(ax.X() * frame.n.X + ax.Y() * frame.n.Y + ax.Z() * frame.n.Z) < 1 - 1e-6:
+            raise FeatureError(f"external {e.id!r}: that circular edge is not parallel to the sketch plane")
+        c, r = uv(edge.arc_center), edge.radius
+        if math.dist(a, b) < 1e-7:  # full circle
+            ents.append(S.Circle(id=e.id, center=c, r=r, construction=True))
+            fix(f"{e.id}.center", c)
+            cons.append(S.Constraint(type="diameter", on=[e.id], value=2 * r))
+            continue
+        ang = lambda p: math.degrees(math.atan2(p[1] - c[1], p[0] - c[0])) % 360
+        s0, s1, sm = ang(a), ang(b), ang(mid)
+        if (sm - s0) % 360 > (s1 - s0) % 360:  # the arc runs clockwise here: swap ends so it's counterclockwise
+            a, b, s0, s1 = b, a, s1, s0
+        ents.append(S.Arc(id=e.id, center=c, r=r, start_angle=s0, end_angle=s1, construction=True))
+        fix(f"{e.id}.center", c)
+        fix(f"{e.id}.start", a)
+        # the end lies on the circle already: pin only the coordinate that moves fastest along it (no redundancy)
+        k = 0 if abs(b[1] - c[1]) >= abs(b[0] - c[0]) else 1
+        cons.append(S.Constraint(type=("distance_x", "distance_y")[k], on=["origin", f"{e.id}.end"], value=b[k]))
+    return f.model_copy(update={"entities": ents, "constraints": list(f.constraints) + cons})
 
 
 def _nonpositive_dims(f: S.Sketch, env) -> list[str]:

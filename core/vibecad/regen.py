@@ -163,7 +163,7 @@ def write_back_solved(path: str | Path, result: RegenResult) -> int:
             continue
         solved = {e["id"]: e for e in result.sketches[f["id"]][0].to_ir_entities()}
         for e in f.get("entities", []):
-            if e["id"] in solved:
+            if e["id"] in solved and e.get("type") != "external":
                 e.update({k: v for k, v in solved[e["id"]].items() if k != "id"})
                 n += 1
     path.write_text(json.dumps(raw, indent=2) + "\n")

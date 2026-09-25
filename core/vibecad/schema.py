@@ -55,7 +55,6 @@ class Arc(_M):
     construction: bool = False
 
 
-Entity = Annotated[Union[Point, Line, Circle, Arc], Field(discriminator="type")]
 
 ConstraintType = Literal[
     "coincident", "horizontal", "vertical", "parallel", "perpendicular", "equal", "tangent",
@@ -122,6 +121,20 @@ class EdgeRef(_M):
         if (self.between is None) == (self.of is None):
             raise ValueError("EdgeRef needs exactly one of `between` or `of`")
         return self
+
+
+class External(_M):
+    """An edge of the part projected into the sketch as fixed construction geometry (a line, circle or arc;
+    a point if the edge is perpendicular to the plane). Re-projected on every build, so it follows the part.
+    Reference it like any entity: `id`, `id.p1` / `id.p2` (line), `id.center`, `id.start` / `id.end` (arc)."""
+    id: str
+    type: Literal["external"] = "external"
+    edge: EdgeRef
+    note: str | None = None
+    construction: Literal[True] = True
+
+
+Entity = Annotated[Union[Point, Line, Circle, Arc, External], Field(discriminator="type")]
 
 
 # ── Planes ──────────────────────────────────────────────────────────

@@ -1,0 +1,280 @@
+{
+  "vibecad": "0.1",
+  "name": "edge_holes_plate",
+  "material": "6061-T6 aluminum",
+  "process": "CNC milled",
+  "design_notes": "Mounting plate, centred on the origin. The holes are dimensioned from the plate's edges (projected into the hole sketch as external geometry), so they keep their inset when the plate is resized.",
+  "params": {
+    "w": "60 mm",
+    "d": "30 mm",
+    "t": "5 mm",
+    "hole_d": "5.5 mm",
+    "inset": "8 mm"
+  },
+  "features": [
+    {
+      "id": "plate_sk",
+      "type": "sketch",
+      "intent": "plate outline, centred on the origin",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "plate_bottom",
+          "p1": [
+            -30.0,
+            -15.0
+          ],
+          "p2": [
+            30.0,
+            -15.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_right",
+          "p1": [
+            30.0,
+            -15.0
+          ],
+          "p2": [
+            30.0,
+            15.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_top",
+          "p1": [
+            30.0,
+            15.0
+          ],
+          "p2": [
+            -30.0,
+            15.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_left",
+          "p1": [
+            -30.0,
+            15.0
+          ],
+          "p2": [
+            -30.0,
+            -15.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plate_bottom.p2",
+            "plate_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_right.p2",
+            "plate_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_top.p2",
+            "plate_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_left.p2",
+            "plate_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_bottom"
+          ],
+          "value": "w",
+          "name": "plate_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_right"
+          ],
+          "value": "d",
+          "name": "plate_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "(0) - ((w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "(0) - ((d) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "plate",
+      "type": "extrude",
+      "intent": "the plate",
+      "profile": {
+        "sketch": "plate_sk"
+      },
+      "distance": "t"
+    },
+    {
+      "id": "hole_sk",
+      "type": "sketch",
+      "intent": "one mounting hole, inset from the front and left edges",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "top face of the plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "front_edge",
+          "edge": {
+            "between": [
+              {
+                "feature": "plate",
+                "role": "end",
+                "note": "top face of the plate"
+              },
+              {
+                "feature": "plate",
+                "role": "side",
+                "entity": "plate_bottom"
+              }
+            ],
+            "note": "front top edge of the plate"
+          },
+          "type": "external"
+        },
+        {
+          "id": "left_edge",
+          "edge": {
+            "between": [
+              {
+                "feature": "plate",
+                "role": "end",
+                "note": "top face of the plate"
+              },
+              {
+                "feature": "plate",
+                "role": "side",
+                "entity": "plate_left"
+              }
+            ],
+            "note": "left top edge of the plate"
+          },
+          "type": "external"
+        },
+        {
+          "id": "hole",
+          "center": [
+            -22.0,
+            -7.0
+          ],
+          "r": 2.75,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "hole"
+          ],
+          "value": "hole_d",
+          "name": "hole_diameter"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "hole.center",
+            "front_edge"
+          ],
+          "value": "inset",
+          "name": "hole_inset_front"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "hole.center",
+            "left_edge"
+          ],
+          "value": "inset",
+          "name": "hole_inset_left"
+        }
+      ]
+    },
+    {
+      "id": "hole_cut",
+      "type": "extrude",
+      "intent": "mounting hole through the plate",
+      "profile": {
+        "sketch": "hole_sk"
+      },
+      "direction": "reverse",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "hole_mirror",
+      "type": "mirror",
+      "intent": "matching hole on the right",
+      "features": [
+        "hole_cut"
+      ],
+      "plane": {
+        "datum": "YZ"
+      }
+    }
+  ]
+}
