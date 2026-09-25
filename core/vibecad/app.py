@@ -83,9 +83,10 @@ class App:
         vsum = vr.summary()
         summ = r.summary()
         feats = []
+        users, per = param_usage(s.doc, r.env)
         for f, fr in zip(s.doc.features, r.features):
             d = {"id": f.id, "type": f.type, "name": f.name, "intent": f.intent, "status": fr.status,
-                 "message": fr.message, "warnings": fr.warnings, "cached": fr.cached}
+                 "message": fr.message, "warnings": fr.warnings, "cached": fr.cached, **per.get(f.id, {})}
             if f.type == "sketch":
                 d["dof"] = fr.info.get("dof")
                 d["plane"] = f.plane.model_dump(exclude_none=True)
@@ -94,7 +95,7 @@ class App:
         return {
             "path": self.ws.active, "rel": _rel(self.ws.active, self.ws.root), "name": s.doc.name,
             "material": s.doc.material, "process": s.doc.process, "design_notes": s.doc.design_notes,
-            "params": [{"name": k, "expr": v, "value": r.env.get(k)} for k, v in s.doc.params.items()],
+            "params": [{"name": k, "expr": v, "value": r.env.get(k), "users": users.get(k, [])} for k, v in s.doc.params.items()],
             "features": feats, "ok": r.ok, "volume": vsum.get("volume_mm3"), "bbox": vsum.get("bbox_mm", {}).get("size"),
             "valid": summ.get("valid"), "rev": _rev(s) + f"@{self.rollback}", "can_undo": bool(s.undo_stack),
             "can_redo": bool(s.redo_stack), "rollback": self.rollback, "tree": s.tree(),
@@ -467,6 +468,70 @@ def face_context(face: dict) -> str:
     at = face.get("point")
     where = f" at ({at[0]:.2f}, {at[1]:.2f}, {at[2]:.2f})" if at and len(at) == 3 else ""
     return f"[The user clicked a face in the 3D view{where}: {'; '.join(refs) or ', '.join(face['labels'])}.]\n"
+
+
+_TEXT_KEYS = {"intent", "note", "name", "id", "type", "feature", "role", "entity", "sketch", "instance", "on", "features",
+              "regions", "axis", "mode", "direction", "extent", "pick", "datum", "construction", "filter"}
+_FIELDS = {"extrude": ["distance"], "revolve": ["angle"], "fillet": ["radius"], "chamfer": ["distance"], "shell": ["thickness"],
+           "linear_pattern": ["spacing", "count"], "circular_pattern": ["count", "angle"]}
+
+
+def _param_names(obj, params: set[str]) -> set[str]:
+    """Params an IR fragment's numeric fields mention (ids, notes and other text are skipped)."""
+    from .expr import names_in
+
+    out = set()
+    if isinstance(obj, str):
+        return names_in(obj) & params
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k not in _TEXT_KEYS or (k == "direction" and isinstance(v, list)):
+                out |= _param_names(v, params)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            out |= _param_names(v, params)
+    return out
+
+
+def param_usage(doc, env: dict[str, float]) -> tuple[dict[str, list[str]], dict[str, dict]]:
+    """Which features use each param (directly or through other params' expressions), and for each feature the
+    params only it uses plus its own editable numbers: the per-feature parameters the tree shows."""
+    from .expr import evaluate, names_in
+
+    names = set(doc.params)
+    deps = {p: names_in(e) & names for p, e in doc.params.items()}
+
+    def closure(ps):
+        seen, todo = set(), list(ps)
+        while todo:
+            p = todo.pop()
+            if p not in seen:
+                seen.add(p)
+                todo.extend(deps.get(p, ()))
+        return seen
+
+    def val(e):
+        try:
+            return evaluate(e, env)
+        except Exception:
+            return None
+
+    users: dict[str, list[str]] = {p: [] for p in doc.params}
+    per: dict[str, dict] = {}
+    for f in doc.features:
+        raw = f.model_dump(mode="json", exclude_none=True)
+        for p in closure(_param_names(raw, names)):
+            users[p].append(f.id)
+        fields = [{"key": k, "expr": raw[k], "value": val(raw[k])} for k in _FIELDS.get(f.type, [])
+                  if k in raw and not (k == "distance" and raw.get("extent") == "through_all")]
+        dims = []
+        if f.type == "sketch":
+            dims = [{"name": c.name, "expr": c.value, "value": val(c.value)} for c in f.constraints
+                    if c.name and c.value is not None]
+        per[f.id] = {"fields": fields, "dims": dims}
+    for fid, d in per.items():
+        d["params"] = [p for p in doc.params if users[p] == [fid]]
+    return users, per
 
 
 def refs_context(refs: list[dict], doc=None) -> str:

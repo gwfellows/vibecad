@@ -108,6 +108,49 @@ function setState(state, { fit = false, flash = false } = {}) {
   if (inSketch()) SK.refresh();
 }
 
+let expanded = new Set();  // features whose parameters are shown in the tree
+try { expanded = new Set(JSON.parse(localStorage.getItem("vibecad.expanded") || "[]")); } catch {}
+const saveExpanded = () => { try { localStorage.setItem("vibecad.expanded", JSON.stringify([...expanded])); } catch {} };
+const isBare = (e) => typeof e === "string" && /^[A-Za-z_]\w*$/.test(e.trim());
+// a feature's numbers, as the rows its tree entry expands to: its own params, key fields, sketch dimensions
+function featureRows(f) {
+  const P = Object.fromEntries(S.params.map((p) => [p.name, p])), rows = [], shown = new Set();
+  const viaParam = (label, name, what) => {
+    shown.add(name);
+    const p = P[name];
+    rows.push({ label, expr: p.expr, value: p.value, param: name, shared: p.users.length > 1 ? p.users : null, what,
+      ops: (v) => [{ op: "set_param", name, value: v }] });
+  };
+  for (const fl of f.fields || []) {
+    if (isBare(fl.expr) && P[fl.expr]) viaParam(fl.key, fl.expr.trim(), fl.key);
+    else rows.push({ label: fl.key, expr: String(fl.expr), value: fl.value, what: fl.key,
+      ops: (v) => [{ op: "update_feature", id: f.id, set: { [fl.key]: numOrExpr(v) } }] });
+  }
+  for (const d of f.dims || []) {
+    if (isBare(d.expr) && P[d.expr]) { if (!shown.has(d.expr.trim())) viaParam(d.name, d.expr.trim(), "dimension"); }
+    else rows.push({ label: d.name, expr: String(d.expr), value: d.value, what: "dimension",
+      ops: (v) => [{ op: "set_dimension", sketch: f.id, name: d.name, value: numOrExpr(v) }] });
+  }
+  for (const name of f.params || []) if (!shown.has(name)) viaParam(name, name, "parameter");
+  return rows;
+}
+function paramRow(r, fid) {
+  const li = document.createElement("li");
+  li.className = "fparam" + (r.shared ? " shared" : "");
+  const tag = r.param ? (r.param === r.label ? "ƒ" : `ƒ ${r.param}`) : "";
+  li.title = r.param ? (r.shared ? `drives parameter ${r.param}, shared by ${r.shared.join(", ")}` : `parameter ${r.param} (only ${fid} uses it)`)
+    : `${r.what} of ${fid}, written into the feature`;
+  li.innerHTML = `<span class="pl">${esc(r.label)}${tag ? ` <i>${esc(tag)}</i>` : ""}</span><input value="${esc(r.expr)}"><span class="val">${fmt(r.value, 3)}</span>`;
+  if (r.param) li.dataset.param = r.param;
+  const inp = li.querySelector("input");
+  inp.onclick = (ev) => ev.stopPropagation();
+  inp.onkeydown = (ev) => { if (ev.key === "Enter") inp.blur(); if (ev.key === "Escape") { inp.value = r.expr; inp.blur(); } };
+  inp.onchange = async () => {
+    const v = inp.value.trim();
+    if (!v || !(await edit(r.ops(v), `set ${fid} ${r.label} = ${v}`))) inp.value = r.expr;
+  };
+  return li;
+}
 function renderTree(before) {
   const ol = $("#tree");
   ol.innerHTML = "";
@@ -119,13 +162,32 @@ function renderTree(before) {
     li.className = `feat ${st}` + (f.id === selected ? " selected" : "") + (i >= rb ? " rolled" : "");
     const meta = f.status === "error" ? "error" : f.warnings?.length ? "warning" : f.status === "suppressed" ? "suppressed"
       : f.type === "sketch" ? `${f.dof ?? "?"} DOF` : "";
-    li.innerHTML = `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}</span><span class="meta ${st}">${esc(meta)}</span>`
+    const rows = featureRows(f), open = expanded.has(f.id) && rows.length;
+    li.innerHTML = `<span class="caret" title="${rows.length ? `${open ? "Hide" : "Show"} this feature's parameters` : ""}">${rows.length ? (open ? "▾" : "▸") : ""}</span>`
+      + `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}</span><span class="meta ${st}">${esc(meta)}</span>`
       + (f.status === "error" ? `<span class="err-msg">${esc(f.message)}</span>` : "")
       + (f.warnings || []).map((w) => `<span class="warn-msg">${esc(w)}</span>`).join("");
     if (before && before.get(f.id) !== f.status + (f.warnings || []).join()) li.classList.add("flash");
     li.dataset.index = i;
+    li.dataset.id = f.id;
     li.onclick = () => select(f.id === selected ? null : f.id);
+    const caret = li.querySelector(".caret");
+    if (rows.length) caret.onclick = (ev) => {
+      ev.stopPropagation();
+      expanded.has(f.id) ? expanded.delete(f.id) : expanded.add(f.id);
+      saveExpanded();
+      renderTree(null);
+    };
     ol.appendChild(li);
+    if (open) {
+      const sub = document.createElement("ol");
+      sub.className = "fparams" + (i >= rb ? " rolled" : "");
+      sub.dataset.feature = f.id;
+      for (const r of rows) sub.appendChild(paramRow(r, f.id));
+      const wrap = Object.assign(document.createElement("li"), { className: "fparams-wrap" });
+      wrap.appendChild(sub);
+      ol.appendChild(wrap);
+    }
   });
   if (rb >= n) ol.appendChild(rollbar());
 }
@@ -161,18 +223,31 @@ function rollbar() {
   return bar;
 }
 
+// global parameters (shared by several features, or not used yet) first, then the ones only one feature uses
 function renderParams() {
   const tb = $("#params tbody");
   tb.innerHTML = "";
-  for (const p of S.params) {
+  const row = (p) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td title="${esc(p.name)}">${esc(p.name)}</td><td><input value="${esc(p.expr)}"></td><td class="val">${fmt(p.value, 3)}</td>`;
+    const own = p.users.length === 1 ? p.users[0] : null;
+    tr.dataset.param = p.name;
+    tr.title = own ? `only ${own} uses it` : p.users.length ? `used by ${p.users.join(", ")}` : "not used by any feature yet";
+    tr.innerHTML = `<td>${esc(p.name)}${own ? `<span class="owner">${esc(own)}</span>` : ""}</td><td><input value="${esc(p.expr)}"></td><td class="val">${fmt(p.value, 3)}</td>`;
     const inp = tr.querySelector("input");
     inp.onkeydown = (ev) => { if (ev.key === "Enter") inp.blur(); if (ev.key === "Escape") { inp.value = p.expr; inp.blur(); } };
     inp.onchange = async () => {
       if (!(await edit([{ op: "set_param", name: p.name, value: inp.value }], `set ${p.name} = ${inp.value}`))) inp.value = p.expr;
     };
     tb.appendChild(tr);
+  };
+  const global = S.params.filter((p) => p.users.length !== 1), local = S.params.filter((p) => p.users.length === 1);
+  global.forEach(row);
+  if (local.length) {
+    const g = document.createElement("tr");
+    g.className = "grp";
+    g.innerHTML = `<td colspan="3">Feature parameters <span class="muted">(each used by one feature; also under ▸ in the tree)</span></td>`;
+    tb.appendChild(g);
+    local.forEach(row);
   }
 }
 
@@ -613,6 +688,7 @@ function ghostPart(on) {
          btn("delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
          btn("ask", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
   for (const b of document.querySelectorAll("button.ico[data-icon]")) b.innerHTML = ICON[b.dataset.icon];
+  for (const b of document.querySelectorAll("button.refbtn[data-icon]")) b.insertAdjacentHTML("afterbegin", ICON[b.dataset.icon]);
 })();
 function askAboutSketch() {
   const sel = SK.selection();

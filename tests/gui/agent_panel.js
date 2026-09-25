@@ -81,7 +81,7 @@ const pixelDiff = (page, a, b) => page.evaluate(async ([a, b]) => {
   check("rejected batch labelled", res2[0] === "rejected", res2[0]);
   check("good batch applied", /^ok · 9600 → /.test(res2[1]), res2[1]);
   check("hole reduced volume", (await vol()) < v1, `${v1} -> ${await vol()}`);
-  check("param not changed by rejected typo", (await page.inputValue("#params tr >> nth=0 >> input")) === "60 mm");
+  check("param not changed by rejected typo", (await page.inputValue("#params tr[data-param=w] input")) === "60 mm");
   await shot("2_followup");
 
   // turn 3: scoped to the selected feature

@@ -120,6 +120,35 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("rejected param field reverts", (await hd.inputValue()) === "5.5 mm", await hd.inputValue());
   await shot("05_bad_param");
 
+  // per-feature parameters: ▸ on a tree row shows the numbers only that feature uses, editable in place
+  await page.click('#tree li.feat[data-id=hole_sketch] .caret');
+  const hsRows = await page.$$eval("#tree ol.fparams[data-feature=hole_sketch] li.fparam .pl", (l) => l.map((x) => x.textContent));
+  check("expanding a sketch lists its dimensions and params", JSON.stringify(hsRows) === '["hole_d ƒ","hole_spacing ƒ","hole_z ƒ"]', JSON.stringify(hsRows));
+  check("expanding doesn't select the feature", !(await page.$("#tree li.feat.selected[data-id=hole_sketch]")));
+  await page.click('#tree li.feat[data-id=wall_sketch] .caret');
+  const wsRows = await page.$$eval("#tree ol.fparams[data-feature=wall_sketch] li.fparam", (l) => l.map((x) => [x.querySelector(".pl").textContent, x.classList.contains("shared")]));
+  check("a shared param is marked as shared", JSON.stringify(wsRows) === '[["width ƒ",true],["wall_h ƒ",false]]', JSON.stringify(wsRows));
+  await page.click('#tree li.feat[data-id=base] .caret');
+  check("an extrude shows its distance and the param behind it",
+    (await page.textContent("#tree ol.fparams[data-feature=base] li.fparam .pl")) === "distance ƒ base_t");
+  check("global params come first, then feature params", (await page.$$eval("#params tr", (l) => l.map((x) => x.dataset.param || "|"))).join(",")
+    .match(/^width,depth,(\w+,)*\|,base_t,/), (await page.$$eval("#params tr", (l) => l.map((x) => x.dataset.param || "|"))).join(","));
+  const vHole = await vol();
+  const hdTree = page.locator("#tree ol.fparams[data-feature=hole_sketch] li.fparam[data-param=hole_d] input");
+  await hdTree.fill("7 mm");
+  await hdTree.press("Enter");
+  await sleep(1500);
+  check("editing it in the tree changes the part", (await vol()) < vHole - 1, `${vHole} -> ${await vol()}`);
+  check("and the parameter table", (await page.inputValue("#params tr[data-param=hole_d] input")) === "7 mm");
+  check("expansion survives the rebuild", !!(await page.$("#tree ol.fparams[data-feature=hole_sketch]")));
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press("Control+z");
+  await sleep(1500);
+  check("undo restores it", Math.abs((await vol()) - vHole) < 0.1);
+  await shot("05b_feature_params");
+  for (const id of ["hole_sketch", "wall_sketch", "base"]) await page.click(`#tree li.feat[data-id=${id}] .caret`);
+  check("collapsed again", (await page.$$("#tree ol.fparams")).length === 0);
+
   // rollback bar: drag it above 'wall'
   const bar = page.locator("#tree li.rollbar");
   const target = page.locator("#tree li.feat >> text=wall_sketch");

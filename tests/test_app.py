@@ -175,3 +175,18 @@ def test_refs_context_maps_each_token_to_a_ref(tmp_path):
     assert "@sketch:slot_sketch/slot_left = slot_left in sketch `slot_sketch`" in s
     assert "[In sketch `slot_sketch` the user selected: slot_left." in s
     assert refs_context([], None) == ""
+
+
+def test_param_usage_puts_single_feature_params_under_that_feature(tmp_path):
+    a = _app(tmp_path)
+    st = a.state()
+    users = {p["name"]: p["users"] for p in st["params"]}
+    feats = {f["id"]: f for f in st["features"]}
+    for p, us in users.items():
+        for fid, f in feats.items():
+            assert (p in f["params"]) == (us == [fid]), (p, us, fid)
+    # a param used by several features stays global; a sketch lists its named dimensions
+    assert any(len(us) > 1 for us in users.values())
+    dims = {d["name"]: d for d in feats["base_sketch"]["dims"]}
+    assert dims["width"]["expr"] == "width" and dims["width"]["value"] == 60
+    assert feats["base"]["fields"][0]["key"] == "distance"
