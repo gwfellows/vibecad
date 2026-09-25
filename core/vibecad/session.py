@@ -58,6 +58,18 @@ class Session:
         self.redo_stack: list[tuple[S.Document, str]] = []
         self.scope: set[str] | None = None
         self.result: RegenResult = self.regen.run(self.doc)
+        self._stamp = self._file_stamp()
+
+    def _file_stamp(self) -> tuple[int, int] | None:
+        if not self.path.exists():
+            return None
+        st = self.path.stat()
+        return st.st_mtime_ns, st.st_size
+
+    def stale(self) -> bool:
+        """True if the file on disk has changed since this session last loaded or saved it
+        (a hand edit, another tool, or another session sharing the same path)."""
+        return self.path.exists() and self._file_stamp() != self._stamp
 
     @property
     def history_path(self) -> Path:
@@ -116,6 +128,7 @@ class Session:
         before = self.result
         self.doc = S.Document.model_validate_json(self.path.read_text())
         self.result = self.regen.run(self.doc)
+        self._stamp = self._file_stamp()
         return self._report(before, ["reloaded from disk"])
 
     # ── reporting ──────────────────────────────────────────────────
@@ -150,6 +163,7 @@ class Session:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(dump_doc(self.doc))
         tmp.replace(self.path)
+        self._stamp = self._file_stamp()
 
     def _log(self, entry: dict) -> None:
         entry = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), **entry}

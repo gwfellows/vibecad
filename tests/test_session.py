@@ -183,6 +183,18 @@ def test_add_regular_polygon_rejects_too_few_sides(tmp_path):
     assert not r["ok"] and "at least 3 sides" in r["error"]
 
 
+def test_open_part_reloads_when_file_changed_on_disk(tmp_path):
+    from vibecad.workspace import Workspace
+
+    ws = Workspace(tmp_path)
+    ws.new_part("probe.vcad.json", "Probe")  # caches a Session with an empty doc
+    shutil.copy(EX / "l_bracket.vcad.json", tmp_path / "probe.vcad.json")  # another tool rewrites it
+    tree = ws.open_part("probe.vcad.json")  # same path: must pick up the new content, not the cached one
+    assert "l_bracket" in tree
+    png = ws.render()  # would raise "no solid yet" on the stale cached session
+    assert len(png) > 1000
+
+
 def test_point_id_as_coordinate_gets_hint(lb):
     r = lb.apply([{"op": "add_feature", "feature": {"id": "sk2", "type": "sketch", "plane": {"datum": "XY"},
                    "entities": [{"id": "a", "type": "line", "p1": "pt1", "p2": "pt2"}]}}], "bad")

@@ -4,7 +4,7 @@
    volume matches a hand calculation (so a feature that silently does nothing is caught).
 2. Changing any single parameter by +/-10% still regenerates cleanly: no broken references.
 """
-from math import pi
+from math import pi, tan
 from pathlib import Path
 
 import pytest
@@ -72,6 +72,10 @@ def expected_volume(name, p):
         top = strap_len * strap_wid * p["sheet_t"]
         flange = strap_len * p["flange_h"] * p["sheet_t"] - 2 * pi * (p["bolt_d"] / 2) ** 2 * p["sheet_t"]
         return top + 2 * flange
+    if name == "hex_standoff":
+        a, rb, c, L = p["af"] / 2, p["bore_d"] / 2, p["chamfer"], p["length"]
+        hex_area = 6 * a * a * tan(pi / 6)
+        return (hex_area - pi * rb**2) * L - 2 * 2 * pi * (rb + c / 3) * c * c / 2
     raise KeyError(name)
 
 

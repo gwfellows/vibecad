@@ -1,0 +1,331 @@
+{
+  "vibecad": "0.1",
+  "name": "Hex Standoff",
+  "material": "brass",
+  "process": "turned/milled",
+  "design_notes": "Hex PCB standoff, M3 clearance bore. Wrench flats = af.",
+  "params": {
+    "af": "5.5 mm",
+    "length": "10 mm",
+    "bore_d": "3.4 mm",
+    "chamfer": "0.3 mm"
+  },
+  "features": [
+    {
+      "id": "base_sk",
+      "type": "sketch",
+      "intent": "hex body footprint, across-flats = wrench size",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "hex_1",
+          "p1": [
+            3.175426,
+            0.0
+          ],
+          "p2": [
+            1.587713,
+            2.75
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_2",
+          "p1": [
+            1.587713,
+            2.75
+          ],
+          "p2": [
+            -1.587713,
+            2.75
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_3",
+          "p1": [
+            -1.587713,
+            2.75
+          ],
+          "p2": [
+            -3.175426,
+            0.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_4",
+          "p1": [
+            -3.175426,
+            0.0
+          ],
+          "p2": [
+            -1.587713,
+            -2.75
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_5",
+          "p1": [
+            -1.587713,
+            -2.75
+          ],
+          "p2": [
+            1.587713,
+            -2.75
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_6",
+          "p1": [
+            1.587713,
+            -2.75
+          ],
+          "p2": [
+            3.175426,
+            0.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "hex_1.p2",
+            "hex_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_2.p2",
+            "hex_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_3.p2",
+            "hex_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_4.p2",
+            "hex_5.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_5.p2",
+            "hex_6.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_6.p2",
+            "hex_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_1.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * cos((0) + 0.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_1.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * sin((0) + 0.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_2.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * cos((0) + 60.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_2.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * sin((0) + 60.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_3.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * cos((0) + 120.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_3.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * sin((0) + 120.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_4.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * cos((0) + 180.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_4.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * sin((0) + 180.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_5.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * cos((0) + 240.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_5.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * sin((0) + 240.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_6.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * cos((0) + 300.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_6.p1"
+          ],
+          "value": "(0) + ((((af) / 2) / cos(180 / 6))) * sin((0) + 300.0)"
+        }
+      ]
+    },
+    {
+      "id": "base_extrude",
+      "type": "extrude",
+      "name": "Hex Body",
+      "intent": "hex standoff body",
+      "profile": {
+        "sketch": "base_sk"
+      },
+      "distance": "length",
+      "mode": "new"
+    },
+    {
+      "id": "bore_sk",
+      "type": "sketch",
+      "intent": "M3 clearance bore, through both ends",
+      "plane": {
+        "face": {
+          "feature": "base_extrude",
+          "role": "end",
+          "note": "top face of the hex body"
+        }
+      },
+      "entities": [
+        {
+          "id": "bore",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 1.7,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "bore"
+          ],
+          "value": "bore_d",
+          "name": "bore_diameter"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore.center",
+            "origin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bore_cut",
+      "type": "extrude",
+      "name": "M3 Bore",
+      "intent": "through clearance bore for the mounting screw",
+      "profile": {
+        "sketch": "bore_sk"
+      },
+      "direction": "reverse",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "bore_chamfer",
+      "type": "chamfer",
+      "name": "Bore Chamfers",
+      "intent": "break sharp bore edges at both ends for easier screw entry",
+      "edges": [
+        {
+          "of": {
+            "feature": "base_extrude",
+            "role": "end",
+            "note": "top face of hex body"
+          },
+          "filter": {
+            "type": "circle"
+          },
+          "note": "circular edge where the bore meets the top face"
+        },
+        {
+          "of": {
+            "feature": "base_extrude",
+            "role": "start",
+            "note": "bottom face of hex body"
+          },
+          "filter": {
+            "type": "circle"
+          },
+          "note": "circular edge where the bore meets the bottom face"
+        }
+      ],
+      "distance": "chamfer"
+    }
+  ]
+}

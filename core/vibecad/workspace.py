@@ -64,6 +64,10 @@ class Workspace:
             key = str(self._path(path))
             if key not in self.sessions:
                 self.sessions[key] = Session(key)
+            elif self.sessions[key].stale():
+                # the file changed on disk since we last loaded it (hand edit, another tool, or
+                # another session on the same path): reload instead of silently serving stale data
+                self.sessions[key].reload()
             self.active = key
             self.sessions[key].scope = self.scope
             self._changed("open")
