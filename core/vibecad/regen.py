@@ -78,7 +78,12 @@ class Regenerator:
     def run(self, doc: S.Document, overrides: dict[str, float | str] | None = None) -> RegenResult:
         t0 = time.perf_counter()
         params = {**doc.params, **(overrides or {})}
-        env = evaluate_params(params)
+        try:
+            env = evaluate_params(params)
+        except ExprError as e:  # e.g. a hand-edited file: report it, so the part can still be opened and fixed
+            msg = f"params do not evaluate: {e}"
+            return RegenResult(doc, {}, Body(), [FeatureResult(f.id, f.type, "error", message=msg) for f in doc.features],
+                               {}, time.perf_counter() - t0)
         ctx = Ctx(env=env)
         results: list[FeatureResult] = []
         debug_sketches: dict[str, tuple[SolvedSketch, Frame]] = {}

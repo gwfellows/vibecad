@@ -245,3 +245,14 @@ def test_zero_length_entity_is_named(tmp_path):
     r = s.apply([{"op": "set_param", "name": "flange_d", "value": "od_d"}], "flange as wide as the body")
     err = next(e for e in r["errors"] if e.startswith("body"))
     assert "'sec_flange_top' has zero length" in err, err
+
+
+def test_hand_edited_bad_param_opens_and_can_be_fixed(tmp_path):
+    p = tmp_path / "lb.vcad.json"
+    d = json.loads((EX / "l_bracket.vcad.json").read_text())
+    d["params"]["hole_d"] = "2 *"
+    p.write_text(json.dumps(d))
+    s = Session(p)
+    assert not s.result.ok and "params do not evaluate" in s.result.features[0].message
+    r = s.apply([{"op": "set_param", "name": "hole_d", "value": "5.5 mm"}], "fix")
+    assert r["ok"] and s.result.part.volume == pytest.approx(24486.604, rel=1e-6)
