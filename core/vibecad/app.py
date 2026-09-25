@@ -142,54 +142,51 @@ class App:
         return out
 
     def sketch_geometry(self, sid: str) -> dict:
-        """A solved sketch as world-space polylines plus dimension labels, for drawing in the 3D view."""
-        import math
+        """A solved sketch for the sketch editor, in sketch-local coordinates (the client maps them onto the
+        plane with `frame`): entities with a fully-constrained flag, pickable points, and every constraint
+        with where to draw its label or glyph."""
+        from .expr import evaluate
+        from .sketch import freedom
+
         r = self.view_result()
         s = self.ws.session()
         if sid not in r.sketches:
             raise ToolError(f"sketch {sid!r} is not built at this point in the tree")
         solved, frame = r.sketches[sid]
-        W = lambda u, v: [round(c, 4) for c in (frame.to_world(u, v).X, frame.to_world(u, v).Y, frame.to_world(u, v).Z)]
-        ents, pts2d = [], {}
-        for e in solved.entities.values():
-            if e.type == "line":
-                uv = [e.p1, e.p2]
-                pts2d.update({f"{e.id}.p1": e.p1, f"{e.id}.p2": e.p2, e.id: ((e.p1[0] + e.p2[0]) / 2, (e.p1[1] + e.p2[1]) / 2)})
-            elif e.type in ("circle", "arc"):
-                a0, a1 = (0.0, 360.0) if e.type == "circle" else (e.start_angle, e.end_angle)
-                n = 64 if e.type == "circle" else max(8, int(abs(a1 - a0) / 6))
-                uv = [(e.center[0] + e.r * math.cos(math.radians(a0 + (a1 - a0) * k / n)),
-                       e.center[1] + e.r * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
-                mid = math.radians((a0 + a1) / 2)
-                pts2d.update({f"{e.id}.center": e.center, e.id: (e.center[0] + e.r * math.cos(mid), e.center[1] + e.r * math.sin(mid))})
-                if e.type == "arc":
-                    pts2d.update({f"{e.id}.start": e.p1, f"{e.id}.end": e.p2})
-            else:
-                uv = [e.p1]
-                pts2d[e.id] = e.p1
-            ents.append({"id": e.id, "type": e.type, "construction": e.construction, "pts": [W(u, v) for u, v in uv],
-                         "label_at": W(*pts2d[e.id])})
-        pts2d["origin"] = (0.0, 0.0)
-        dims = []
-        for c in s.doc.feature(sid).constraints:
-            if c.value is None:
-                continue
-            refs = [pts2d[x] for x in c.on if x in pts2d]
-            if not refs:
-                continue
-            u = sum(p[0] for p in refs) / len(refs)
-            v = sum(p[1] for p in refs) / len(refs)
-            from .expr import evaluate
-            try:
-                val = f"{evaluate(c.value, r.env):g}" + (" deg" if c.type == "angle" else "")
-            except Exception:
-                val = "?"
-            expr = str(c.value).strip()
-            shown = val if expr in (c.name, val) or not isinstance(c.value, str) else f"{val}  ({expr})"
-            dims.append({"label": f"{c.name or c.type} = {shown}", "at": W(u, v)})
+        feat = s.doc.feature(sid)
+        fixed = freedom(feat, r.env, solved)
+        ents = sketch_entities(solved, fixed)
+        anchors = _anchors(solved)
+        cons = []
+        for i, c in enumerate(feat.constraints):
+            refs = [anchors[x] for x in c.on if x in anchors] or [(0.0, 0.0)]
+            d = {"index": i, "type": c.type, "on": c.on, "name": c.name, "id": c.id,
+                 "at": [sum(p[0] for p in refs) / len(refs), sum(p[1] for p in refs) / len(refs)]}
+            if c.value is not None:
+                expr = str(c.value).strip()
+                try:
+                    d["value"] = evaluate(c.value, r.env)
+                except Exception:
+                    d["value"] = None
+                d["expr"] = expr
+                d["param"] = expr if isinstance(c.value, str) and expr in s.doc.params else None
+            cons.append(d)
+        is_point = lambda ref: ref == "origin" or "." in ref or solved.entities[ref].type == "point"
+        points = [{"ref": ref, "at": _r(p)} for ref, p in anchors.items() if is_point(ref)]
         rep = solved.report
-        return {"id": sid, "frame": frame.describe(), "entities": ents, "dims": dims, "dof": rep.dof,
-                "status": rep.status, "conflicting": rep.conflicting}
+        return {"id": sid, "frame": frame.describe(), "entities": ents, "points": points, "constraints": cons,
+                "dof": rep.dof, "status": rep.status, "conflicting": rep.conflicting, "redundant": rep.redundant,
+                "conflicting_idx": rep.conflicting_idx, "redundant_idx": rep.redundant_idx,
+                "params": sorted(s.doc.params)}
+
+    def sketch_drag(self, sid: str, ref: str, to, grab=None, guess=None) -> dict:
+        """Preview a drag without saving it: the client shows it live and commits `ir` as update_entity ops."""
+        from .sketch import drag
+
+        r = self.view_result()
+        feat = self.ws.session().doc.feature(sid)
+        out, moved = drag(feat, r.env, ref, to, grab, guess)
+        return {"moved": moved, "ok": out.report.ok, "entities": sketch_entities(out, {}), "ir": out.to_ir_entities()}
 
     # ── agent ──────────────────────────────────────────────────────
     async def ensure_runner(self):
@@ -214,7 +211,7 @@ class App:
         self.transcript = []
         self.publish({"type": "conversation_reset"})
 
-    async def prompt(self, text: str, selection: str | None, scope: bool) -> None:
+    async def prompt(self, text: str, selection: str | None, scope: bool, entities: list[str] | None = None) -> None:
         if self.run_task and not self.run_task.done():
             self.publish({"type": "error", "message": "the agent is still working; stop it or wait"})
             return
@@ -230,10 +227,13 @@ class App:
             deps = dependents(self.ws.session().doc, selection)
             f = self.ws.session().doc.feature(selection)
             prefix += f"[The user selected feature `{selection}` ({f.type}: {f.intent or 'no intent'}).]\n"
+            if entities and f.type == "sketch":
+                prefix += sketch_selection_context(f, entities)
             if scope:
                 self.ws.scope = {selection, *deps}
                 prefix += f"[Edits are limited to `{selection}` and features that depend on it: {sorted(deps) or 'none'}.]\n"
-        self.publish({"type": "user_prompt", "text": text, "selection": selection, "scope": scope})
+        self.publish({"type": "user_prompt", "text": text, "selection": selection, "scope": scope,
+                      "entities": entities or None})
 
         async def go():
             try:
@@ -247,6 +247,59 @@ class App:
                 self.ws.scope = None
 
         self.run_task = asyncio.create_task(go())
+
+
+def _r(p):
+    return [round(p[0], 6) + 0.0, round(p[1], 6) + 0.0]
+
+
+def sketch_entities(solved, fixed: dict[str, bool]) -> list[dict]:
+    out = []
+    for e in solved.entities.values():
+        d = {"id": e.id, "type": e.type, "construction": e.construction, "fixed": fixed.get(e.id, False)}
+        if e.type in ("line", "point"):
+            d["p1"] = _r(e.p1)
+            if e.type == "line":
+                d["p2"] = _r(e.p2)
+        else:
+            d.update(center=_r(e.center), r=round(e.r, 6))
+            if e.type == "arc":
+                d.update(start_angle=e.start_angle, end_angle=e.end_angle, p1=_r(e.p1), p2=_r(e.p2))
+        out.append(d)
+    return out
+
+
+def _anchors(solved) -> dict[str, tuple[float, float]]:
+    """Where each reference sits in the sketch: points at themselves, curves at their midpoint."""
+    import math
+
+    a: dict[str, tuple[float, float]] = {"origin": (0.0, 0.0)}
+    for e in solved.entities.values():
+        if e.type == "line":
+            a.update({f"{e.id}.p1": e.p1, f"{e.id}.p2": e.p2, e.id: ((e.p1[0] + e.p2[0]) / 2, (e.p1[1] + e.p2[1]) / 2)})
+        elif e.type in ("circle", "arc"):
+            mid = math.radians(90.0 if e.type == "circle" else (e.start_angle + e.end_angle) / 2)
+            a.update({f"{e.id}.center": e.center, e.id: (e.center[0] + e.r * math.cos(mid), e.center[1] + e.r * math.sin(mid))})
+            if e.type == "arc":
+                a.update({f"{e.id}.start": e.p1, f"{e.id}.end": e.p2})
+        else:
+            a[e.id] = e.p1
+    return a
+
+
+def sketch_selection_context(sketch, entities: list[str]) -> str:
+    """What to tell the agent about entities the user picked in a sketch: their ids and every constraint
+    that touches them (by index, so the agent can update or remove exactly those)."""
+    picked = set(entities)
+    base = {r.split(".")[0] for r in picked}
+    touching = []
+    for i, c in enumerate(sketch.constraints):
+        if any(r in picked or r.split(".")[0] in base for r in c.on):
+            val = f" = {c.value}" if c.value is not None else ""
+            touching.append(f"#{i}{' ' + c.name if c.name else ''} {c.type}({', '.join(c.on)}){val}")
+    s = f"[In sketch `{sketch.id}` the user selected: {', '.join(entities)}."
+    s += f" Constraints on them: {'; '.join(touching)}.]\n" if touching else " No constraints touch them.]\n"
+    return s
 
 
 def dependents(doc, fid: str) -> set[str]:
@@ -372,6 +425,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     async def sketch_json(sid: str):
         return await asyncio.to_thread(guard, A.sketch_geometry, sid)
 
+    @api.post("/api/sketch/{sid}/drag")
+    async def sketch_drag(sid: str, body: dict = Body(...)):
+        return await asyncio.to_thread(guard, A.sketch_drag, sid, body["ref"], body["to"], body.get("grab"), body.get("guess"))
+
     @api.get("/api/sketch/{sid}.png")
     async def sketch_png(sid: str, v: str = ""):
         png = await asyncio.to_thread(guard, A.ws.render_sketch_image, sid)
@@ -388,7 +445,7 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
             while True:
                 msg = json.loads(await sock.receive_text())
                 if msg["type"] == "prompt":
-                    await A.prompt(msg["text"], msg.get("selection"), bool(msg.get("scope")))
+                    await A.prompt(msg["text"], msg.get("selection"), bool(msg.get("scope")), msg.get("entities"))
                 elif msg["type"] == "stop" and A.runner:
                     await A.runner.interrupt()
                 elif msg["type"] == "reset":

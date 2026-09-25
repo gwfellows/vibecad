@@ -68,13 +68,32 @@ section { min-height: 0; overflow: auto; }
 .vtools { position: absolute; top: 10px; display: flex; gap: 4px; }
 .vtools.left { left: 10px; } .vtools.right { right: 10px; }
 .vtools button { background: rgba(255,255,255,.92); font-size: 12px; padding: 2px 8px; }
-.sketchbar { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); background: rgba(37,99,235,.95); color: #fff; border-radius: 8px; padding: 6px 10px; display: flex; gap: 12px; align-items: center; font-size: 12px; }
-.sketchbar .muted { color: #dbeafe; }
+.sketchbar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 20px);
+  background: rgba(37,99,235,.96); color: #fff; border-radius: 8px; padding: 6px 10px; display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.sketchbar .skhead { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.sketchbar .muted { color: #dbeafe; } .sketchbar .okc { color: #bbf7d0; } .sketchbar .bad { color: #fecaca; font-weight: 600; }
 .sketchbar button { background: #fff; border: 0; font-size: 12px; padding: 2px 8px; }
+.sktools { display: flex; flex-wrap: wrap; gap: 8px; }
+.skgroup { display: flex; gap: 2px; }
+.sktools button { padding: 2px 7px; min-width: 26px; }
+.sktools button.on { background: #fde68a; font-weight: 600; }
+.sktools button:disabled { opacity: .4; }
+.skhint { color: #dbeafe; font-size: 11px; min-height: 14px; }
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #labels .lbl { position: absolute; transform: translate(-50%, -50%); font: 11px ui-monospace, Menlo, monospace; white-space: nowrap; }
+#labels .pick { pointer-events: auto; cursor: pointer; user-select: none; }
 #labels .ent { color: #9a3412; }
-#labels .dim { color: #1d4ed8; background: rgba(255,255,255,.85); padding: 0 3px; border-radius: 3px; }
+#labels .dim { color: #1d4ed8; background: rgba(255,255,255,.88); padding: 0 3px; border-radius: 3px; border: 1px solid transparent; }
+#labels .glyph { color: #334155; background: rgba(255,255,255,.92); border: 1px solid #cbd5e1; padding: 0 3px; border-radius: 3px; font-size: 10px; }
+#labels .sel { border-color: var(--selbar); background: #fff3e6; color: #9a3412; }
+#labels .bad { border-color: var(--err); color: var(--err); }
+#labels .redundant { border-color: var(--warn); color: var(--warn); }
+.boxsel { position: absolute; border: 1px dashed var(--accent); background: rgba(37,99,235,.08); pointer-events: none; }
+.dimedit { position: absolute; z-index: 4; display: flex; gap: 6px; align-items: center; background: #fff; border: 1px solid var(--accent);
+  border-radius: 6px; padding: 4px 6px; box-shadow: 0 4px 14px rgba(0,0,0,.15); font-size: 12px; }
+.dimedit .what { font-family: ui-monospace, Menlo, monospace; color: #1d4ed8; }
+.dimedit input { width: 130px; padding: 2px 5px; font: 12px ui-monospace, Menlo, monospace; }
+.dimedit .keys { color: var(--muted); font-size: 11px; }
 .rollnote { position: absolute; bottom: 10px; left: 10px; background: rgba(37,99,235,.92); color: #fff; font-size: 12px; padding: 3px 8px; border-radius: 6px; }
 
 /* agent */

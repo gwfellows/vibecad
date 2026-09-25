@@ -54,6 +54,8 @@ class SolveReport:
     dof: int
     conflicting: list[str] = field(default_factory=list)
     redundant: list[str] = field(default_factory=list)
+    conflicting_idx: list[int] = field(default_factory=list)  # constraint indices, for the editor
+    redundant_idx: list[int] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -160,8 +162,12 @@ def solve_sketch(sk: S.Sketch, env: dict[str, float]) -> SolvedSketch:
     def names(tags):
         return sorted({_describe(tag_owner[int(t)], sk.constraints[tag_owner[int(t)]]) for t in tags if int(t) in tag_owner})
 
+    def idx(tags):
+        return sorted({tag_owner[int(t)] for t in tags if int(t) in tag_owner})
+
     report = SolveReport(status=status.name, dof=int(diag.dof), conflicting=names(diag.conflicting),
-                         redundant=names(diag.redundant))
+                         redundant=names(diag.redundant), conflicting_idx=idx(diag.conflicting),
+                         redundant_idx=idx(diag.redundant))
 
     solved: dict[str, SolvedEntity] = {}
     pt = lambda pid: tuple(float(v) for v in g.get_point(pid))
@@ -301,6 +307,194 @@ def _add_constraint(g: GcsSketch, c: S.Constraint, refs, env):
         need(("line",), ("line", "line"))
         return g.set_l2l_angle(ids[0], ids[1], math.radians(val))
     raise SketchError(f"unsupported constraint {t!r}")
+
+
+# ── Interactive editing: drag preview and freedom ───────────────────
+# PlaneGCS leaves a conflicting system untouched, so a drag can't be one "put this point at the cursor"
+# solve: that only works for a point with 2 free directions. For less free points we try weaker pulls
+# (x only, y only, onto the line through the cursor across the point's direction of motion) and keep the
+# result nearest the cursor. Nothing here is saved; the caller commits the result as new initial guesses.
+_TMP = "__drag"
+
+
+def point_of(solved: SolvedSketch, ref: str) -> tuple[float, float] | None:
+    """Position of a point reference (`l.p1`, `c.center`, `a.start`, a point entity id, `origin`)."""
+    if ref == "origin":
+        return (0.0, 0.0)
+    eid, _, sub = ref.partition(".")
+    e = solved.entities.get(eid)
+    if e is None:
+        return None
+    if not sub:
+        return e.p1 if e.type == "point" else None
+    return {"p1": e.p1, "p2": e.p2, "center": e.center, "start": e.p1, "end": e.p2}.get(sub)
+
+
+def _with_guess(sk: S.Sketch, solved: SolvedSketch) -> S.Sketch:
+    upd = {e["id"]: {k: v for k, v in e.items() if k != "id"} for e in solved.to_ir_entities()}
+    return sk.model_copy(update={"entities": [e.model_copy(update=upd.get(e.id, {})) for e in sk.entities]})
+
+
+def _attempt(sk: S.Sketch, env, entities=(), constraints=()) -> SolvedSketch | None:
+    """Solve sk plus temporary entities/constraints; None if it doesn't solve cleanly."""
+    trial = sk.model_copy(update={"entities": list(sk.entities) + list(entities),
+                                  "constraints": list(sk.constraints) + list(constraints)})
+    try:
+        s = solve_sketch(trial, env)
+    except SketchError:
+        return None
+    if not s.report.ok:
+        return None
+    s.entities = {k: v for k, v in s.entities.items() if not k.startswith(_TMP)}
+    return s
+
+
+def _fix(ref, at) -> S.Constraint:
+    return S.Constraint(type="fix", on=[ref], at=(float(at[0]), float(at[1])))
+
+
+def _pull_point(sk: S.Sketch, env, cur: SolvedSketch, ref: str, to) -> SolvedSketch | None:
+    """Move point `ref` as close to `to` as its constraints allow. Long moves go in sub-steps so a point
+    that slides along a curve follows it instead of jumping to a far branch."""
+    s = _attempt(sk, env, constraints=[_fix(ref, to)])
+    if s is not None:
+        return s
+    p = point_of(cur, ref)
+    size = max((math.hypot(*q) for e in cur.entities.values() for q in (e.p1, e.p2, e.center) if q), default=1.0)
+    n = min(8, max(1, math.ceil(math.dist(p, to) / (0.1 * max(size, 1.0)))))
+    at, at_sk, best = cur, sk, None
+    for k in range(1, n + 1):
+        t = k / n
+        sub = (p[0] + (to[0] - p[0]) * t, p[1] + (to[1] - p[1]) * t)
+        nxt = _pull_once(at_sk, env, at, ref, sub)
+        if nxt is None:
+            break
+        best = at = nxt
+        at_sk = _with_guess(sk, nxt)
+    return best
+
+
+def _pull_once(sk: S.Sketch, env, cur: SolvedSketch, ref: str, to) -> SolvedSketch | None:
+    s = _attempt(sk, env, constraints=[_fix(ref, to)])
+    if s is not None:
+        return s
+    cands = [_attempt(sk, env, constraints=[S.Constraint(type=t, on=["origin", ref], value=float(v))])
+             for t, v in (("distance_x", to[0]), ("distance_y", to[1]))]
+    best = min((c for c in cands if c is not None), key=lambda c: math.dist(point_of(c, ref), to), default=None)
+    # refine: from the current best position, find the direction the point can move in and pull it onto the
+    # line through the cursor across that direction (exact for straight paths; a few rounds for curved ones)
+    at, at_sk = cur, sk
+    for _ in range(4):
+        nxt = _pull_across(at_sk, env, at, ref, to)
+        if nxt is None or (best is not None and math.dist(point_of(nxt, ref), to) >= math.dist(point_of(best, ref), to) - 1e-9):
+            break
+        best = at = nxt
+        at_sk = _with_guess(sk, nxt)
+    return best
+
+
+def _pull_across(sk: S.Sketch, env, cur: SolvedSketch, ref: str, to) -> SolvedSketch | None:
+    p = point_of(cur, ref)
+    step = max(1e-3, 1e-3 * math.hypot(*p))
+    for t, v in (("distance_x", p[0] + step), ("distance_y", p[1] + step), ("distance_x", p[0] - step)):
+        nb = _attempt(sk, env, constraints=[S.Constraint(type=t, on=["origin", ref], value=float(v))])
+        if nb is None:
+            continue
+        q = point_of(nb, ref)
+        tx, ty = q[0] - p[0], q[1] - p[1]
+        n = math.hypot(tx, ty)
+        if n < 1e-12:
+            continue
+        L = 10.0 * (math.dist(p, to) + 1.0)
+        nx, ny = -ty / n * L, tx / n * L
+        line = S.Line(id=f"{_TMP}_l", p1=(to[0] - nx, to[1] - ny), p2=(to[0] + nx, to[1] + ny), construction=True)
+        return _attempt(sk, env, entities=[line], constraints=[
+            _fix(f"{_TMP}_l.p1", line.p1), _fix(f"{_TMP}_l.p2", line.p2), S.Constraint(type="point_on", on=[ref, line.id])])
+    return None
+
+
+def drag(sk: S.Sketch, env: dict[str, float], ref: str, to, grab=None,
+         guess: list[dict] | None = None) -> tuple[SolvedSketch, bool]:
+    """Preview dragging `ref` (a point reference, or a curve entity grabbed at `grab`) to `to`.
+
+    `guess`: entity coordinates to start from (IR form, e.g. the previous preview of the same drag), so a
+    drag follows the mouse step by step. Returns (solved sketch, moved); a fully constrained target comes
+    back unchanged with moved=False."""
+    if guess:
+        upd = {g["id"]: {k: v for k, v in g.items() if k != "id"} for g in guess}
+        sk = sk.model_copy(update={"entities": [e.model_copy(update=upd.get(e.id, {})) for e in sk.entities]})
+    cur = solve_sketch(sk, env)
+    if not cur.report.ok:
+        return cur, False
+    base = _with_guess(sk, cur)
+    to = (float(to[0]), float(to[1]))
+    out = None
+    if point_of(cur, ref) is not None:
+        out = _pull_point(base, env, cur, ref, to)
+    elif ref in cur.entities:
+        e = cur.entities[ref]
+        grab = tuple(grab) if grab is not None else to
+        if e.type == "line":  # translate the whole line if it's free to; else make it pass through the cursor
+            d = (to[0] - grab[0], to[1] - grab[1])
+            out = _attempt(base, env, constraints=[_fix(f"{ref}.p1", (e.p1[0] + d[0], e.p1[1] + d[1])),
+                                                   _fix(f"{ref}.p2", (e.p2[0] + d[0], e.p2[1] + d[1]))])
+            if out is None:
+                t = S.Point(id=f"{_TMP}_t", at=grab)
+                out = _attempt(base, env, entities=[t], constraints=[S.Constraint(type="point_on", on=[t.id, ref]),
+                                                                    _fix(t.id, to)])
+        elif e.type in ("circle", "arc"):  # dragging the rim resizes it, keeping the centre if possible
+            t = S.Point(id=f"{_TMP}_t", at=to)
+            on = [S.Constraint(type="point_on", on=[t.id, ref]), _fix(t.id, to)]
+            out = (_attempt(base, env, entities=[t], constraints=on + [_fix(f"{ref}.center", e.center)])
+                   or _attempt(base, env, entities=[t], constraints=on))
+    if out is None:
+        return cur, False
+    moved = any(_moved(cur.entities[k], v) for k, v in out.entities.items() if k in cur.entities)
+    return out, moved
+
+
+def _moved(a: SolvedEntity, b: SolvedEntity, tol: float = 1e-9) -> bool:
+    for f in ("p1", "p2", "center"):
+        u, v = getattr(a, f), getattr(b, f)
+        if u is not None and v is not None and math.dist(u, v) > tol:
+            return True
+    return a.r is not None and b.r is not None and abs(a.r - b.r) > tol
+
+
+def freedom(sk: S.Sketch, env: dict[str, float], solved: SolvedSketch | None = None) -> dict[str, bool]:
+    """Which entities are fully constrained (True) vs can still move (False).
+
+    A point is fixed if nudging it in x and in y each conflicts with the sketch's constraints; a circle
+    or arc also needs a fixed radius. Costs ~2 solves per point, so skipped (all fixed) at 0 DOF."""
+    cur = solved or solve_sketch(sk, env)
+    if not cur.report.ok:
+        return {}
+    if cur.report.dof == 0:
+        return {eid: True for eid in cur.entities}
+    base = _with_guess(sk, cur)
+    memo: dict[str, bool] = {}
+
+    def fixed_point(ref: str) -> bool:
+        if ref not in memo:
+            p = point_of(cur, ref)
+            step = max(1e-3, 1e-3 * math.hypot(*p))
+            memo[ref] = all(_attempt(base, env, constraints=[S.Constraint(type=t, on=["origin", ref], value=float(v))])
+                            is None for t, v in (("distance_x", p[0] + step), ("distance_y", p[1] + step)))
+        return memo[ref]
+
+    out = {}
+    for eid, e in cur.entities.items():
+        if e.type == "point":
+            out[eid] = fixed_point(eid)
+        elif e.type == "line":
+            out[eid] = fixed_point(f"{eid}.p1") and fixed_point(f"{eid}.p2")
+        else:
+            pts = [f"{eid}.center"] + ([f"{eid}.start", f"{eid}.end"] if e.type == "arc" else [])
+            ok = all(fixed_point(r) for r in pts)
+            if ok and e.type == "circle":
+                ok = _attempt(base, env, constraints=[S.Constraint(type="diameter", on=[eid], value=2 * e.r * 1.001 + 1e-3)]) is None
+            out[eid] = ok
+    return out
 
 
 # ── Regions ─────────────────────────────────────────────────────────

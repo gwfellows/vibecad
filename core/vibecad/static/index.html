@@ -50,10 +50,14 @@
       <button id="projBtn" title="Switch between orthographic and perspective">Orthographic</button>
     </div>
     <div id="sketchBar" class="sketchbar" hidden>
-      <span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
-      <button id="exitSketch">Exit sketch (Esc)</button>
+      <div class="skhead"><span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
+        <button id="exitSketch">Exit sketch (Esc)</button></div>
+      <div id="sketchTools" class="sktools"></div>
+      <div id="sketchHint" class="skhint"></div>
     </div>
     <div id="labels"></div>
+    <div id="boxSel" class="boxsel" hidden></div>
+    <div id="dimEdit" class="dimedit" hidden><span class="what"></span><input spellcheck="false" autocomplete="off"><span class="keys">Enter · Esc</span></div>
     <div id="rollbackNote" class="rollnote" hidden></div>
   </section>
 

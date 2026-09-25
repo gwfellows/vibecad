@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createSketchEditor, TOOLS as SKETCH_TOOLS, CONSTRAINTS as SKETCH_CONSTRAINTS } from "./sketch.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -66,7 +67,7 @@ function onEvent(e) {
       if (fresh) loadParts();
       break;
     }
-    case "user_prompt": addUser(e.text, e.selection, e.scope); break;
+    case "user_prompt": addUser(e.text, e.selection, e.scope, e.entities); break;
     case "run_start": setBusy(true, e.t); break;
     case "agent_text": addAgent(e.text); break;
     case "agent_thinking": addThinking(e.text); break;
@@ -103,7 +104,7 @@ function setState(state, { fit = false, flash = false } = {}) {
   renderParams();
   renderDetails();
   loadMesh(fit);
-  if (sketchMode) refreshSketch();
+  if (inSketch()) SK.refresh();
 }
 
 function renderTree(before) {
@@ -243,8 +244,8 @@ function makeControls(cam, target) {
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a93a5, 1.6));
 const key = new THREE.DirectionalLight(0xffffff, 1.6);
 scene.add(key);
-const partGroup = new THREE.Group(), sketchGroup = new THREE.Group();
-scene.add(partGroup, sketchGroup);
+const partGroup = new THREE.Group();
+scene.add(partGroup);
 const axes = new THREE.AxesHelper(10);
 scene.add(axes);
 const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8);
@@ -268,7 +269,7 @@ function loop() {
   controls.update();
   key.position.copy(camera.position);
   renderer.render(scene, camera);
-  placeLabels();
+  SK.placeLabels();
 }
 
 $("#projBtn").onclick = () => {
@@ -279,6 +280,7 @@ $("#projBtn").onclick = () => {
   controls.dispose();
   camera = next;
   controls = makeControls(camera, t);
+  if (inSketch()) controls.mouseButtons.LEFT = null;
   $("#projBtn").textContent = camera === ortho ? "Orthographic" : "Perspective";
   resize();
 };
@@ -311,7 +313,7 @@ async function loadMesh(fit) {
   edgeLines = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x1b1f27, transparent: true }));
   partGroup.add(edgeLines);
   colorFaces();
-  if (sketchMode) ghostPart(true);
+  if (inSketch()) ghostPart(true);
   if (fit) pendingFit = !fitView("iso");
 }
 
@@ -339,7 +341,7 @@ function fitView(dir) {  // false if there is nothing to fit yet
   return true;
 }
 document.querySelectorAll(".vtools [data-view]").forEach((b) => (b.onclick = () => { exitSketch(); fitView(b.dataset.view); }));
-$("#fitBtn").onclick = () => (sketchMode ? viewSketch() : fitView("iso"));
+$("#fitBtn").onclick = () => (inSketch() ? viewSketch() : fitView("iso"));
 
 // hover + pick
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
@@ -352,7 +354,7 @@ function pick(ev) {
   return ray.intersectObjects(faceMeshes)[0]?.object || null;
 }
 renderer.domElement.addEventListener("pointermove", (ev) => {
-  if (sketchMode) return;
+  if (inSketch()) return;
   const m = pick(ev);
   if (m !== hovered) { hovered = m; colorFaces(); }
   if (m) { tip.style.display = "block"; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; tip.textContent = m.userData.labels.join("  ·  "); }
@@ -362,60 +364,61 @@ renderer.domElement.addEventListener("pointerleave", () => { hovered = null; tip
 let downAt = null;
 renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.clientX, ev.clientY]));
 renderer.domElement.addEventListener("pointerup", (ev) => {
-  if (sketchMode || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
+  if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
   const m = pick(ev);
   if (m) { const fs = m.userData.features, i = fs.indexOf(selected); select(fs[(i + 1) % fs.length]); }
   else select(null);
 });
 
-// ── sketch mode: the sketch drawn on its plane, viewed straight on ──
-let sketchMode = null, sketchData = null, savedView = null, labelEls = [];
+// ── sketch mode: the sketch editor (static/sketch.js) on the sketch's plane, viewed straight on ──
+let savedView = null;
+const SK = createSketchEditor({
+  scene, renderer, host, labelsBox: $("#labels"), dimEdit: $("#dimEdit"), box: $("#boxSel"),
+  camera: () => camera, api, edit, note,
+  tip: (t) => {
+    if (!t) { tip.style.display = "none"; return; }
+    Object.assign(tip.style, { display: "block", left: t.x + 12 + "px", top: t.y + 12 + "px" });
+    tip.textContent = t.text;
+  },
+  hint: (t) => { $("#sketchHint").textContent = t; },
+  onChange: () => sketchBarUpdate(),
+  onLost: () => exitSketch(),
+});
+const inSketch = () => !!SK.active();
+window.vibecadSketch = SK;  // for browser tests and the devtools console
+
 async function enterSketch(id) {
-  if (!sketchMode) savedView = { pos: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone(), radius: viewRadius, persp: camera === persp };
-  sketchMode = id;
+  const reframe = SK.active() !== id;
+  if (!inSketch()) savedView = { pos: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone(), radius: viewRadius, persp: camera === persp };
   $("#sketchBar").hidden = false;
   $("#sketchName").textContent = id;
   if (camera === persp) $("#projBtn").click();  // sketches are always viewed orthographic
+  controls.mouseButtons.LEFT = null;  // in a sketch the left button selects and draws; right-drag pans, wheel zooms
   ghostPart(true);
-  await refreshSketch(true);
-}
-async function refreshSketch(reframe = false) {
-  if (!sketchMode) return;
-  let d;
-  try { d = await api(`/api/sketch/${encodeURIComponent(sketchMode)}.json`); } catch { exitSketch(); return; }
-  sketchData = d;
-  $("#sketchInfo").textContent = `· ${d.dof} DOF · ${d.status}` + (d.conflicting?.length ? ` · conflicts: ${d.conflicting.join(", ")}` : "");
-  sketchGroup.clear();
-  for (const e of d.entities) {
-    if (e.pts.length < 2) {
-      const g = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(e.pts.flat(), 3));
-      sketchGroup.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x475569, size: 5, sizeAttenuation: false })));
-      continue;
-    }
-    const g = new THREE.BufferGeometry().setFromPoints(e.pts.map((p) => new THREE.Vector3(...p)));
-    const mat = e.construction ? new THREE.LineDashedMaterial({ color: 0x94a3b8, dashSize: 1.5, gapSize: 1, depthTest: false })
-                               : new THREE.LineBasicMaterial({ color: 0x1d4ed8, depthTest: false });
-    const line = new THREE.Line(g, mat);
-    line.renderOrder = 10;
-    if (e.construction) line.computeLineDistances();
-    sketchGroup.add(line);
-  }
-  buildLabels(d);
+  await SK.enter(id);
   if (reframe) viewSketch();
 }
 function viewSketch() {
-  if (!sketchData) return;
-  const box = new THREE.Box3().setFromObject(sketchGroup);
-  const c = box.getCenter(new THREE.Vector3()), r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 5) * 1.2;
-  const n = new THREE.Vector3(...sketchData.frame.normal), up = new THREE.Vector3(...sketchData.frame.y_dir);
-  frame(c, r, n, up);
+  const F = SK.frame();
+  if (!F) return;
+  const box = SK.bounds();
+  let c, r;
+  if (!box.isEmpty()) {
+    c = box.getCenter(new THREE.Vector3());
+    r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 5) * 1.35;
+  } else {  // a new, empty sketch: frame the part as seen on this plane
+    const pb = new THREE.Box3().setFromObject(partGroup);
+    const pc = pb.isEmpty() ? F.o.clone() : pb.getCenter(new THREE.Vector3());
+    c = pc.clone().addScaledVector(F.n, -pc.clone().sub(F.o).dot(F.n));
+    r = pb.isEmpty() ? 30 : Math.max(pb.getSize(new THREE.Vector3()).length() / 2, 10);
+  }
+  frame(c, r, F.n, F.y);
 }
 function exitSketch() {
-  if (!sketchMode) return;
-  sketchMode = null; sketchData = null;
-  sketchGroup.clear();
-  buildLabels(null);
+  if (!inSketch()) return;
+  SK.exit();
   $("#sketchBar").hidden = true;
+  controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   ghostPart(false);
   if (savedView) {
     if (savedView.persp && camera === ortho) $("#projBtn").click();
@@ -430,24 +433,51 @@ function ghostPart(on) {
   for (const m of faceMeshes) { m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
   if (edgeLines) edgeLines.material.opacity = on ? 0.45 : 1;
 }
-function buildLabels(d) {
-  const box = $("#labels");
-  box.innerHTML = "";
-  labelEls = [];
-  if (!d) return;
-  for (const e of d.entities) labelEls.push([e.label_at, Object.assign(document.createElement("div"), { className: "lbl ent", textContent: e.id })]);
-  for (const m of d.dims) labelEls.push([m.at, Object.assign(document.createElement("div"), { className: "lbl dim", textContent: m.label })]);
-  for (const [, el] of labelEls) box.appendChild(el);
+
+// sketch toolbar: drawing tools, constraints (enabled when the selection fits), edit actions
+(function buildSketchTools() {
+  const bar = $("#sketchTools");
+  const btn = (label, title, onclick, data) => {
+    const b = Object.assign(document.createElement("button"), { textContent: label, title, onclick });
+    Object.assign(b.dataset, data);
+    return b;
+  };
+  const group = (items) => { const g = document.createElement("span"); g.className = "skgroup"; items.forEach((i) => g.appendChild(i)); bar.appendChild(g); };
+  group(SKETCH_TOOLS.map((t) => btn(t.label, t.title, () => SK.setTool(t.id), { tool: t.id })));
+  group(SKETCH_CONSTRAINTS.map((c) => btn(c.label, c.title, () => SK.constrain(c.id), { con: c.id })));
+  group([btn("Constr.", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
+         btn("Delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
+         btn("Ask agent", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
+})();
+function askAboutSketch() {
+  const sel = SK.selection();
+  $("#prompt").placeholder = sel.length ? `Ask about or change ${sel.join(", ")} in ${SK.active()}…` : `Ask about or change sketch ${SK.active()}…`;
+  $("#prompt").focus();
 }
-const tmpV = new THREE.Vector3();
-function placeLabels() {
-  if (!labelEls.length) return;
-  const w = host.clientWidth, h = host.clientHeight;
-  for (const [p, el] of labelEls) {
-    tmpV.set(...p).project(camera);
-    el.style.left = ((tmpV.x + 1) / 2) * w + "px";
-    el.style.top = ((1 - tmpV.y) / 2) * h + "px";
+const HINTS = {
+  select: () => "Click to select (Shift adds) · drag free geometry · drag on empty space to box-select · double-click a dimension to change it",
+  line: (n) => (n ? "Click the end point (snaps to points and curves; near-horizontal/vertical lines get a constraint) · Esc ends the chain" : "Click the start point"),
+  rect: (n) => (n ? "Click the opposite corner" : "Click the first corner"),
+  circle: (n) => (n ? "Click a point on the rim" : "Click the centre"),
+  arc: (n) => ["Click the centre", "Click the start point", "Click the end point (counterclockwise)"][n] || "",
+};
+function sketchBarUpdate() {
+  const d = SK.data();
+  if (!d) return;
+  const conf = d.conflicting?.length ? ` · conflicting: ${d.conflicting.join(", ")}` : d.redundant?.length ? ` · redundant: ${d.redundant.join(", ")}` : "";
+  const info = $("#sketchInfo");
+  info.textContent = `· ${d.dof} DOF · ${d.dof === 0 && !conf ? "fully constrained" : d.status}${conf}`;
+  info.className = conf ? "bad" : d.dof === 0 ? "okc" : "muted";
+  const tool = SK.tool();
+  for (const b of $("#sketchTools").querySelectorAll("button")) {
+    if (b.dataset.tool) b.classList.toggle("on", b.dataset.tool === tool);
+    if (b.dataset.con) b.disabled = !SK.available(b.dataset.con);
   }
+  const sel = SK.selection();
+  $("#sketchTools [data-act=delete]").disabled = !sel.some((k) => k.startsWith("#") || !k.includes(".") && k !== "origin");
+  $("#sketchTools [data-act=construction]").disabled = !sel.some((k) => !k.startsWith("#") && !k.includes(".") && k !== "origin");
+  const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
+  $("#sketchHint").textContent = sub;
 }
 
 // ── dialogs ───────────────────────────────────────────────────────
@@ -470,10 +500,11 @@ const log = $("#log");
 function scrollDown() { if (log.scrollHeight - log.scrollTop - log.clientHeight < 200) log.scrollTop = log.scrollHeight; }
 function add(el) { log.appendChild(el); scrollDown(); return el; }
 function md(t) { return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>"); }
-function addUser(text, sel, scope) {
+function addUser(text, sel, scope, entities) {
   const d = document.createElement("div");
   d.className = "msg user";
-  d.innerHTML = esc(text) + (sel ? `<span class="sel">selected: ${esc(sel)}${scope ? " (edits limited to it)" : ""}</span>` : "");
+  const what = sel ? esc(sel) + (entities?.length ? `: ${esc(entities.join(", "))}` : "") : "";
+  d.innerHTML = esc(text) + (sel ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "");
   add(d);
 }
 function addAgent(text) { const d = document.createElement("div"); d.className = "msg agent"; d.innerHTML = md(text); add(d); }
@@ -559,7 +590,8 @@ $("#promptForm").onsubmit = (ev) => {
   ev.preventDefault();
   const text = $("#prompt").value.trim();
   if (!text || busy) return;
-  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked });
+  const entities = inSketch() && SK.selection().length ? SK.selection() : null;
+  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities });
   $("#prompt").value = "";
 };
 $("#prompt").onkeydown = (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("#promptForm").requestSubmit(); } };
@@ -585,7 +617,8 @@ $("#newBtn").onclick = async () => {
 };
 document.addEventListener("keydown", (ev) => {
   if (ev.target.matches("input, textarea")) return;
-  if (ev.key === "Escape" && sketchMode) { $("#exitSketch").click(); return; }
+  if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }
+  if (ev.key === "Escape" && inSketch()) { $("#exitSketch").click(); return; }
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); api(ev.shiftKey ? "/api/redo" : "/api/undo", {}); }
 });
 
