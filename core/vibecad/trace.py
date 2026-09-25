@@ -62,6 +62,8 @@ def result_line(text: str, is_error: bool) -> str:
         bits.append("**warnings:** " + "; ".join(j["warnings"])[:300])
     if j.get("underconstrained_sketches"):
         bits.append("underconstrained: " + ", ".join(j["underconstrained_sketches"]))
+    if any(n.startswith("sizes changed") for n in j.get("notes", [])):
+        bits.append("note: " + next(n for n in j["notes"] if n.startswith("sizes changed"))[:300])
     if j.get("change"):
         v = j["change"].get("volume_mm3")
         b = j["change"].get("bbox_size_mm")
@@ -81,6 +83,11 @@ def render(run: Path) -> str:
                   f"{mm['ops_rejected']} rejected · {mm['output_tokens']} output tokens · ${mm['cost_usd']:.2f} · {mm['model']}", ""]
         if c["problems"]:
             lines += ["**Check problems:** " + "; ".join(c["problems"]), ""]
+        for f in m.get("followups", []):
+            fm, fc = f["metrics"], f["check"]
+            lines += [f"**Follow-up {f['n']}:** {f['prompt']} → {'pass' if fc['pass'] else 'FAIL'} · {fm['wall_s']:.0f} s · "
+                      f"{fm['n_tool_calls']} tool calls, {fm['ops_rejected']} rejected · ${fm['cost_usd']:.2f}"
+                      + (f" · problems: {'; '.join(fc['problems'])}" if fc["problems"] else ""), ""]
     calls = {}
     for e in ev:
         t = f"`{e.get('rel_s', 0):6.1f}s`"
@@ -99,6 +106,8 @@ def render(run: Path) -> str:
                 lines.append(f"{t} **{e['name']}** {json.dumps(inp)[:200]}")
         elif k == "tool_result":
             lines += [f"{t} → {result_line(e.get('text', ''), e.get('is_error', False))}", ""]
+        elif k == "followup":
+            lines += [f"## Follow-up {e['n']}: {e['prompt']}", ""]
     return "\n".join(lines) + "\n"
 
 

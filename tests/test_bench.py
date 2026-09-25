@@ -102,3 +102,12 @@ def test_plate_conversation_checks_are_achievable(tmp_path):
                             runner_cls=lambda ws, **kw: ScriptedRunner(ws, script, **kw)))
     assert r["check"]["pass"], r["check"]
     assert [f["check"]["pass"] for f in r["followups"]] == [True, True], r["followups"]
+
+
+def test_trace_shows_followups(tmp_path):
+    from vibecad.trace import render
+
+    _run(tmp_path, SCRIPT)
+    md = render(tmp_path)
+    assert "## Follow-up 1: Make it 20 mm long." in md
+    assert "**Follow-up 2:** Add a 0.5 mm chamfer" in md and "→ pass" in md
