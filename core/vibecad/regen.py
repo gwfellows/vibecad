@@ -105,7 +105,7 @@ class Regenerator:
             ctx.warnings = []
             try:
                 info = BUILDERS[feat.type](ctx, feat) or {}
-                res = FeatureResult(feat.id, feat.type, "ok", info=info, warnings=list(ctx.warnings))
+                res = FeatureResult(feat.id, feat.type, "ok", info=info, warnings=_collapse(ctx.warnings))
             except EXPECTED as ex:
                 res = FeatureResult(feat.id, feat.type, "error", message=str(ex))
             except Exception as ex:  # kernel failures and bugs: report, keep going
@@ -123,6 +123,14 @@ class Regenerator:
                 self._cache[key] = (ctx.body, dict(ctx.sketches), dict(ctx.tools), res)
             results.append(res)
         return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0)
+
+
+def _collapse(warnings: list[str]) -> list[str]:
+    """One line per distinct warning (a pattern repeats its tool's warning for every copy)."""
+    counts: dict[str, int] = {}
+    for w in warnings:
+        counts[w] = counts.get(w, 0) + 1
+    return [w if n == 1 else f"{w} (x{n})" for w, n in counts.items()]
 
 
 def _strings(obj):

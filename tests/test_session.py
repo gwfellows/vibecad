@@ -213,3 +213,26 @@ def test_point_id_as_coordinate_gets_hint(lb):
     r = lb.apply([{"op": "add_feature", "feature": {"id": "sk2", "type": "sketch", "plane": {"datum": "XY"},
                    "entities": [{"id": "a", "type": "line", "p1": "pt1", "p2": "pt2"}]}}], "bad")
     assert "not point ids" in r["error"]
+
+
+def test_cut_off_the_part_says_position_not_direction(lb):
+    r = lb.apply([{"op": "set_param", "name": "hole_z", "value": "56 mm"}], "holes above the wall")
+    w = next(x for x in r["warnings"] if x.startswith("hole_cut"))
+    assert "outside the body" in w and "need 'reverse'" not in w
+
+
+def test_cut_that_splits_the_part_warns(tmp_path):
+    p = tmp_path / "hs.vcad.json"
+    shutil.copy(EX / "hex_standoff.vcad.json", p)
+    s = Session(p)
+    r = s.apply([{"op": "set_param", "name": "af", "value": "3.3 mm"}], "flats narrower than the bore")
+    assert any("split the body into 6 separate solids" in w for w in r["warnings"]), r.get("warnings")
+
+
+def test_pattern_copies_share_one_warning_line(tmp_path):
+    p = tmp_path / "sp.vcad.json"
+    shutil.copy(EX / "spacer_plate.vcad.json", p)
+    s = Session(p)
+    r = s.apply([{"op": "set_param", "name": "pcd", "value": "200 mm"}], "bolt circle off the plate")
+    pattern = [w for w in r["warnings"] if w.startswith("bolt_pattern")]
+    assert len(pattern) == 1 and pattern[0].endswith("(x5)"), pattern

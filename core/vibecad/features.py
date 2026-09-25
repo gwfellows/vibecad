@@ -150,7 +150,19 @@ def _side_labels(gen, tool, faces, solved: SolvedSketch, frame: Frame, fid: str,
     return pairs
 
 
-def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str) -> None:
+def _n_solids(shape) -> int:
+    return len(bd.Shape.cast(shape).solids())
+
+
+def _overlaps(body, tool) -> bool:
+    op = BRepAlgoAPI_Common(body, tool)
+    op.Build()
+    return op.IsDone() and bd.Shape.cast(op.Shape()).volume > 1e-9
+
+
+def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str, reversed_tool=None) -> None:
+    """`reversed_tool`: builds the same tool extruded the other way, to tell a wrong direction from a wrong
+    position when a cut removes nothing."""
     body = ctx.body
     if body.shape is None or mode == "new":
         if mode in ("cut", "intersect"):
@@ -176,9 +188,22 @@ def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str) -> 
         raise FeatureError(f"{mode} left an empty body")
     v0, v1 = bd.Shape.cast(body.shape).volume, bd.Shape.cast(merged).volume
     if abs(v1 - v0) <= 1e-7 * max(v0, 1.0):
-        hint = " Check its direction: a face sketch's normal points out of the solid, so cuts into it need 'reverse'." \
-            if mode == "cut" else ""
+        if mode == "cut" and reversed_tool is not None:
+            if _overlaps(body.shape, reversed_tool()):
+                hint = (" It would cut if extruded the other way: a face sketch's normal points out of the solid, "
+                        "so cuts into it need 'reverse'.")
+            else:
+                hint = (" It would not cut in the other direction either: the profile lies outside the body. Check "
+                        "the sketch position and sizes (e.g. holes placed beyond the edge of the part).")
+        elif mode == "add":
+            hint = " The tool lies entirely inside the body."
+        else:
+            hint = ""
         ctx.warnings.append(f"{mode} changed no volume (the tool does not overlap the body as intended).{hint}")
+    n0, n1 = _n_solids(body.shape), _n_solids(merged)
+    if mode == "cut" and n1 > n0:
+        ctx.warnings.append(f"cut split the body into {n1} separate solids (it had {n0}); a cut wider than the "
+                            "material around it leaves disconnected pieces. Check the cut's size against the part.")
     ctx.body = Body(merged, pairs)
 
 
@@ -207,7 +232,11 @@ def do_extrude(ctx: Ctx, f: S.Extrude) -> dict:
     labels += [(x, Label(f.id, "end")) for x in list_faces(prism.LastShape())]
     labels += _side_labels(prism, tool, faces, solved, frame, f.id, labels)
     ctx.tools[f.id] = Tool(tool, labels, f.mode)
-    _combine(ctx, f.id, tool, labels, f.mode)
+
+    def reversed_tool():
+        return BRepPrimAPI_MakePrism(src, _vec(vec * -1)).Shape()
+
+    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool if f.direction != "symmetric" else None)
     return {"length": round(d, 6)}
 
 
