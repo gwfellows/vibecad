@@ -80,3 +80,43 @@ def test_undo_restores_exact_document_after_every_op_kind(lb):
     assert lb.doc == original
     assert lb.path.read_text() == dump_doc(original)
     assert lb.result.part.volume == pytest.approx(Session(lb.path).result.part.volume)
+
+
+@pytest.fixture
+def standoff(tmp_path):
+    p = tmp_path / "hs.vcad.json"
+    shutil.copy(EX / "hex_standoff.vcad.json", p)
+    return Session(p)
+
+
+def test_size_change_points_at_texts_that_quote_numbers(standoff):
+    r = standoff.apply([{"op": "set_param", "name": "bore_d", "value": "4.5 mm"}], "M4")
+    note = next(n for n in r.get("notes", []) if n.startswith("sizes changed"))
+    assert "bore_d 3.4 -> 4.5" in note and "bore_sk ('M3 clearance bore" in note and "design_notes" in note
+    assert "base_sk" not in note  # its intent doesn't use bore_d
+
+
+def test_no_stale_text_note_when_the_batch_rewrites_it(standoff):
+    r = standoff.apply([{"op": "set_param", "name": "bore_d", "value": "4.5 mm"},
+                        {"op": "update_feature", "id": "bore_sk", "set": {"intent": "M4 clearance bore"}},
+                        {"op": "set_meta", "set": {"design_notes": "Hex standoff, M4 clearance bore."}}], "M4")
+    assert not any(n.startswith("sizes changed") for n in r.get("notes", [])), r.get("notes")
+
+
+def test_no_stale_text_note_for_unrelated_param(standoff):
+    r = standoff.apply([{"op": "set_meta", "set": {"design_notes": "Hex standoff."}},
+                        {"op": "set_param", "name": "length", "value": "12 mm"}], "longer")
+    assert not any(n.startswith("sizes changed") for n in r.get("notes", [])), r.get("notes")
+
+
+def test_tool_errors_name_the_problem(tmp_path):
+    from vibecad.workspace import ToolError, Workspace
+
+    shutil.copy(EX / "l_bracket.vcad.json", tmp_path / "lb.vcad.json")
+    ws = Workspace(tmp_path)
+    ws.open_part("lb.vcad.json")
+    with pytest.raises(ToolError, match="built sketches"):
+        ws.to_world("nope", 0, 0)
+    with pytest.raises(ToolError, match="no part file"):
+        ws.check_fit(["missing.vcad.json"])
+    assert ws.to_world("base_sketch", 1, 2) == [1, 2, 0]

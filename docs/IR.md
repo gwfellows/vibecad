@@ -121,4 +121,4 @@ Positions are measured from the sketch origin and accept expressions. Omit `cent
 
 `set_dimension` on a dimension whose value is a bare param name changes that param, so every other use of it stays consistent.
 
-The report after each batch has `ok`, `errors`, `warnings` (such as an add or cut that changed no volume), `underconstrained_sketches`, `notes`, and `change` (volume and bbox before → after). `ok` is false if there are errors or warnings.
+The report after each batch has `ok`, `errors`, `warnings` (such as an add or cut that changed no volume), `underconstrained_sketches`, `notes`, and `change` (volume and bbox before → after). `ok` is false if there are errors or warnings. When a batch changes param values, `notes` lists the intents (and design notes) that quote numbers and depend on those params, so they can be updated in the next batch.

@@ -6,14 +6,16 @@ part file and appended to `<part>.history.jsonl` with its author and message.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
 
 from . import schema as S
 from .cli import tree_text
+from .expr import names_in
 from .ops import OpError, apply_ops, touched_features
-from .regen import Regenerator, RegenResult
+from .regen import Regenerator, RegenResult, _strings
 
 
 def dump_doc(doc: S.Document) -> str:
@@ -97,7 +99,29 @@ class Session:
         self._absorb_solved()
         self._save()
         self._log({"author": author, "message": message, "ops": ops})
+        notes += self._stale_text_notes(before.env, self.result.env, ops)
         return self._report(before, notes, applied=len(ops))
+
+    def _stale_text_notes(self, old: dict, new: dict, ops: list[dict]) -> list[str]:
+        """After param values change, point at intents and notes that quote sizes and may now be wrong."""
+        changed = {k for k in old.keys() & new.keys() if abs(old[k] - new[k]) > 1e-12}
+        if not changed:
+            return []
+        rewritten = {o.get("id") for o in ops if o.get("op") == "update_feature" and "intent" in o.get("set", {})}
+        suspects = []
+        for f in self.doc.features:
+            if not f.intent or not re.search(r"\d", f.intent) or f.id in rewritten:
+                continue
+            used = set().union(*[names_in(s) for s in _strings(f.model_dump(mode="json"))])
+            if used & changed:
+                suspects.append(f"{f.id} ({f.intent!r})")
+        if self.doc.design_notes and re.search(r"\d", self.doc.design_notes) and not any(
+                o.get("op") == "set_meta" and "design_notes" in o.get("set", {}) for o in ops):
+            suspects.append("design_notes")
+        if not suspects:
+            return []
+        what = ", ".join(f"{k} {old[k]:g} -> {new[k]:g}" for k in sorted(changed))
+        return [f"sizes changed ({what}); these texts quote numbers and may be out of date: {'; '.join(suspects)}"]
 
     def undo(self) -> dict:
         if not self.undo_stack:

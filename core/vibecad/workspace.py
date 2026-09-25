@@ -148,14 +148,18 @@ class Workspace:
 
         return "\n".join(available(self.session().result.body, feature_id))
 
+    def _frame(self, sketch_id: str):
+        sketches = self.session().result.sketches
+        if sketch_id not in sketches:
+            raise ToolError(f"sketch {sketch_id!r} has not been built; built sketches: {sorted(sketches)}")
+        return sketches[sketch_id][1]
+
     def to_world(self, sketch_id: str, u: float, v: float) -> list[float]:
-        _, frame = self.session().result.sketches[sketch_id]
-        p = frame.to_world(u, v)
+        p = self._frame(sketch_id).to_world(u, v)
         return [round(p.X, 6), round(p.Y, 6), round(p.Z, 6)]
 
     def to_sketch(self, sketch_id: str, x: float, y: float, z: float) -> list[float]:
-        _, frame = self.session().result.sketches[sketch_id]
-        return [round(c, 6) for c in frame.to_local((x, y, z))]
+        return [round(c, 6) for c in self._frame(sketch_id).to_local((x, y, z))]
 
     def measure(self) -> str:
         s = self.session().result.summary()
@@ -173,6 +177,8 @@ class Workspace:
         out = {}
         for p in other_paths:
             key = str(self._path(p))
+            if key not in self.sessions and not Path(key).exists():
+                raise ToolError(f"no part file {p!r} (paths are relative to {self.root})")
             other = self.sessions[key].result.part if key in self.sessions else Regenerator().run(load(key)).part
             if other is None:
                 out[p] = "no solid"
