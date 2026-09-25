@@ -115,6 +115,36 @@ const pixelDiff = (page, a, b) => page.evaluate(async ([a, b]) => {
   check("as a face reference", faceReply.includes('plate.end = {"feature": "plate", "role": "end"}'), faceReply.slice(0, 400));
   check("user message names the face", (await page.$$eval("#log .msg.user .sel", (l) => l.at(-1).textContent)).includes("face plate.end"));
 
+  // ⌖ Reference: click the button, then a face or edge; it lands in the message as a chip at the caret
+  await page.click("#prompt");
+  await page.keyboard.type("Round ");
+  await page.click("#refBtn");
+  check("reference mode shows a hint", await page.isVisible("#refHint"));
+  const [ex, ey] = await page.evaluate(() => window.vibecadView.toScreen(10, -20, 4));
+  await page.mouse.click(ex, ey);
+  await page.waitForFunction(() => document.querySelectorAll("#prompt .ref").length === 1, null, { timeout: 5000 }).catch(() => {});
+  check("clicking an edge inserts an edge chip", (await page.$$eval("#prompt .ref.edge", (l) => l.map((x) => x.textContent))).length === 1,
+    await page.innerHTML("#prompt"));
+  check("reference mode ends after one pick", !(await page.isVisible("#refHint")));
+  await page.keyboard.type("where it meets ");
+  await page.click("#refBtn");
+  await page.mouse.click(fx, fy);
+  await page.waitForTimeout(300);
+  await page.keyboard.type("(echo)");
+  const chipsBefore = await page.$$eval("#prompt .ref", (l) => l.map((x) => x.textContent));
+  check("face chip after the typed text", chipsBefore.length === 2 && chipsBefore[1] === "plate.end", JSON.stringify(chipsBefore));
+  await shot("4_refs_typed");
+  await page.press("#prompt", "Enter");
+  await page.waitForFunction(() => document.querySelector("#metrics").textContent.includes("last run"), null, { timeout: 60000 });
+  await page.waitForTimeout(600);
+  const refReply = await page.$$eval("#log .msg.agent", (l) => l.at(-1).textContent);
+  check("agent gets an EdgeRef for the edge chip", /@edge:\S+ = the edge between .*EdgeRef \{"between"/.test(refReply), refReply.slice(0, 500));
+  check("and a FaceRef for the face chip", refReply.includes('@face:plate.end = the face plate.end at (20.00, 10.00, 4.00); FaceRef {"feature": "plate", "role": "end"'), refReply.slice(0, 600));
+  const userMsg = await page.$$eval("#log .msg.user", (l) => l.at(-1).innerHTML);
+  check("user message shows the references as chips", (userMsg.match(/class="ref /g) || []).length === 2, userMsg.slice(0, 300));
+  check("prompt box cleared", (await page.$$eval("#prompt .ref", (l) => l.length)) === 0);
+  await shot("4_refs_sent");
+
   // reload mid-conversation: transcript is replayed
   await page.reload();
   await page.waitForSelector("#conn.live", { timeout: 15000 });

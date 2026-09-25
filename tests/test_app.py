@@ -158,3 +158,20 @@ def test_every_edge_of_the_examples_gets_a_verified_ref(tmp_path):
             r = a.edge_ref(i)
             hits = resolve_edges(body, S.EdgeRef.model_validate(r["ref"]))
             assert len(hits) == 1 and hits[0].IsSame(e), (part, i, r)
+
+
+def test_refs_context_maps_each_token_to_a_ref(tmp_path):
+    from vibecad.app import refs_context
+
+    a = _app(tmp_path)
+    s = refs_context([
+        {"token": "@face:base.end", "kind": "face", "label": "base.end", "ref": {"feature": "base", "role": "end"}, "point": [1, 2, 3]},
+        {"token": "@edge:base.end|wall.start", "kind": "edge", "label": "base.end | wall.start",
+         "ref": {"between": [{"feature": "base", "role": "end"}, {"feature": "wall", "role": "start"}]}},
+        {"token": "@sketch:slot_sketch/slot_left", "kind": "sketch", "sketch": "slot_sketch", "key": "slot_left"},
+    ], a.ws.session().doc)
+    assert '@face:base.end = the face base.end at (1.00, 2.00, 3.00); FaceRef {"feature": "base", "role": "end"}' in s
+    assert "@edge:base.end|wall.start = the edge between base.end and wall.start; EdgeRef {\"between\"" in s
+    assert "@sketch:slot_sketch/slot_left = slot_left in sketch `slot_sketch`" in s
+    assert "[In sketch `slot_sketch` the user selected: slot_left." in s
+    assert refs_context([], None) == ""

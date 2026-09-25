@@ -248,7 +248,7 @@ async function renderDetails() {
     }
     if (Object.keys(set).length) edit([{ op: "update_feature", id: selected, set }], `edit ${selected} in GUI`);
   };
-  d.querySelector("#askAbout").onclick = () => { $("#prompt").focus(); $("#prompt").placeholder = `Ask about or change ${selected}…`; };
+  d.querySelector("#askAbout").onclick = () => { $("#prompt").focus(); $("#prompt").dataset.placeholder = `Ask about or change ${selected}…`; };
 }
 
 function select(id) {
@@ -481,6 +481,7 @@ let downAt = null;
 renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.clientX, ev.clientY]));
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
+  if (refPick) return void refFromView(ev);
   const eh = edgeHit(ev);
   if (eh) return pickEdge(eh.object.userData.i, ev.shiftKey);
   if (!ev.shiftKey) pickedEdges = [];
@@ -523,7 +524,7 @@ const SK = createSketchEditor({
   },
   hint: (t) => { $("#sketchHint").textContent = t; },
   ask: (q, def) => prompt(q, def),
-  onChange: () => sketchBarUpdate(),
+  onChange: () => { sketchBarUpdate(); if (refPick && SK.selection().length) refSketchSelection(); },
   onLost: () => exitSketch(),
 });
 const inSketch = () => !!SK.active();
@@ -615,7 +616,7 @@ function ghostPart(on) {
 })();
 function askAboutSketch() {
   const sel = SK.selection();
-  $("#prompt").placeholder = sel.length ? `Ask about or change ${sel.join(", ")} in ${SK.active()}…` : `Ask about or change sketch ${SK.active()}…`;
+  $("#prompt").dataset.placeholder = sel.length ? `Ask about or change ${sel.join(", ")} in ${SK.active()}…` : `Ask about or change sketch ${SK.active()}…`;
   $("#prompt").focus();
 }
 const HINTS = {
@@ -836,7 +837,8 @@ function addUser(text, sel, scope, entities, face, marks) {
   d.className = "msg user";
   const what = (sel ? esc(sel) + (entities?.length ? `: ${esc(entities.join(", "))}` : "") : "")
     + (face ? `${sel ? " · " : ""}face ${esc(face)}` : "") + (marks ? ` · ${marks} mark${marks > 1 ? "s" : ""}` : "");
-  d.innerHTML = esc(text) + (what ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "");
+  const chips = esc(text).replace(/@(face|edge|sketch):(\S+)/g, (_, k, v) => `<span class="ref ${k}" title="@${k}:${v}">${k === "edge" ? v.replace("|", " | ") : v}</span>`);
+  d.innerHTML = chips + (what ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "");
   add(d);
 }
 function addAgent(text) { const d = document.createElement("div"); d.className = "msg agent"; d.innerHTML = md(text); add(d); }
@@ -920,16 +922,112 @@ function showMetrics(m) {
 // ── inputs ────────────────────────────────────────────────────────
 $("#promptForm").onsubmit = (ev) => {
   ev.preventDefault();
-  const text = $("#prompt").value.trim();
+  const { text, refs } = promptContent();
   if (!text || busy) return;
   const entities = inSketch() && SK.selection().length ? SK.selection() : null;
   const marks = inSketch() && SK.marks().length ? SK.marks() : null;
   const face = !inSketch() && lastPicked() ? { labels: lastPicked().labels, point: lastPicked().point } : null;
-  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities, marks, face });
+  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities, marks, face, refs: refs.length ? refs : null });
   if (marks) SK.clearMarks();
-  $("#prompt").value = "";
+  $("#prompt").innerHTML = "";
 };
 $("#prompt").onkeydown = (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("#promptForm").requestSubmit(); } };
+$("#prompt").onpaste = (ev) => {  // plain text only: pasted markup would become part of the message
+  ev.preventDefault();
+  document.execCommand("insertText", false, ev.clipboardData.getData("text/plain"));
+};
+
+// ── references in the message: ⌖ Reference, then click a face / edge (or sketch entity) → a chip in the text ──
+const refData = new Map();  // chip id -> {token, kind, label, ref, point, sketch, key}
+let refSeq = 0, refPick = false, promptRange = null;
+function promptContent() {  // the message text with each chip as its @token, and the references it contains
+  const refs = [];
+  const walk = (n) => {
+    if (n.nodeType === 3) return n.textContent;
+    if (n.classList?.contains("ref")) {
+      const r = refData.get(n.dataset.rid);
+      if (!r) return n.textContent;
+      if (!refs.includes(r)) refs.push(r);
+      return r.token;
+    }
+    if (n.nodeName === "BR") return "\n";
+    const inner = [...n.childNodes].map(walk).join("");
+    return n !== $("#prompt") && n.nodeName === "DIV" ? "\n" + inner : inner;
+  };
+  return { text: walk($("#prompt")).replace(/\u00a0/g, " ").trim(), refs };
+}
+function saveCaret() {
+  const s = window.getSelection();
+  if (s.rangeCount && $("#prompt").contains(s.getRangeAt(0).startContainer)) promptRange = s.getRangeAt(0).cloneRange();
+}
+document.addEventListener("selectionchange", saveCaret);
+function insertRef(r) {
+  const id = String(++refSeq);
+  refData.set(id, r);
+  const chip = Object.assign(document.createElement("span"), { className: `ref ${r.kind}`, contentEditable: "false", textContent: r.short || r.label });
+  chip.dataset.rid = id;
+  chip.title = r.token;
+  const box = $("#prompt");
+  let range = promptRange && box.contains(promptRange.startContainer) ? promptRange : null;
+  if (!range) { range = document.createRange(); range.selectNodeContents(box); range.collapse(false); }
+  const space = document.createTextNode("\u00a0");
+  range.deleteContents();
+  range.insertNode(space);
+  range.insertNode(chip);
+  const after = document.createRange();
+  after.setStartAfter(space); after.collapse(true);
+  promptRange = after.cloneRange();
+  const caret = () => { box.focus(); const s = window.getSelection(); s.removeAllRanges(); s.addRange(promptRange); };
+  caret();
+  setTimeout(caret, 0);  // a pick made on pointerdown: the click's own focus change comes after, so restore the caret then
+}
+function startRefPick() {
+  if (!S) return note("Open a part first.", "err");
+  if (inSketch() && SK.selection().length) return refSketchSelection();  // already selected in the sketch: use that
+  if (inSketch() && SK.tool() !== "select") SK.setTool("select");
+  refPick = true;
+  document.body.classList.add("refpick");
+  $("#refBtn").classList.add("on");
+  $("#refHint").textContent = inSketch() ? "Click a sketch entity or dimension to reference it · Esc cancels"
+    : "Click a face or edge to reference it · Esc cancels";
+  $("#refHint").hidden = false;
+}
+function endRefPick() {
+  refPick = false;
+  document.body.classList.remove("refpick");
+  $("#refBtn").classList.remove("on");
+  $("#refHint").hidden = true;
+}
+function refSketchSelection() {
+  const sid = SK.active(), d = SK.data();
+  for (const key of SK.selection()) {
+    const c = key.startsWith("#") ? d?.constraints?.find((x) => `#${x.index}` === key) : null;
+    const label = c ? (c.name || `${c.type} ${key}`) : key;
+    insertRef({ token: `@sketch:${sid}/${c?.name || key}`, kind: "sketch", label, short: label, sketch: sid, key });
+  }
+  endRefPick();
+}
+$("#refBtn").onpointerdown = (ev) => ev.preventDefault();  // keep the caret in the message
+$("#refBtn").onclick = () => (refPick ? endRefPick() : startRefPick());
+document.addEventListener("keydown", (ev) => { if (refPick && ev.key === "Escape") { ev.stopPropagation(); endRefPick(); } }, true);
+async function refFromView(ev) {  // a click in the 3D view while picking a reference
+  const eh = edgeHit(ev);
+  if (eh) {
+    try {
+      const r = await api(`/api/edge/${eh.object.userData.i}`);
+      const [a, b] = r.label.split(" | ");
+      insertRef({ token: `@edge:${a}|${b}`, kind: "edge", label: r.label, short: `${a} | ${b}`, ref: r.ref, point: r.point });
+    } catch (e) { note(`That edge can't be referenced: ${e.message}`, "err"); }
+    return endRefPick();
+  }
+  const hit = pickHit(ev);
+  if (!hit) return;  // missed: stay in pick mode
+  const label = hit.object.userData.labels[0], point = hit.point.toArray();
+  const ref = faceRef(label, point);
+  if (!ref) { note(`can't make a face reference from ${label}`, "err"); return endRefPick(); }
+  insertRef({ token: `@face:${label}`, kind: "face", label, ref, point: point.map((v) => +v.toFixed(3)) });
+  endRefPick();
+}
 $("#stopBtn").onclick = () => send({ type: "stop" });
 $("#resetBtn").onclick = () => send({ type: "reset" });
 $("#model").onchange = (ev) => send({ type: "config", model: ev.target.value });
@@ -951,7 +1049,7 @@ $("#newBtn").onclick = async () => {
   loadParts();
 };
 document.addEventListener("keydown", (ev) => {
-  if (ev.target.matches("input, textarea")) return;
+  if (ev.target.matches("input, textarea, [contenteditable=true]")) return;
   if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }
   if (ev.key === "Escape" && inSketch()) { $("#exitSketch").click(); return; }
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); api(ev.shiftKey ? "/api/redo" : "/api/undo", {}); }

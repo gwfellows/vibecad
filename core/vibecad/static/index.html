@@ -41,6 +41,7 @@
 
   <section id="center">
     <div id="viewer"></div>
+    <div id="refHint" hidden>Click a face or edge to reference it · Esc cancels</div>
     <div class="vtools left">
       <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
       <button data-view="top">Top</button><button data-view="right">Right</button>
@@ -85,8 +86,10 @@
     <div id="metrics" class="metrics"></div>
     <div id="log"></div>
     <form id="promptForm">
-      <textarea id="prompt" rows="3" placeholder="Describe a part, or a change to the open part. Enter to send, Shift+Enter for a new line."></textarea>
+      <div id="prompt" contenteditable="true" role="textbox" aria-multiline="true"
+        data-placeholder="Describe a part, or a change to the open part. Enter to send, Shift+Enter for a new line. ⌖ Reference puts a face, edge or sketch entity into the message."></div>
       <div class="row">
+        <button type="button" id="refBtn" class="refbtn" title="Reference: click this, then click a face or edge in the view (or a sketch entity) to put it into your message">⌖ Reference</button>
         <label class="small"><input type="checkbox" id="scope"> Limit edits to the selected feature</label>
         <span class="grow"></span>
         <button type="button" id="stopBtn" disabled>Stop</button>

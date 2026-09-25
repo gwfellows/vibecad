@@ -11,6 +11,8 @@ const near = (a, b, tol = 1e-3) => a && b && Math.abs(a[0] - b[0]) < tol && Math
 (async () => {
   const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  const wsLog = [];
+  page.on("websocket", (ws) => { ws.on("framereceived", (f) => wsLog.push(String(f.payload).slice(0, 160))); ws.on("framesent", (f) => wsLog.push("SENT " + String(f.payload).slice(0, 300))); });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
   if (THREE) await page.route("https://cdn.jsdelivr.net/npm/three@0.170.0/**", (route) =>
@@ -206,6 +208,25 @@ const near = (a, b, tol = 1e-3) => a && b && Math.abs(a[0] - b[0]) < tol && Math
   check("with the geometry it passes near", /passes near rect1_top/.test(markReply), markReply.slice(0, 400));
   check("marks cleared once sent", (await SK((sk) => sk.marks().length)) === 0);
   check("marks never reach the part", !JSON.stringify(await page.evaluate(() => fetch("/api/feature/sk").then((r) => r.json()))).includes("mark"));
+  // ⌖ Reference in a sketch: the next entity clicked goes into the message as a chip
+  await page.evaluate(() => document.activeElement.blur());
+  await SK((sk) => sk.select([]));
+  check("selection cleared", (await SK((sk) => sk.selection())).length === 0);
+  await page.click("#prompt");
+  await page.keyboard.type("Why can't I move ");
+  await page.click("#refBtn");
+  check("sketch reference hint", (await page.textContent("#refHint")).includes("sketch entity"));
+  await click(20, 20);
+  await page.waitForTimeout(300);
+  check("clicked entity becomes a chip", JSON.stringify(await page.$$eval("#prompt .ref.sketch", (l) => l.map((x) => x.textContent))) === '["rect1_top"]',
+    await page.innerHTML("#prompt"));
+  await page.keyboard.type("? (echo)");
+  const nBefore = await page.$$eval("#log .msg.agent", (l) => l.length);
+  await page.press("#prompt", "Enter");
+  await page.waitForFunction((n) => document.querySelectorAll("#log .msg.agent").length > n, nBefore, { timeout: 30000 })
+    .catch(async () => console.log("DEBUG", wsLog.slice(-12).join("\n"), nBefore, await page.innerHTML("#prompt"), (await page.$$eval("#log > *", (l) => l.slice(-3).map((x) => x.outerHTML.slice(0, 300)))).join("\n")));
+  const skRef = await page.$$eval("#log .msg.agent", (l) => l.at(-1).textContent);
+  check("agent gets the sketch reference", skRef.includes("@sketch:sk/rect1_top = rect1_top in sketch sk"), skRef.slice(0, 400));
   await page.evaluate(() => document.activeElement.blur());
   await page.keyboard.press("Escape");
 

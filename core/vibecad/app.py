@@ -350,7 +350,7 @@ class App:
         self.publish({"type": "conversation_reset"})
 
     async def prompt(self, text: str, selection: str | None, scope: bool, entities: list[str] | None = None,
-                     face: dict | None = None, marks: list | None = None) -> None:
+                     face: dict | None = None, marks: list | None = None, refs: list | None = None) -> None:
         if self.run_task and not self.run_task.done():
             self.publish({"type": "error", "message": "the agent is still working; stop it or wait"})
             return
@@ -375,6 +375,8 @@ class App:
                 prefix += f"[Edits are limited to `{selection}` and features that depend on it: {sorted(deps) or 'none'}.]\n"
         if face and face.get("labels") and self.ws.active:
             prefix += face_context(face)
+        if refs and self.ws.active:
+            prefix += refs_context(refs, self.ws.session().doc)
         self.publish({"type": "user_prompt", "text": text, "selection": selection, "scope": scope,
                       "entities": entities or None, "face": (face or {}).get("labels", [None])[0],
                       "marks": len(marks) if marks else None})
@@ -465,6 +467,33 @@ def face_context(face: dict) -> str:
     at = face.get("point")
     where = f" at ({at[0]:.2f}, {at[1]:.2f}, {at[2]:.2f})" if at and len(at) == 3 else ""
     return f"[The user clicked a face in the 3D view{where}: {'; '.join(refs) or ', '.join(face['labels'])}.]\n"
+
+
+def refs_context(refs: list[dict], doc=None) -> str:
+    """References the user embedded in the message (chips like @face:base.end): what each token names,
+    with the FaceRef / EdgeRef to use for it. Sketch entities get their touching constraints."""
+    lines, sketches = [], {}
+    for r in refs[:20]:
+        tok, kind, at = r.get("token", "?"), r.get("kind"), r.get("point")
+        where = f" at ({at[0]:.2f}, {at[1]:.2f}, {at[2]:.2f})" if at and len(at) == 3 else ""
+        if kind == "face" and r.get("ref"):
+            lines.append(f"{tok} = the face {r.get('label')}{where}; FaceRef {json.dumps(r['ref'])}")
+        elif kind == "edge" and r.get("ref"):
+            lines.append(f"{tok} = the edge between {' and '.join(str(r.get('label', '')).split(' | '))}{where}; "
+                         f"EdgeRef {json.dumps(r['ref'])}")
+        elif kind == "sketch" and r.get("sketch") and r.get("key"):
+            sketches.setdefault(r["sketch"], []).append(r["key"])
+            lines.append(f"{tok} = {'constraint ' if r['key'].startswith('#') else ''}{r['key']} in sketch `{r['sketch']}`")
+    out = "[The user's message references geometry they clicked (each @token in the text): " + "; ".join(lines) + ".]\n" if lines else ""
+    for sid, keys in sketches.items():
+        try:
+            f = doc.feature(sid) if doc is not None else None
+        except Exception:
+            f = None
+        ents = [k for k in keys if not k.startswith("#")]
+        if f is not None and f.type == "sketch" and ents:
+            out += sketch_selection_context(f, ents)
+    return out
 
 
 def dependents(doc, fid: str) -> set[str]:
@@ -619,7 +648,7 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
                 msg = json.loads(await sock.receive_text())
                 if msg["type"] == "prompt":
                     await A.prompt(msg["text"], msg.get("selection"), bool(msg.get("scope")), msg.get("entities"),
-                                   msg.get("face"), msg.get("marks"))
+                                   msg.get("face"), msg.get("marks"), msg.get("refs"))
                 elif msg["type"] == "stop" and A.runner:
                     await A.runner.interrupt()
                 elif msg["type"] == "reset":
