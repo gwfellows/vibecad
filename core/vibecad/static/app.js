@@ -283,9 +283,11 @@ $("#projBtn").onclick = () => {
   resize();
 };
 
+let pendingFit = false;  // a new part is empty when first shown: fit once its first solid arrives
 async function loadMesh(fit) {
   if (!S) return;
   if (!fit && meshRev === S.rev) return;
+  fit = fit || pendingFit;
   const m = await api("/api/mesh");
   meshRev = m.rev;
   partGroup.clear();
@@ -310,7 +312,7 @@ async function loadMesh(fit) {
   partGroup.add(edgeLines);
   colorFaces();
   if (sketchMode) ghostPart(true);
-  if (fit) fitView("iso");
+  if (fit) pendingFit = !fitView("iso");
 }
 
 function colorFaces() {
@@ -327,13 +329,14 @@ function frame(center, radius, dir, up) {
   if (camera === ortho) { ortho.zoom = 1; setOrthoFrustum(); } else camera.updateProjectionMatrix();
   controls.update();
 }
-function fitView(dir) {
+function fitView(dir) {  // false if there is nothing to fit yet
   const box = new THREE.Box3().setFromObject(partGroup);
-  if (box.isEmpty()) return;
+  if (box.isEmpty()) return false;
   const c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 || 10;
   axes.scale.setScalar(r * 0.35);
   const d = { iso: [1, -1, 0.8], front: [0, -1, 0], top: [0, 0, 1], right: [1, 0, 0] }[dir] || [1, -1, 0.8];
   frame(c, r, new THREE.Vector3(...d), dir === "top" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1));
+  return true;
 }
 document.querySelectorAll(".vtools [data-view]").forEach((b) => (b.onclick = () => { exitSketch(); fitView(b.dataset.view); }));
 $("#fitBtn").onclick = () => (sketchMode ? viewSketch() : fitView("iso"));
