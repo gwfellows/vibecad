@@ -111,6 +111,22 @@ The edit itself was one batch, no rejections: the param-driven structure made it
 
 **Benchmark: multi-turn tasks.** Tasks can now have `followups`, user edit requests sent in the same conversation after the design is built, each with checks (`volume_change` from `"@prev"` judges a turn against its starting point). Two tasks: `standoff_conversation` and `plate_conversation`. `tests/test_bench.py` drives them with a scripted stand-in for the model, including a case where an ignored request must fail.
 
+**Robustness probes (same day).** Every op kind with bad input, and every example param at ×0.6 and ×1.6 (the tests sweep only ±10%). Messages that would have misled an agent, now fixed:
+
+| Case | Before | Now |
+|---|---|---|
+| Holes moved off the part | "changed no volume … check its direction" (flipping can't help) | Tests the reversed tool: "would cut the other way" vs "the profile lies outside the body" |
+| Bore wider than a hex's flats | Six disconnected slivers, no warning | "cut split the body into 6 separate solids" |
+| Flange diameter = body diameter | `StdFail_NotDone: BRep_API: command not done` | Names the zero-length entity and the likely cause |
+| Negative width | "did not solve; conflicting: none reported" | Names the dimension that is ≤ 0 |
+| Fillet radius 0 | "try a smaller size" | "fillet radius must be > 0" |
+| `set_param` `true` / `2wide` / `sqrt` | Accepted (width = 1 mm; unreferenceable; shadowed a function and escaped the cache's dependency tracking) | Rejected with the rule |
+| `move_feature` after itself | "no feature 'base'" | "cannot move relative to itself" |
+| Pattern of 5 misplaced cuts | The same warning 5 times | One line, `(x5)` |
+| Hand-edited file with a bad param | Could not be opened (crash) | Opens; every feature shows the error; `set_param` fixes it |
+
+GUI (Playwright, `scripts/gui_smoke.sh`, 66 checks; the agent panel is driven by a scripted agent, no model): a part the agent created was never framed in the 3D view (fitted while still empty), so every new design first appeared top-down and rotated. Fixed.
+
 **Don't run `vibecad-bench` from inside a Claude Code on the web session.** The nested agent reported the parent session's id and the CLI logged "message history mutated" on it, despite `agent.py` clearing the session env vars; the account also returned a five-hour rate-limit event. Run the benchmark from a local terminal.
 
 ## Hypotheses to test next
