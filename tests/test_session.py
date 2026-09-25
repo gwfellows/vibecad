@@ -236,3 +236,12 @@ def test_pattern_copies_share_one_warning_line(tmp_path):
     r = s.apply([{"op": "set_param", "name": "pcd", "value": "200 mm"}], "bolt circle off the plate")
     pattern = [w for w in r["warnings"] if w.startswith("bolt_pattern")]
     assert len(pattern) == 1 and pattern[0].endswith("(x5)"), pattern
+
+
+def test_zero_length_entity_is_named(tmp_path):
+    p = tmp_path / "fb.vcad.json"
+    shutil.copy(EX / "flanged_bushing.vcad.json", p)
+    s = Session(p)
+    r = s.apply([{"op": "set_param", "name": "flange_d", "value": "od_d"}], "flange as wide as the body")
+    err = next(e for e in r["errors"] if e.startswith("body"))
+    assert "'sec_flange_top' has zero length" in err, err

@@ -324,6 +324,12 @@ def regions(solved: SolvedSketch) -> list[Region]:
     geo = [e for e in solved.entities.values() if not e.construction and e.type != "point"]
     if not geo:
         return []
+    for e in geo:
+        if (e.type == "line" and math.dist(e.p1, e.p2) < 1e-7) or (e.type != "line" and e.r < 1e-7):
+            size = "length" if e.type == "line" else "radius"
+            raise SketchError(f"sketch {solved.id!r}: {e.type} {e.id!r} has zero {size}. Usually two dimensions "
+                              "have become equal (e.g. a flange diameter set to the body diameter); change a "
+                              "dimension, or remove the entity")
     edges = [_edge(e) for e in geo]
     wires = list(bd.Wire.combine(edges, tol=1e-4))
     open_w = [w for w in wires if not w.is_closed]
