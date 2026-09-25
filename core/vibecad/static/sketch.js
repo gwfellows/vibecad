@@ -189,7 +189,9 @@ export function createSketchEditor(ctx) {
     let a, b;
     if (c.type === "diameter" || c.type === "radius") {
       if (!e0?.center) return null;
-      const ang = e0.type === "arc" ? (((e0.start_angle + e0.end_angle + (e0.end_angle < e0.start_angle ? 360 : 0)) / 2) * Math.PI) / 180 : Math.PI / 4;
+      // an arc's leader sits a third of the way along it, off the symmetry axis (where the sketch axes usually run)
+      const sweep = e0.type === "arc" ? (e0.end_angle - e0.start_angle + 360) % 360 || 360 : 0;
+      const ang = e0.type === "arc" ? ((e0.start_angle + sweep * 0.35) * Math.PI) / 180 : Math.PI / 4;
       const u = [Math.cos(ang), Math.sin(ang)], rim = add(e0.center, mul(u, e0.r)), out = add(e0.center, mul(u, e0.r + off * 0.8));
       if (c.type === "diameter") { const rim2 = sub(e0.center, mul(u, e0.r)); segs.push([rim2, out]); arrow(rim, u); arrow(rim2, mul(u, -1)); }
       else { segs.push([e0.center, out]); arrow(rim, u); }
