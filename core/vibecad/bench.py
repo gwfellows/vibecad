@@ -22,7 +22,18 @@ from .workspace import ROOT, Workspace
 BENCH = ROOT / "bench"
 
 
-def check_parts(workdir: Path, task: dict) -> dict:
+def part_volumes(workdir: Path) -> dict[str, float | None]:
+    out = {}
+    for p in sorted(workdir.rglob("*.vcad.json")):
+        try:
+            part = Regenerator().run(load(p)).part
+            out[p.name] = part.volume if part is not None else None
+        except Exception:
+            out[p.name] = None
+    return out
+
+
+def check_parts(workdir: Path, task: dict, prev: dict[str, float | None] | None = None) -> dict:
     parts = sorted(workdir.rglob("*.vcad.json"))
     out = {"parts": [], "pass": True, "problems": []}
     want = task.get("expect_parts")
@@ -47,15 +58,18 @@ def check_parts(workdir: Path, task: dict) -> dict:
         if errs or warns or dof or not s.get("valid"):
             out["problems"].append(f"{p.name}: errors={errs} warnings={warns} dof={dof} valid={s.get('valid')}")
     for chk in task.get("checks", []):
-        msg = _check(chk, parts, workdir)
+        msg = _check(chk, parts, workdir, prev)
         if msg:
             out["problems"].append(msg)
     out["pass"] = not out["problems"]
     return out
 
 
-def _check(chk: dict, parts: list[Path], workdir: Path) -> str | None:
-    """Task-specific checks. Returns a problem description, or None if the check passes."""
+def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | None] | None = None) -> str | None:
+    """Task-specific checks. Returns a problem description, or None if the check passes.
+
+    In a follow-up turn, `volume_change` with `"from": "@prev"` compares against the part as it was
+    before that turn."""
     import math
 
     target = workdir / chk["file"] if "file" in chk else (parts[0] if parts else None)
@@ -73,8 +87,13 @@ def _check(chk: dict, parts: list[Path], workdir: Path) -> str | None:
     if kind == "param_any":  # some param has this value (the agent may name it differently)
         ok = any(abs(v - chk["value"]) <= chk.get("tol", 0.01) for v in res.env.values())
         return None if ok else f"no param with value {chk['value']} ({chk.get('why', '')})"
-    if kind == "volume_change":  # relative to the setup file
-        base = Regenerator().run(load(ROOT / chk["from"])).part.volume
+    if kind == "volume_change":  # relative to the setup file, or to the previous turn ("@prev")
+        if chk["from"] == "@prev":
+            base = (prev or {}).get(target.name)
+            if not base:
+                return f"check volume_change: no previous volume for {target.name}"
+        else:
+            base = Regenerator().run(load(ROOT / chk["from"])).part.volume
         r = part.volume / base - 1
         ok = chk.get("min", -1e9) <= r <= chk.get("max", 1e9)
         return None if ok else f"volume change {r:+.1%} outside [{chk.get('min')}, {chk.get('max')}]"
@@ -107,7 +126,9 @@ def _check(chk: dict, parts: list[Path], workdir: Path) -> str | None:
     return f"unknown check {kind}"
 
 
-async def run_one(task: dict, variant: dict, workdir: Path) -> dict:
+async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunner) -> dict:
+    """Run a task's prompt, then each of its `followups` (user edit requests) in the same conversation,
+    checking the parts after every turn."""
     workdir.mkdir(parents=True, exist_ok=True)
     if task.get("setup_copy"):
         shutil.copy(ROOT / task["setup_copy"], workdir / Path(task["setup_copy"]).name)
@@ -130,13 +151,22 @@ async def run_one(task: dict, variant: dict, workdir: Path) -> dict:
     headless = ("This is an unattended run: nobody can answer questions. Do not ask; choose sensible values, record "
                 "assumptions in design_notes, and finish the design.")
     prompt = task["prompt"] + "\n\n" + headless if variant.get("prompt_mode") == "claude_code" else task["prompt"]
-    async with AgentRunner(ws, model=variant.get("model", "sonnet"), prompt_mode=variant.get("prompt_mode", "guide+ir"),
-                           extra_system=(variant.get("extra_system", "") + "\n\n" + headless).strip(), effort=variant.get("effort"),
-                           thinking=variant.get("thinking"),
-                           max_turns=variant.get("max_turns", 80), on_event=on_event) as r:
+    followups = []
+    async with runner_cls(ws, model=variant.get("model", "sonnet"), prompt_mode=variant.get("prompt_mode", "guide+ir"),
+                          extra_system=(variant.get("extra_system", "") + "\n\n" + headless).strip(), effort=variant.get("effort"),
+                          thinking=variant.get("thinking"),
+                          max_turns=variant.get("max_turns", 80), on_event=on_event) as r:
         m = await r.run(prompt)
+        check = check_parts(workdir, task)
+        for i, fu in enumerate(task.get("followups", []), start=1):
+            prev = part_volumes(workdir)
+            on_event({"type": "followup", "n": i, "prompt": fu["prompt"]})
+            fm = await r.run(fu["prompt"])
+            followups.append({"n": i, "prompt": fu["prompt"], "metrics": fm.summary(),
+                              "check": check_parts(workdir, {"expect_parts": task.get("expect_parts"), **fu}, prev)})
     events.close()
-    result = {"task": task["id"], "variant": variant["name"], "metrics": m.summary(), "check": check_parts(workdir, task)}
+    result = {"task": task["id"], "variant": variant["name"], "metrics": m.summary(), "check": check,
+              "followups": followups}
     (workdir / "metrics.json").write_text(json.dumps(result, indent=1))
     return result
 
@@ -145,12 +175,14 @@ def table(results: list[dict]) -> str:
     rows = ["| task | variant | pass | wall s | 1st output s | thinking s | writing tool args s | text s | tool exec s | turns | tool calls | rejected ops | renders | out tok | cost $ |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in results:
-        m, c = r["metrics"], r["check"]
-        f1 = m.get("first_output_s")
-        rows.append(f"| {r['task']} | {r['variant']} | {'yes' if c['pass'] else 'NO'} | {m['wall_s']:.0f} | "
-                    f"{f1 if f1 is None else round(f1)} | {m['thinking_s']:.0f} | {m['tool_input_s']:.0f} | {m['text_s']:.0f} | "
-                    f"{m['tool_s']:.0f} | {m['turns']} | {m['n_tool_calls']} | {m['ops_rejected']} | "
-                    f"{m['tool_counts'].get('render', 0)} | {m['output_tokens']} | {m['cost_usd']:.2f} |")
+        turns = [(r["task"], r["metrics"], r["check"])]
+        turns += [(f"{r['task']} +{f['n']}", f["metrics"], f["check"]) for f in r.get("followups", [])]
+        for name, m, c in turns:
+            f1 = m.get("first_output_s")
+            rows.append(f"| {name} | {r['variant']} | {'yes' if c['pass'] else 'NO'} | {m['wall_s']:.0f} | "
+                        f"{f1 if f1 is None else round(f1)} | {m['thinking_s']:.0f} | {m['tool_input_s']:.0f} | {m['text_s']:.0f} | "
+                        f"{m['tool_s']:.0f} | {m['turns']} | {m['n_tool_calls']} | {m['ops_rejected']} | "
+                        f"{m['tool_counts'].get('render', 0)} | {m['output_tokens']} | {m['cost_usd']:.2f} |")
     return "\n".join(rows)
 
 
@@ -177,6 +209,10 @@ def main(argv=None) -> None:
                 m = r["metrics"]
                 print(f"  {'pass' if r['check']['pass'] else 'FAIL'}  {m['wall_s']:.0f}s  {m['n_tool_calls']} tools  "
                       f"${m['cost_usd']:.2f}  {r['check']['problems'][:2]}", flush=True)
+                for f in r["followups"]:
+                    fm = f["metrics"]
+                    print(f"  +{f['n']} {'pass' if f['check']['pass'] else 'FAIL'}  {fm['wall_s']:.0f}s  "
+                          f"{fm['n_tool_calls']} tools  ${fm['cost_usd']:.2f}  {f['check']['problems'][:2]}", flush=True)
         (out / "summary.md").write_text(table([r for r in results if r["variant"] == vn]) + "\n")
     print()
     print(table(results))

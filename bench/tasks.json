@@ -1,34 +1,302 @@
 [
- {"id": "tube_corner_bracket", "level": "create-easy", "expect_parts": 1,
-  "prompt": "build a simple bracket to connect two 20x20 square tubes"},
- {"id": "tube_bracket", "level": "create-easy", "expect_parts": 1,
+ {
+  "id": "tube_corner_bracket",
+  "level": "create-easy",
+  "expect_parts": 1,
+  "prompt": "build a simple bracket to connect two 20x20 square tubes"
+ },
+ {
+  "id": "tube_bracket",
+  "level": "create-easy",
+  "expect_parts": 1,
   "prompt": "Design a wall-mount bracket for a 25 mm diameter tube, fastened to the wall with two #10 screws, 3D printed in PETG. Save it as tube_bracket.vcad.json.",
-  "checks": [{"kind": "holes", "d_min": 4.8, "d_max": 5.8, "min": 2, "max": 2}]},
- {"id": "vbelt_pulley", "level": "create-medium", "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "holes",
+    "d_min": 4.8,
+    "d_max": 5.8,
+    "min": 2,
+    "max": 2
+   }
+  ]
+ },
+ {
+  "id": "vbelt_pulley",
+  "level": "create-medium",
+  "expect_parts": 1,
   "prompt": "Design a V-belt pulley: 40 mm outside diameter, 6 mm bore for a D-shaft (flat 0.5 mm deep), one V groove 40 degrees included angle for a 6 mm belt, and a 15 mm long hub on one side with an M3 set-screw hole into the flat.",
-  "checks": [{"kind": "bbox_max", "size": [40.5, 40.5, 40]}, {"kind": "feature_type", "type": "revolve"}]},
- {"id": "shelf_bracket", "level": "create-medium", "expect_parts": 1,
-  "prompt": "Design a shelf bracket cut from 4 mm steel plate that supports a 250 mm deep shelf carrying about 20 kg. Two screw holes into the wall, two into the shelf."},
- {"id": "battery_mount", "level": "create-hard", "expect_parts": 2,
-  "prompt": "design a two part mount for a battery -- two 2mm sheet metal parts, with screws to bolt together"},
- {"id": "uno_enclosure", "level": "create-hard", "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "bbox_max",
+    "size": [
+     40.5,
+     40.5,
+     40
+    ]
+   },
+   {
+    "kind": "feature_type",
+    "type": "revolve"
+   }
+  ]
+ },
+ {
+  "id": "shelf_bracket",
+  "level": "create-medium",
+  "expect_parts": 1,
+  "prompt": "Design a shelf bracket cut from 4 mm steel plate that supports a 250 mm deep shelf carrying about 20 kg. Two screw holes into the wall, two into the shelf."
+ },
+ {
+  "id": "battery_mount",
+  "level": "create-hard",
+  "expect_parts": 2,
+  "prompt": "design a two part mount for a battery -- two 2mm sheet metal parts, with screws to bolt together"
+ },
+ {
+  "id": "uno_enclosure",
+  "level": "create-hard",
+  "expect_parts": 1,
   "prompt": "Design a 3D printed base tray for an Arduino Uno (board 68.6 x 53.4 mm, four M3 mounting holes at the standard Uno positions: (14.0, 2.5), (15.3, 50.7), (66.1, 7.6), (66.1, 35.5) mm from the board's lower-left corner) with standoffs, 2 mm walls, and openings in the wall for the USB-B and barrel jack on the short left edge.",
-  "checks": [{"kind": "holes", "d_min": 2.4, "d_max": 3.4, "min": 4, "max": 8}]},
- {"id": "motor_plate_edit", "level": "edit-parameter", "expect_parts": 1, "setup_copy": "examples/nema17_mount.vcad.json",
+  "checks": [
+   {
+    "kind": "holes",
+    "d_min": 2.4,
+    "d_max": 3.4,
+    "min": 4,
+    "max": 8
+   }
+  ]
+ },
+ {
+  "id": "motor_plate_edit",
+  "level": "edit-parameter",
+  "expect_parts": 1,
+  "setup_copy": "examples/nema17_mount.vcad.json",
   "prompt": "Open nema17_mount.vcad.json. Change it for a NEMA 23 motor: 47.14 mm screw spacing, 38.1 mm pilot, M5 clearance holes, and make the plate big enough.",
-  "checks": [{"kind": "param_any", "value": 47.14, "why": "screw spacing"}, {"kind": "param_any", "value": 38.1, "why": "pilot"},
-             {"kind": "holes", "d_min": 5.2, "d_max": 5.8, "min": 4, "max": 4}]},
- {"id": "spacer_edit", "level": "edit-operation", "expect_parts": 1, "setup_copy": "examples/spacer_plate.vcad.json",
+  "checks": [
+   {
+    "kind": "param_any",
+    "value": 47.14,
+    "why": "screw spacing"
+   },
+   {
+    "kind": "param_any",
+    "value": 38.1,
+    "why": "pilot"
+   },
+   {
+    "kind": "holes",
+    "d_min": 5.2,
+    "d_max": 5.8,
+    "min": 4,
+    "max": 4
+   }
+  ]
+ },
+ {
+  "id": "spacer_edit",
+  "level": "edit-operation",
+  "expect_parts": 1,
+  "setup_copy": "examples/spacer_plate.vcad.json",
   "prompt": "Open spacer_plate.vcad.json. Use 8 bolt holes instead of 6 and add a 2 mm chamfer to the center bore on the top face.",
-  "checks": [{"kind": "param", "name": "bolt_n", "value": 8}, {"kind": "feature_type", "type": "chamfer"},
-             {"kind": "holes", "d_min": 6.5, "d_max": 6.7, "min": 8, "max": 8}]},
- {"id": "vents_to_front", "level": "edit-operation", "expect_parts": 1, "setup_copy": "examples/enclosure_lid.vcad.json",
+  "checks": [
+   {
+    "kind": "param",
+    "name": "bolt_n",
+    "value": 8
+   },
+   {
+    "kind": "feature_type",
+    "type": "chamfer"
+   },
+   {
+    "kind": "holes",
+    "d_min": 6.5,
+    "d_max": 6.7,
+    "min": 8,
+    "max": 8
+   }
+  ]
+ },
+ {
+  "id": "vents_to_front",
+  "level": "edit-operation",
+  "expect_parts": 1,
+  "setup_copy": "examples/enclosure_lid.vcad.json",
   "prompt": "Open enclosure_lid.vcad.json. Move the vent slots from the top to the front wall (the -Y side), same count and size, running vertically.",
-  "checks": [{"kind": "volume_change", "from": "examples/enclosure_lid.vcad.json", "min": -0.02, "max": 0.02}]},
- {"id": "stiffen_bracket", "level": "edit-functional", "expect_parts": 1, "setup_copy": "examples/l_bracket.vcad.json",
+  "checks": [
+   {
+    "kind": "volume_change",
+    "from": "examples/enclosure_lid.vcad.json",
+    "min": -0.02,
+    "max": 0.02
+   }
+  ]
+ },
+ {
+  "id": "stiffen_bracket",
+  "level": "edit-functional",
+  "expect_parts": 1,
+  "setup_copy": "examples/l_bracket.vcad.json",
   "prompt": "Open l_bracket.vcad.json. The wall flexes too much when a load pulls on its holes. Make the bracket stiffer without increasing its mass by more than 20%.",
-  "checks": [{"kind": "volume_change", "from": "examples/l_bracket.vcad.json", "min": 0.005, "max": 0.2}]},
- {"id": "bushing_longer", "level": "edit-parameter", "expect_parts": 1, "setup_copy": "examples/flanged_bushing.vcad.json",
+  "checks": [
+   {
+    "kind": "volume_change",
+    "from": "examples/l_bracket.vcad.json",
+    "min": 0.005,
+    "max": 0.2
+   }
+  ]
+ },
+ {
+  "id": "bushing_longer",
+  "level": "edit-parameter",
+  "expect_parts": 1,
+  "setup_copy": "examples/flanged_bushing.vcad.json",
   "prompt": "Open flanged_bushing.vcad.json. Make the sleeve 10 mm longer and add a 1 mm x 1 mm oil groove around the inside of the bore at mid-length.",
-  "checks": [{"kind": "param_any", "value": 30, "why": "length 20 -> 30"}]}
+  "checks": [
+   {
+    "kind": "param_any",
+    "value": 30,
+    "why": "length 20 -> 30"
+   }
+  ]
+ },
+ {
+  "id": "standoff_conversation",
+  "level": "create-easy + edits",
+  "expect_parts": 1,
+  "prompt": "Design a hex standoff for M3 screws: 5.5 mm across flats, 12 mm long, with a through clearance hole. Save it as standoff.vcad.json.",
+  "checks": [
+   {
+    "kind": "holes",
+    "d_min": 3.1,
+    "d_max": 3.6,
+    "min": 1,
+    "max": 1
+   },
+   {
+    "kind": "bbox_max",
+    "size": [
+     6.4,
+     5.6,
+     12.1
+    ]
+   }
+  ],
+  "followups": [
+   {
+    "prompt": "Make it 20 mm long.",
+    "checks": [
+     {
+      "kind": "bbox_max",
+      "size": [
+       6.4,
+       5.6,
+       20.1
+      ]
+     },
+     {
+      "kind": "volume_change",
+      "from": "@prev",
+      "min": 0.55,
+      "max": 0.8
+     }
+    ]
+   },
+   {
+    "prompt": "Add a 0.5 mm chamfer on the outer hex edges at both ends.",
+    "checks": [
+     {
+      "kind": "feature_type",
+      "type": "chamfer"
+     },
+     {
+      "kind": "volume_change",
+      "from": "@prev",
+      "min": -0.1,
+      "max": -0.0001
+     },
+     {
+      "kind": "holes",
+      "d_min": 3.1,
+      "d_max": 3.6,
+      "min": 1,
+      "max": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "plate_conversation",
+  "level": "create-easy + edits",
+  "expect_parts": 1,
+  "prompt": "Design a 3 mm aluminum mounting plate, 80 x 50 mm, with four M4 clearance holes 6 mm in from each corner. Save it as plate.vcad.json.",
+  "checks": [
+   {
+    "kind": "holes",
+    "d_min": 4.3,
+    "d_max": 4.6,
+    "min": 4,
+    "max": 4
+   },
+   {
+    "kind": "bbox_max",
+    "size": [
+     80.1,
+     50.1,
+     3.1
+    ]
+   }
+  ],
+  "followups": [
+   {
+    "prompt": "The holes need to be M5 instead.",
+    "checks": [
+     {
+      "kind": "holes",
+      "d_min": 5.3,
+      "d_max": 5.6,
+      "min": 4,
+      "max": 4
+     },
+     {
+      "kind": "holes",
+      "d_min": 4.3,
+      "d_max": 4.6,
+      "min": 0,
+      "max": 0
+     }
+    ]
+   },
+   {
+    "prompt": "Add a 22 mm hole in the center for a cable gland.",
+    "checks": [
+     {
+      "kind": "holes",
+      "d_min": 21.9,
+      "d_max": 22.1,
+      "min": 1,
+      "max": 1
+     },
+     {
+      "kind": "holes",
+      "d_min": 5.3,
+      "d_max": 5.6,
+      "min": 4,
+      "max": 4
+     },
+     {
+      "kind": "bbox_max",
+      "size": [
+       80.1,
+       50.1,
+       3.1
+      ]
+     }
+    ]
+   }
+  ]
+ }
 ]
