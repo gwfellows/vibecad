@@ -70,7 +70,7 @@ section { min-height: 0; overflow: auto; }
 .vtools button { background: rgba(255,255,255,.92); font-size: 12px; padding: 2px 8px; }
 .sketchbar { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 140px);
   background: rgba(30,41,59,.92); color: #fff; border-radius: 8px; padding: 3px 4px 3px 10px; font-size: 12px; }
-.sketchbar .skhead { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.sketchbar .skhead { display: flex; gap: 10px; white-space: nowrap; align-items: center; justify-content: space-between; }
 .sketchbar .muted { color: #cbd5e1; } .sketchbar .okc { color: #86efac; } .sketchbar .bad { color: #fca5a5; font-weight: 600; }
 .sketchbar .skacts { display: flex; gap: 2px; }
 .sketchbar button.ico { background: transparent; color: #e2e8f0; border: 0; }

@@ -40,5 +40,8 @@ run smoke "$PORT"
 run modeling "$PORT"
 run agent_panel $((PORT + 1))
 run sketch_editor $((PORT + 1))
+if [[ ",${ONLY:-}," == *",readme_shots,"* ]]; then  # README screenshots: ONLY=readme_shots scripts/gui_smoke.sh docs/img
+  node "$REPO/tests/gui/readme_shots.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
+fi
 echo "screenshots: $SHOTS   server logs: $WORK/*.log"
 exit $status
