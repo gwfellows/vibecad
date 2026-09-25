@@ -25,8 +25,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
+import keyword
+
 from . import schema as S
-from .expr import ExprError, evaluate_params
+from .expr import CONSTS, FUNCS, ExprError, evaluate_params
+
+RESERVED_NAMES = set(FUNCS) | set(CONSTS)
 
 
 class OpError(ValueError):
@@ -63,6 +67,8 @@ def apply_ops(doc: S.Document, ops: list[dict[str, Any]]) -> tuple[S.Document, l
     notes: list[str] = []
     raw["_chain"] = {}  # anchor -> last feature inserted at it in this batch (keeps batch order)
     for i, op in enumerate(ops):
+        if not isinstance(op, dict):
+            raise OpError(f"op {i}: each op must be an object like {{\"op\": \"set_param\", ...}}, got {op!r:.80}")
         try:
             _apply_one(raw, op, notes)
         except OpError as e:
@@ -142,7 +148,15 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
     raw.setdefault("features", [])
 
     if kind == "set_param":
-        raw["params"][op["name"]] = op["value"]
+        name, value = op["name"], op["value"]
+        if not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name):
+            raise OpError(f"param name {name!r} must be an identifier (letters, digits, underscores; not starting "
+                          "with a digit) so expressions can refer to it")
+        if name in RESERVED_NAMES:
+            raise OpError(f"param name {name!r} is reserved (a function or constant in expressions); pick another")
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            raise OpError(f"param value must be a number or an expression string like \"12 mm\", got {value!r}")
+        raw["params"][name] = value
     elif kind == "remove_param":
         if op["name"] not in raw["params"]:
             raise OpError(f"no param {op['name']!r}")
@@ -180,6 +194,8 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
             notes.append(f"removed {op['id']!r}; these features still reference it and will fail until updated: {users}")
         raw["features"].pop(i)
     elif kind == "move_feature":
+        if op["id"] in (op.get("after"), op.get("before")):
+            raise OpError(f"cannot move {op['id']!r} relative to itself")
         f = raw["features"].pop(_feat_index(raw, op["id"]))
         raw["features"].insert(_position(raw, op), f)
     elif kind == "add_entity":

@@ -1,6 +1,6 @@
 # VibeCAD IR reference (v0.1)
 
-A part is one JSON file (`*.vcad.json`): named `params` plus an ordered list of `features`. Units are mm and degrees. Any numeric field marked *Num* takes a number or an expression over params: `"plate_t * 2"`, `"0.25 in"`, `"(width - hole_spacing) / 2"`, `"sqrt(2) * d"`. Examples: `examples/`.
+A part is one JSON file (`*.vcad.json`): named `params` plus an ordered list of `features`. Units are mm and degrees. Any numeric field marked *Num* takes a number or an expression over params: `"plate_t * 2"`, `"0.25 in"`, `"(width - hole_spacing) / 2"`, `"sqrt(2) * d"`. Examples: `examples/`. Param names are identifiers (`plate_t`, `m`), and can't be the expression functions or constants (`sqrt`, `sin`, `cos`, `tan`, `atan2`, `min`, `max`, `abs`, `round`, `floor`, `ceil`, `pi`).
 
 ## Conventions
 

@@ -86,8 +86,25 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
     if rep.redundant:
         info["redundant"] = rep.redundant
     if not rep.ok:
-        raise FeatureError(f"sketch did not solve ({rep.status}); conflicting: {rep.conflicting or 'none reported'}")
+        msg = f"sketch did not solve ({rep.status}); conflicting: {rep.conflicting or 'none reported'}"
+        bad = _nonpositive_dims(f, ctx.env)
+        if bad:
+            msg += f". These dimensions are <= 0, which no geometry can satisfy: {', '.join(bad)}"
+        raise FeatureError(msg)
     return info
+
+
+def _nonpositive_dims(f: S.Sketch, env) -> list[str]:
+    out = []
+    for i, c in enumerate(f.constraints):
+        if c.type in ("distance", "radius", "diameter") and c.value is not None:
+            try:
+                v = evaluate(c.value, env)
+            except Exception:
+                continue
+            if v <= 0:
+                out.append(f"{c.name or '#' + str(i)} {c.type} = {c.value!s} = {v:g}")
+    return out
 
 
 def _profile(ctx: Ctx, p: S.Profile):
@@ -262,9 +279,15 @@ class _Identity:
         return False
 
 
+def _positive(v: float, what: str) -> float:
+    if v <= 0:
+        raise FeatureError(f"{what} must be > 0, got {v:g}")
+    return v
+
+
 def do_fillet(ctx: Ctx, f: S.Fillet) -> dict:
     edges = _edges(ctx, f.edges)
-    r = ctx.num(f.radius)
+    r = _positive(ctx.num(f.radius), "fillet radius")
     mk = BRepFilletAPI_MakeFillet(ctx.body.shape)
     for e in edges:
         mk.Add(r, TopoDS.Edge(e))
@@ -273,7 +296,7 @@ def do_fillet(ctx: Ctx, f: S.Fillet) -> dict:
 
 def do_chamfer(ctx: Ctx, f: S.Chamfer) -> dict:
     edges = _edges(ctx, f.edges)
-    d = ctx.num(f.distance)
+    d = _positive(ctx.num(f.distance), "chamfer distance")
     mk = BRepFilletAPI_MakeChamfer(ctx.body.shape)
     for e in edges:
         mk.Add(d, TopoDS.Edge(e))
@@ -287,7 +310,7 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
     lst = List_TopoDS_Shape()
     for x in faces:
         lst.Append(x)
-    t = ctx.num(f.thickness)
+    t = _positive(ctx.num(f.thickness), "shell thickness")
     mk = BRepOffsetAPI_MakeThickSolid()
     mk.MakeThickSolidByJoin(ctx.body.shape, lst, -t, 1e-4)
     mk.Build()
