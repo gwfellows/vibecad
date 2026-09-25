@@ -1,0 +1,433 @@
+{
+  "vibecad": "0.1",
+  "name": "Battery Tray",
+  "material": "steel sheet 2mm",
+  "process": "laser cut + bend",
+  "design_notes": "Lower half of two-part battery mount. Battery sits in U-channel; strap (battery_strap.vcad.json) bolts over top. M3 bolts (3.2mm clearance holes) through side walls at \u00b1bolt_x, bolt_z. Assumes rectangular battery bat_l\u00d7bat_w\u00d7bat_h mm.",
+  "params": {
+    "bat_l": "70 mm",
+    "bat_w": "35 mm",
+    "bat_h": "20 mm",
+    "sheet_t": "2 mm",
+    "clr": "1 mm",
+    "wall_h": "20 mm",
+    "flange_h": "15 mm",
+    "bolt_d": "3.2 mm",
+    "bolt_x": "17.5 mm",
+    "bolt_z": "14 mm"
+  },
+  "features": [
+    {
+      "id": "base_sk",
+      "type": "sketch",
+      "intent": "base plate footprint",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "bp_bot",
+          "p1": [
+            -37.0,
+            -20.5
+          ],
+          "p2": [
+            37.0,
+            -20.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bp_right",
+          "p1": [
+            37.0,
+            -20.5
+          ],
+          "p2": [
+            37.0,
+            20.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bp_top",
+          "p1": [
+            37.0,
+            20.5
+          ],
+          "p2": [
+            -37.0,
+            20.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bp_left",
+          "p1": [
+            -37.0,
+            20.5
+          ],
+          "p2": [
+            -37.0,
+            -20.5
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "horizontal",
+          "on": [
+            "bp_bot"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bp_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bp_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bp_left"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bp_bot.p2",
+            "bp_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bp_right.p2",
+            "bp_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bp_top.p2",
+            "bp_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bp_left.p2",
+            "bp_bot.p1"
+          ]
+        },
+        {
+          "type": "symmetric",
+          "on": [
+            "bp_bot.p1",
+            "bp_bot.p2",
+            "y_axis"
+          ]
+        },
+        {
+          "type": "symmetric",
+          "on": [
+            "bp_left.p1",
+            "bp_left.p2",
+            "x_axis"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bp_bot"
+          ],
+          "value": "bat_l + 2 * sheet_t",
+          "name": "tray_len"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bp_left"
+          ],
+          "value": "bat_w + 2 * (clr + sheet_t)",
+          "name": "tray_wid"
+        }
+      ]
+    },
+    {
+      "id": "base_extrude",
+      "type": "extrude",
+      "name": "Base Plate",
+      "intent": "2mm flat base plate for battery to rest on",
+      "profile": {
+        "sketch": "base_sk"
+      },
+      "distance": "sheet_t",
+      "mode": "new"
+    },
+    {
+      "id": "lwall_sk",
+      "type": "sketch",
+      "intent": "left side wall cross-section (extrudes +Y into body)",
+      "plane": {
+        "datum": "XZ",
+        "offset": "bat_w / 2 + clr + sheet_t"
+      },
+      "entities": [
+        {
+          "id": "lw_bot",
+          "p1": [
+            -37.0,
+            2.0
+          ],
+          "p2": [
+            37.0,
+            2.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "lw_right",
+          "p1": [
+            37.0,
+            2.0
+          ],
+          "p2": [
+            37.0,
+            22.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "lw_top",
+          "p1": [
+            37.0,
+            22.0
+          ],
+          "p2": [
+            -37.0,
+            22.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "lw_left",
+          "p1": [
+            -37.0,
+            22.0
+          ],
+          "p2": [
+            -37.0,
+            2.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "horizontal",
+          "on": [
+            "lw_bot"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "lw_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "lw_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "lw_left"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lw_bot.p2",
+            "lw_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lw_right.p2",
+            "lw_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lw_top.p2",
+            "lw_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lw_left.p2",
+            "lw_bot.p1"
+          ]
+        },
+        {
+          "type": "symmetric",
+          "on": [
+            "lw_bot.p1",
+            "lw_bot.p2",
+            "y_axis"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "lw_bot"
+          ],
+          "value": "bat_l + 2 * sheet_t",
+          "name": "wall_len"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "lw_left"
+          ],
+          "value": "wall_h",
+          "name": "wall_ht"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lw_bot.p1"
+          ],
+          "value": "sheet_t",
+          "name": "wall_base"
+        }
+      ]
+    },
+    {
+      "id": "lwall_extrude",
+      "type": "extrude",
+      "name": "Left Side Wall",
+      "intent": "left side wall; extrudes in +Y from outer face at Y=-y_outer",
+      "profile": {
+        "sketch": "lwall_sk"
+      },
+      "distance": "sheet_t",
+      "direction": "reverse"
+    },
+    {
+      "id": "lholes_sk",
+      "type": "sketch",
+      "intent": "M3 bolt clearance holes through left wall, symmetric about X=0",
+      "plane": {
+        "face": {
+          "feature": "lwall_extrude",
+          "role": "start",
+          "note": "outer face of left wall at Y=-(bat_w/2+clr+sheet_t)"
+        }
+      },
+      "entities": [
+        {
+          "id": "h1",
+          "center": [
+            17.5,
+            14.0
+          ],
+          "r": 1.6,
+          "type": "circle"
+        },
+        {
+          "id": "h2",
+          "center": [
+            -17.5,
+            14.0
+          ],
+          "r": 1.6,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "symmetric",
+          "on": [
+            "h1.center",
+            "h2.center",
+            "y_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "h1.center"
+          ],
+          "value": "bolt_x",
+          "name": "hole_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "h1.center"
+          ],
+          "value": "bolt_z",
+          "name": "hole_z"
+        },
+        {
+          "type": "equal",
+          "on": [
+            "h1",
+            "h2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "h1"
+          ],
+          "value": "bolt_d",
+          "name": "hole_dia"
+        }
+      ]
+    },
+    {
+      "id": "lholes_cut",
+      "type": "extrude",
+      "name": "Left Wall Bolt Holes",
+      "intent": "M3 clearance holes through left wall for strap bolts",
+      "profile": {
+        "sketch": "lholes_sk"
+      },
+      "distance": "sheet_t",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "right_mirror",
+      "type": "mirror",
+      "name": "Right Wall (mirrored)",
+      "intent": "mirror left wall and bolt holes to create matching right wall at Y=+y_outer",
+      "features": [
+        "lwall_extrude",
+        "lholes_cut"
+      ],
+      "plane": {
+        "datum": "XZ"
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+[
+ {
+  "name": "lean",
+  "model": "sonnet",
+  "prompt_mode": "guide+ir",
+  "about": "In-process tools, guide + IR reference in the system prompt, no built-in Claude Code tools."
+ },
+ {
+  "name": "claude_code",
+  "model": "sonnet",
+  "prompt_mode": "claude_code",
+  "about": "Imitates an interactive Claude Code session: Claude Code system prompt and tools, CLAUDE.md, stdio MCP server."
+ },
+ {
+  "name": "lean_haiku",
+  "model": "haiku",
+  "prompt_mode": "guide+ir",
+  "about": "Lean setup on the small model."
+ },
+ {
+  "name": "lean_effort_low",
+  "model": "sonnet",
+  "prompt_mode": "guide+ir",
+  "effort": "low",
+  "about": "Lean setup with effort=low (less thinking per turn)."
+ },
+ {
+  "name": "lean_effort_medium",
+  "model": "sonnet",
+  "prompt_mode": "guide+ir",
+  "effort": "medium",
+  "about": "Lean setup with effort=medium."
+ },
+ {
+  "name": "lean_effort_high",
+  "model": "sonnet",
+  "prompt_mode": "guide+ir",
+  "effort": "high",
+  "about": "Lean setup with effort=high."
+ },
+ {
+  "name": "lean_no_thinking",
+  "model": "sonnet",
+  "prompt_mode": "guide+ir",
+  "thinking": {
+   "type": "disabled"
+  },
+  "about": "Lean setup with extended thinking disabled."
+ },
+ {
+  "name": "lean_low_incremental",
+  "model": "sonnet",
+  "prompt_mode": "guide+ir",
+  "effort": "low",
+  "extra_system": "Speed rule: after a plan of at most a few lines (part type, key params, first feature), call new_part and build the params plus the base feature in your first apply_ops. Design each later feature only after the previous one is built and its report checked. Use round engineering numbers. Never derive exact coordinates of a profile in your head: write vertices as param expressions in add_polygon points and let the solver place them.",
+  "about": "Low effort plus an explicit build-incrementally instruction."
+ }
+]

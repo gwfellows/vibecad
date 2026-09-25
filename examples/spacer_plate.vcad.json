@@ -1,0 +1,62 @@
+{
+  "vibecad": "0.1",
+  "name": "spacer_plate",
+  "material": "6061-T6 aluminum",
+  "process": "CNC milled",
+  "design_notes": "Round spacer plate centered on the origin: center bore plus a bolt circle of evenly spaced holes. Top outer edge filleted.",
+  "params": {
+    "plate_d": "80 mm",
+    "plate_t": "8 mm",
+    "bore_d": "20 mm",
+    "bolt_d": "6.6 mm",
+    "pcd": "60 mm",
+    "bolt_n": "6",
+    "edge_r": "1.5 mm"
+  },
+  "features": [
+    {
+      "id": "disk_sketch", "type": "sketch", "intent": "Plate outline and center bore, concentric with the origin",
+      "plane": {"datum": "XY"},
+      "entities": [
+        {"id": "outer", "type": "circle", "center": [0, 0], "r": 40},
+        {"id": "bore", "type": "circle", "center": [0, 0], "r": 10}
+      ],
+      "constraints": [
+        {"type": "coincident", "on": ["outer.center", "origin"]},
+        {"type": "concentric", "on": ["bore", "outer"]},
+        {"type": "diameter", "on": ["outer"], "value": "plate_d", "name": "plate_d"},
+        {"type": "diameter", "on": ["bore"], "value": "bore_d", "name": "bore_d"}
+      ]
+    },
+    {
+      "id": "disk", "type": "extrude", "intent": "Plate body; the bore is the inner loop of the same region",
+      "profile": {"sketch": "disk_sketch"}, "distance": "plate_t", "mode": "new"
+    },
+    {
+      "id": "bolt_sketch", "type": "sketch", "intent": "First bolt hole on the +X side of the bolt circle",
+      "plane": {"face": {"feature": "disk", "role": "end", "note": "top face"}},
+      "entities": [
+        {"id": "bolt", "type": "circle", "center": [30, 0], "r": 3.3}
+      ],
+      "constraints": [
+        {"type": "diameter", "on": ["bolt"], "value": "bolt_d", "name": "bolt_d"},
+        {"type": "point_on", "on": ["bolt.center", "x_axis"]},
+        {"type": "distance", "on": ["origin", "bolt.center"], "value": "pcd / 2", "name": "pcd"}
+      ]
+    },
+    {
+      "id": "bolt_cut", "type": "extrude", "intent": "Cut the first bolt hole through",
+      "profile": {"sketch": "bolt_sketch"}, "extent": "through_all", "direction": "reverse", "mode": "cut"
+    },
+    {
+      "id": "bolt_pattern", "type": "circular_pattern", "intent": "Remaining bolt holes, evenly spaced about Z",
+      "features": ["bolt_cut"], "axis": "Z", "count": "bolt_n"
+    },
+    {
+      "id": "edge_round", "type": "fillet", "intent": "Break the top outer edge",
+      "radius": "edge_r",
+      "edges": [{"between": [{"feature": "disk", "role": "end"}, {"feature": "disk", "role": "side", "entity": "outer"}],
+                 "note": "top outer circular edge"}]
+    }
+  ]
+}

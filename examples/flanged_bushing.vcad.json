@@ -1,0 +1,63 @@
+{
+  "vibecad": "0.1",
+  "name": "flanged_bushing",
+  "material": "oil-impregnated bronze",
+  "process": "turned",
+  "design_notes": "Flanged sleeve bushing, revolved from a half cross-section drawn in the XZ plane (sketch x = radius, sketch y = height). The flange sits at z = 0; the sleeve rises to z = length. Top edges chamfered for press-fit lead-in.",
+  "params": {
+    "bore_d": "12 mm",
+    "od_d": "18 mm",
+    "flange_d": "30 mm",
+    "flange_t": "3 mm",
+    "length": "20 mm",
+    "chamfer": "0.8 mm"
+  },
+  "features": [
+    {
+      "id": "section", "type": "sketch", "intent": "Half cross-section; revolved about the sketch y axis (world Z)",
+      "plane": {"datum": "XZ"},
+      "entities": [
+        {"id": "sec_bottom", "type": "line", "p1": [6, 0], "p2": [15, 0]},
+        {"id": "sec_flange_od", "type": "line", "p1": [15, 0], "p2": [15, 3]},
+        {"id": "sec_flange_top", "type": "line", "p1": [15, 3], "p2": [9, 3]},
+        {"id": "sec_od", "type": "line", "p1": [9, 3], "p2": [9, 20]},
+        {"id": "sec_top", "type": "line", "p1": [9, 20], "p2": [6, 20]},
+        {"id": "sec_bore", "type": "line", "p1": [6, 20], "p2": [6, 0]}
+      ],
+      "constraints": [
+        {"type": "coincident", "on": ["sec_bottom.p2", "sec_flange_od.p1"]},
+        {"type": "coincident", "on": ["sec_flange_od.p2", "sec_flange_top.p1"]},
+        {"type": "coincident", "on": ["sec_flange_top.p2", "sec_od.p1"]},
+        {"type": "coincident", "on": ["sec_od.p2", "sec_top.p1"]},
+        {"type": "coincident", "on": ["sec_top.p2", "sec_bore.p1"]},
+        {"type": "coincident", "on": ["sec_bore.p2", "sec_bottom.p1"]},
+        {"type": "horizontal", "on": ["sec_bottom"]},
+        {"type": "horizontal", "on": ["sec_flange_top"]},
+        {"type": "horizontal", "on": ["sec_top"]},
+        {"type": "vertical", "on": ["sec_flange_od"]},
+        {"type": "vertical", "on": ["sec_od"]},
+        {"type": "vertical", "on": ["sec_bore"]},
+        {"type": "point_on", "on": ["sec_bottom.p1", "x_axis"], "note": "flange underside at z = 0"},
+        {"type": "distance_x", "on": ["origin", "sec_bore.p1"], "value": "bore_d / 2", "name": "bore_d"},
+        {"type": "distance_x", "on": ["origin", "sec_od.p1"], "value": "od_d / 2", "name": "od_d"},
+        {"type": "distance_x", "on": ["origin", "sec_flange_od.p1"], "value": "flange_d / 2", "name": "flange_d"},
+        {"type": "distance_y", "on": ["sec_bottom.p1", "sec_flange_top.p1"], "value": "flange_t", "name": "flange_t"},
+        {"type": "distance_y", "on": ["sec_bottom.p1", "sec_top.p1"], "value": "length", "name": "length"}
+      ]
+    },
+    {
+      "id": "body", "type": "revolve", "intent": "Full 360 degree revolve into the bushing",
+      "profile": {"sketch": "section"}, "axis": "y_axis", "angle": 360, "mode": "new"
+    },
+    {
+      "id": "lead_in", "type": "chamfer", "intent": "Lead-in chamfers on the top outer and bore edges",
+      "distance": "chamfer",
+      "edges": [
+        {"between": [{"feature": "body", "role": "side", "entity": "sec_top"}, {"feature": "body", "role": "side", "entity": "sec_od"}],
+         "note": "top outer edge of the sleeve"},
+        {"between": [{"feature": "body", "role": "side", "entity": "sec_top"}, {"feature": "body", "role": "side", "entity": "sec_bore"}],
+         "note": "top edge of the bore"}
+      ]
+    }
+  ]
+}

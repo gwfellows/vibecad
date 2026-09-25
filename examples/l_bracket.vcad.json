@@ -1,0 +1,622 @@
+{
+  "vibecad": "0.1",
+  "name": "l_bracket",
+  "material": "6061-T6 aluminum",
+  "process": "CNC milled",
+  "design_notes": "L-bracket: horizontal base with two mirrored adjustment slots, vertical wall with two holes. Wall sits on the base's front edge (y = 0) and grows toward +Y. Inside corner filleted for stiffness.",
+  "params": {
+    "width": "60 mm",
+    "depth": "40 mm",
+    "base_t": "5 mm",
+    "wall_h": "50 mm",
+    "wall_t": "5 mm",
+    "slot_w": "6.5 mm",
+    "slot_len": "10 mm",
+    "slot_x": "12 mm",
+    "slot_inset": "8 mm",
+    "hole_d": "5.5 mm",
+    "hole_spacing": "30 mm",
+    "hole_z": "35 mm",
+    "corner_r": "4 mm"
+  },
+  "features": [
+    {
+      "id": "base_sketch",
+      "type": "sketch",
+      "intent": "Base footprint, anchored at the origin on its front-left corner",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "base_front",
+          "type": "line",
+          "p1": [
+            0.0,
+            0.0
+          ],
+          "p2": [
+            60.0,
+            0.0
+          ]
+        },
+        {
+          "id": "base_right",
+          "type": "line",
+          "p1": [
+            60.0,
+            0.0
+          ],
+          "p2": [
+            60.0,
+            40.0
+          ]
+        },
+        {
+          "id": "base_back",
+          "type": "line",
+          "p1": [
+            60.0,
+            40.0
+          ],
+          "p2": [
+            0.0,
+            40.0
+          ]
+        },
+        {
+          "id": "base_left",
+          "type": "line",
+          "p1": [
+            0.0,
+            40.0
+          ],
+          "p2": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "base_front.p1",
+            "origin"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_front.p2",
+            "base_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_right.p2",
+            "base_back.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_back.p2",
+            "base_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_left.p2",
+            "base_front.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_front"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_back"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_left"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_right"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_front"
+          ],
+          "value": "width",
+          "name": "width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_right"
+          ],
+          "value": "depth",
+          "name": "depth"
+        }
+      ]
+    },
+    {
+      "id": "base",
+      "type": "extrude",
+      "intent": "Base plate, grows up from z = 0",
+      "profile": {
+        "sketch": "base_sketch"
+      },
+      "distance": "base_t",
+      "mode": "new"
+    },
+    {
+      "id": "wall_sketch",
+      "type": "sketch",
+      "intent": "Wall outline in the XZ plane, sitting on the base's front edge",
+      "plane": {
+        "datum": "XZ"
+      },
+      "entities": [
+        {
+          "id": "wall_bottom",
+          "type": "line",
+          "p1": [
+            0.0,
+            0.0
+          ],
+          "p2": [
+            60.0,
+            0.0
+          ]
+        },
+        {
+          "id": "wall_right",
+          "type": "line",
+          "p1": [
+            60.0,
+            0.0
+          ],
+          "p2": [
+            60.0,
+            50.0
+          ]
+        },
+        {
+          "id": "wall_top",
+          "type": "line",
+          "p1": [
+            60.0,
+            50.0
+          ],
+          "p2": [
+            0.0,
+            50.0
+          ]
+        },
+        {
+          "id": "wall_left",
+          "type": "line",
+          "p1": [
+            0.0,
+            50.0
+          ],
+          "p2": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "wall_bottom.p1",
+            "origin"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_bottom.p2",
+            "wall_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_right.p2",
+            "wall_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_top.p2",
+            "wall_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_left.p2",
+            "wall_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "wall_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "wall_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "wall_left"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "wall_right"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "wall_bottom"
+          ],
+          "value": "width",
+          "name": "width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "wall_right"
+          ],
+          "value": "wall_h",
+          "name": "wall_h"
+        }
+      ]
+    },
+    {
+      "id": "wall",
+      "type": "extrude",
+      "intent": "Wall; XZ normal is -Y, so reverse grows it toward +Y over the base",
+      "profile": {
+        "sketch": "wall_sketch"
+      },
+      "distance": "wall_t",
+      "direction": "reverse",
+      "mode": "add"
+    },
+    {
+      "id": "slot_sketch",
+      "type": "sketch",
+      "intent": "One adjustment slot, running front-to-back near the left edge",
+      "plane": {
+        "face": {
+          "feature": "base",
+          "role": "end",
+          "note": "top face of the base plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "slot_bottom",
+          "type": "arc",
+          "center": [
+            12.0,
+            22.0
+          ],
+          "r": 3.25,
+          "start_angle": 180.0,
+          "end_angle": 360.0
+        },
+        {
+          "id": "slot_top",
+          "type": "arc",
+          "center": [
+            12.0,
+            32.0
+          ],
+          "r": 3.25,
+          "start_angle": 0.0,
+          "end_angle": 180.0
+        },
+        {
+          "id": "slot_left",
+          "type": "line",
+          "p1": [
+            8.75,
+            32.0
+          ],
+          "p2": [
+            8.75,
+            22.0
+          ]
+        },
+        {
+          "id": "slot_right",
+          "type": "line",
+          "p1": [
+            15.25,
+            22.0
+          ],
+          "p2": [
+            15.25,
+            32.0
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "slot_top.end",
+            "slot_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "slot_left.p2",
+            "slot_bottom.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "slot_bottom.end",
+            "slot_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "slot_right.p2",
+            "slot_top.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "slot_top",
+            "slot_left",
+            "slot_left.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "slot_left",
+            "slot_bottom",
+            "slot_left.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "slot_bottom",
+            "slot_right",
+            "slot_right.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "slot_right",
+            "slot_top",
+            "slot_right.p2"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "slot_left"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "slot_bottom",
+            "slot_top"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "slot_bottom"
+          ],
+          "value": "slot_w",
+          "name": "slot_w"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "slot_bottom.center",
+            "slot_top.center"
+          ],
+          "value": "slot_len",
+          "name": "slot_len"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "slot_top.center"
+          ],
+          "value": "slot_x",
+          "name": "slot_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "slot_top.center"
+          ],
+          "value": "depth - slot_inset",
+          "name": "slot_inset"
+        }
+      ]
+    },
+    {
+      "id": "slot_cut",
+      "type": "extrude",
+      "intent": "Cut the slot down through the base",
+      "profile": {
+        "sketch": "slot_sketch"
+      },
+      "extent": "through_all",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "slot_mirror",
+      "type": "mirror",
+      "intent": "Matching slot on the right, symmetric about the part's mid-plane",
+      "features": [
+        "slot_cut"
+      ],
+      "plane": {
+        "datum": "YZ",
+        "offset": "width / 2"
+      }
+    },
+    {
+      "id": "hole_sketch",
+      "type": "sketch",
+      "intent": "Two mounting holes on the wall's outer face, centered on the part",
+      "plane": {
+        "face": {
+          "feature": "wall",
+          "role": "start",
+          "note": "outer (front, y = 0) face of the wall"
+        }
+      },
+      "entities": [
+        {
+          "id": "hole_l",
+          "type": "circle",
+          "center": [
+            15.0,
+            35.0
+          ],
+          "r": 2.75
+        },
+        {
+          "id": "hole_r",
+          "type": "circle",
+          "center": [
+            45.0,
+            35.0
+          ],
+          "r": 2.75
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "hole_l"
+          ],
+          "value": "hole_d",
+          "name": "hole_d"
+        },
+        {
+          "type": "equal",
+          "on": [
+            "hole_l",
+            "hole_r"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "hole_l.center",
+            "hole_r.center"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "hole_l.center",
+            "hole_r.center"
+          ],
+          "value": "hole_spacing",
+          "name": "hole_spacing"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hole_l.center"
+          ],
+          "value": "(width - hole_spacing) / 2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hole_l.center"
+          ],
+          "value": "hole_z",
+          "name": "hole_z"
+        }
+      ]
+    },
+    {
+      "id": "hole_cut",
+      "type": "extrude",
+      "intent": "Holes through the wall; the face normal points out (-Y) so cut in reverse",
+      "profile": {
+        "sketch": "hole_sketch"
+      },
+      "extent": "through_all",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "corner_fillet",
+      "type": "fillet",
+      "intent": "Inside corner fillet between base top and wall inner face",
+      "radius": "corner_r",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "base",
+              "role": "end"
+            },
+            {
+              "feature": "wall",
+              "role": "end"
+            }
+          ],
+          "note": "inside corner line where the base's top meets the wall's back face"
+        }
+      ]
+    }
+  ]
+}

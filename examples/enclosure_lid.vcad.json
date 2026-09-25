@@ -1,0 +1,144 @@
+{
+  "vibecad": "0.1",
+  "name": "enclosure_lid",
+  "material": "ABS",
+  "process": "FDM 3D print",
+  "design_notes": "Electronics enclosure lid, open side down. Box centered on the origin in XY, top at z = height. Shelled from the bottom face; four screw bosses hang from the inner ceiling; a row of vent slots is cut through the top.",
+  "params": {
+    "width": "80 mm",
+    "depth": "50 mm",
+    "height": "20 mm",
+    "wall_t": "2 mm",
+    "corner_r": "5 mm",
+    "boss_d": "7 mm",
+    "boss_h": "12 mm",
+    "boss_inset": "7 mm",
+    "pilot_d": "2.5 mm",
+    "pilot_depth": "10 mm",
+    "vent_w": "2 mm",
+    "vent_l": "20 mm",
+    "vent_pitch": "5 mm",
+    "vent_n": "5"
+  },
+  "features": [
+    {
+      "id": "box_sketch", "type": "sketch", "intent": "Outer footprint, centered on the origin",
+      "plane": {"datum": "XY"},
+      "entities": [
+        {"id": "box_front", "type": "line", "p1": [-40, -25], "p2": [40, -25]},
+        {"id": "box_right", "type": "line", "p1": [40, -25], "p2": [40, 25]},
+        {"id": "box_back", "type": "line", "p1": [40, 25], "p2": [-40, 25]},
+        {"id": "box_left", "type": "line", "p1": [-40, 25], "p2": [-40, -25]}
+      ],
+      "constraints": [
+        {"type": "coincident", "on": ["box_front.p2", "box_right.p1"]},
+        {"type": "coincident", "on": ["box_right.p2", "box_back.p1"]},
+        {"type": "coincident", "on": ["box_back.p2", "box_left.p1"]},
+        {"type": "coincident", "on": ["box_left.p2", "box_front.p1"]},
+        {"type": "horizontal", "on": ["box_front"]},
+        {"type": "horizontal", "on": ["box_back"]},
+        {"type": "vertical", "on": ["box_left"]},
+        {"type": "vertical", "on": ["box_right"]},
+        {"type": "distance", "on": ["box_front"], "value": "width", "name": "width"},
+        {"type": "distance", "on": ["box_right"], "value": "depth", "name": "depth"},
+        {"type": "symmetric", "on": ["box_front.p1", "box_back.p1", "origin"], "note": "centered"}
+      ]
+    },
+    {
+      "id": "box", "type": "extrude", "intent": "Solid lid blank, z = 0 to height",
+      "profile": {"sketch": "box_sketch"}, "distance": "height", "mode": "new"
+    },
+    {
+      "id": "corner_round", "type": "fillet", "intent": "Round the four vertical corners before shelling so the walls stay uniform",
+      "radius": "corner_r",
+      "edges": [{"of": {"feature": "box", "role": "side"}, "filter": {"parallel_to": "Z"}, "note": "vertical corner edges"}]
+    },
+    {
+      "id": "hollow", "type": "shell", "intent": "Hollow out, open at the bottom",
+      "thickness": "wall_t",
+      "remove_faces": [{"feature": "box", "role": "start", "note": "bottom face, z = 0"}]
+    },
+    {
+      "id": "boss_sketch", "type": "sketch", "intent": "Four screw bosses on the inner ceiling, symmetric about both axes",
+      "plane": {"datum": "XY", "offset": "height - wall_t"},
+      "entities": [
+        {"id": "boss_fr", "type": "circle", "center": [33, -18], "r": 3.5},
+        {"id": "boss_br", "type": "circle", "center": [33, 18], "r": 3.5},
+        {"id": "boss_bl", "type": "circle", "center": [-33, 18], "r": 3.5},
+        {"id": "boss_fl", "type": "circle", "center": [-33, -18], "r": 3.5}
+      ],
+      "constraints": [
+        {"type": "diameter", "on": ["boss_fr"], "value": "boss_d", "name": "boss_d"},
+        {"type": "equal", "on": ["boss_fr", "boss_br"]},
+        {"type": "equal", "on": ["boss_fr", "boss_bl"]},
+        {"type": "equal", "on": ["boss_fr", "boss_fl"]},
+        {"type": "distance_x", "on": ["origin", "boss_fr.center"], "value": "width / 2 - boss_inset", "name": "boss_inset"},
+        {"type": "distance_y", "on": ["boss_fr.center", "origin"], "value": "depth / 2 - boss_inset"},
+        {"type": "symmetric", "on": ["boss_fr.center", "boss_br.center", "x_axis"]},
+        {"type": "symmetric", "on": ["boss_fr.center", "boss_bl.center", "origin"]},
+        {"type": "symmetric", "on": ["boss_fr.center", "boss_fl.center", "y_axis"]}
+      ]
+    },
+    {
+      "id": "bosses", "type": "extrude", "intent": "Bosses hang down from the ceiling (reverse = -Z)",
+      "profile": {"sketch": "boss_sketch"}, "distance": "boss_h", "direction": "reverse", "mode": "add"
+    },
+    {
+      "id": "pilot_sketch", "type": "sketch", "intent": "Screw pilot holes, concentric with the bosses, drawn at the bosses' lower ends",
+      "plane": {"datum": "XY", "offset": "height - wall_t - boss_h"},
+      "entities": [
+        {"id": "pilot_fr", "type": "circle", "center": [33, -18], "r": 1.25},
+        {"id": "pilot_br", "type": "circle", "center": [33, 18], "r": 1.25},
+        {"id": "pilot_bl", "type": "circle", "center": [-33, 18], "r": 1.25},
+        {"id": "pilot_fl", "type": "circle", "center": [-33, -18], "r": 1.25}
+      ],
+      "constraints": [
+        {"type": "diameter", "on": ["pilot_fr"], "value": "pilot_d", "name": "pilot_d"},
+        {"type": "equal", "on": ["pilot_fr", "pilot_br"]},
+        {"type": "equal", "on": ["pilot_fr", "pilot_bl"]},
+        {"type": "equal", "on": ["pilot_fr", "pilot_fl"]},
+        {"type": "distance_x", "on": ["origin", "pilot_fr.center"], "value": "width / 2 - boss_inset"},
+        {"type": "distance_y", "on": ["pilot_fr.center", "origin"], "value": "depth / 2 - boss_inset"},
+        {"type": "symmetric", "on": ["pilot_fr.center", "pilot_br.center", "x_axis"]},
+        {"type": "symmetric", "on": ["pilot_fr.center", "pilot_bl.center", "origin"]},
+        {"type": "symmetric", "on": ["pilot_fr.center", "pilot_fl.center", "y_axis"]}
+      ]
+    },
+    {
+      "id": "pilots", "type": "extrude", "intent": "Drill pilots up into the bosses (normal = +Z)",
+      "profile": {"sketch": "pilot_sketch"}, "distance": "pilot_depth", "direction": "normal", "mode": "cut"
+    },
+    {
+      "id": "vent_sketch", "type": "sketch", "intent": "First (leftmost) vent slot on the top face, centered front-to-back",
+      "plane": {"face": {"feature": "box", "role": "end", "note": "outer top face"}},
+      "entities": [
+        {"id": "vent_front", "type": "line", "p1": [-11, -10], "p2": [-9, -10]},
+        {"id": "vent_right", "type": "line", "p1": [-9, -10], "p2": [-9, 10]},
+        {"id": "vent_back", "type": "line", "p1": [-9, 10], "p2": [-11, 10]},
+        {"id": "vent_left", "type": "line", "p1": [-11, 10], "p2": [-11, -10]}
+      ],
+      "constraints": [
+        {"type": "coincident", "on": ["vent_front.p2", "vent_right.p1"]},
+        {"type": "coincident", "on": ["vent_right.p2", "vent_back.p1"]},
+        {"type": "coincident", "on": ["vent_back.p2", "vent_left.p1"]},
+        {"type": "coincident", "on": ["vent_left.p2", "vent_front.p1"]},
+        {"type": "horizontal", "on": ["vent_front"]},
+        {"type": "horizontal", "on": ["vent_back"]},
+        {"type": "vertical", "on": ["vent_left"]},
+        {"type": "vertical", "on": ["vent_right"]},
+        {"type": "distance", "on": ["vent_front"], "value": "vent_w", "name": "vent_w"},
+        {"type": "distance", "on": ["vent_right"], "value": "vent_l", "name": "vent_l"},
+        {"type": "symmetric", "on": ["vent_front.p1", "vent_left.p1", "x_axis"], "note": "centered front-to-back"},
+        {"type": "distance_x", "on": ["vent_left.p1", "origin"], "value": "(vent_n - 1) * vent_pitch / 2 + vent_w / 2", "note": "row centered left-to-right"}
+      ]
+    },
+    {
+      "id": "vent_cut", "type": "extrude", "intent": "Cut the vent through the top skin only",
+      "profile": {"sketch": "vent_sketch"}, "distance": "wall_t", "direction": "reverse", "mode": "cut"
+    },
+    {
+      "id": "vent_row", "type": "linear_pattern", "intent": "Rest of the vent row along +X",
+      "features": ["vent_cut"], "direction": "X", "spacing": "vent_pitch", "count": "vent_n"
+    }
+  ]
+}

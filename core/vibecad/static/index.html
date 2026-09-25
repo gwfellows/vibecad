@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VibeCAD</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header>
+  <span class="brand">VibeCAD</span>
+  <select id="partSelect" title="Open a part"></select>
+  <button id="newBtn" title="New part">New</button>
+  <span class="sep"></span>
+  <button id="undoBtn" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+  <button id="redoBtn" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+  <span class="sep"></span>
+  <button id="historyBtn" title="Every change to this part">History</button>
+  <button id="rendersBtn" title="The rendered views the agent sees">Renders</button>
+  <span id="partStatus" class="status"></span>
+  <span class="grow"></span>
+  <span id="conn" class="conn">connecting</span>
+</header>
+
+<main>
+  <section id="left">
+    <div class="panel-title">Feature tree <span id="partName" class="muted small"></span></div>
+    <ol id="tree"></ol>
+    <div class="panel-title">Parameters</div>
+    <table id="params"><colgroup><col class="n"><col><col class="v"></colgroup><tbody></tbody></table>
+    <div class="panel-title">Selected <span id="selName" class="muted"></span></div>
+    <div id="details" class="muted small">Click a feature in the tree or a face in the view.</div>
+  </section>
+
+  <section id="center">
+    <div id="viewer"></div>
+    <div class="vtools left">
+      <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
+      <button data-view="top">Top</button><button data-view="right">Right</button>
+      <button id="fitBtn" title="Fit the part in view">Fit</button>
+    </div>
+    <div class="vtools right">
+      <button id="projBtn" title="Switch between orthographic and perspective">Orthographic</button>
+    </div>
+    <div id="sketchBar" class="sketchbar" hidden>
+      <span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
+      <button id="exitSketch">Exit sketch (Esc)</button>
+    </div>
+    <div id="labels"></div>
+    <div id="rollbackNote" class="rollnote" hidden></div>
+  </section>
+
+  <section id="right">
+    <div class="panel-title">Agent
+      <select id="model" class="small" title="Model: switch any time; the conversation continues">
+        <option value="sonnet">Sonnet</option><option value="opus">Opus</option><option value="haiku">Haiku</option>
+      </select>
+      <select id="effort" class="small" title="Thinking effort: lower is faster">
+        <option value="low">effort low</option><option value="medium">effort medium</option>
+        <option value="high">effort high</option><option value="default">effort default</option>
+      </select>
+      <span class="grow"></span><button id="resetBtn" class="small" title="Start a new conversation">New chat</button></div>
+    <div id="metrics" class="metrics"></div>
+    <div id="log"></div>
+    <form id="promptForm">
+      <textarea id="prompt" rows="3" placeholder="Describe a part, or a change to the open part. Enter to send, Shift+Enter for a new line."></textarea>
+      <div class="row">
+        <label class="small"><input type="checkbox" id="scope"> Limit edits to the selected feature</label>
+        <span class="grow"></span>
+        <button type="button" id="stopBtn" disabled>Stop</button>
+        <button type="submit" id="sendBtn">Send</button>
+      </div>
+    </form>
+  </section>
+</main>
+
+<dialog id="historyDlg"><div class="dlg-head"><b>History</b><form method="dialog"><button>Close</button></form></div><ol id="history"></ol></dialog>
+<dialog id="rendersDlg"><div class="dlg-head"><b>Renders</b> <span class="muted small">(what the agent sees; selected feature in orange)</span><form method="dialog"><button>Close</button></form></div><img id="rendersImg" alt=""></dialog>
+<dialog id="imgDialog"><img id="imgBig" alt=""><form method="dialog"><button>Close</button></form></dialog>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

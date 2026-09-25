@@ -1,0 +1,553 @@
+{
+  "vibecad": "0.1",
+  "name": "pillow_block",
+  "material": "PLA",
+  "process": "FDM 3D print",
+  "design_notes": "Pillow block for a 6001 bearing (28 OD x 8 W, 12 bore). Shaft axis along world Y at height shaft_h; part symmetric about the YZ plane. Bearing pocket opens on the front (-Y) face.",
+  "params": {
+    "base_w": "60 mm",
+    "depth": "22 mm",
+    "base_t": "6 mm",
+    "shaft_h": "24 mm",
+    "housing_r": "20 mm",
+    "brg_od": "28 mm",
+    "brg_w": "8 mm",
+    "shaft_clear_d": "16 mm",
+    "bolt_d": "5.5 mm",
+    "bolt_spacing": "44 mm"
+  },
+  "features": [
+    {
+      "id": "base_sketch",
+      "type": "sketch",
+      "intent": "Base footprint centered on origin",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "base_front",
+          "p1": [
+            -30.0,
+            -11.0
+          ],
+          "p2": [
+            30.0,
+            -11.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_right",
+          "p1": [
+            30.0,
+            -11.0
+          ],
+          "p2": [
+            30.0,
+            11.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_back",
+          "p1": [
+            30.0,
+            11.0
+          ],
+          "p2": [
+            -30.0,
+            11.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_left",
+          "p1": [
+            -30.0,
+            11.0
+          ],
+          "p2": [
+            -30.0,
+            -11.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "base_front.p2",
+            "base_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_right.p2",
+            "base_back.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_back.p2",
+            "base_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_left.p2",
+            "base_front.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_front"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_back"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_left"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_right"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_front"
+          ],
+          "value": "base_w",
+          "name": "base_w"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_right"
+          ],
+          "value": "depth",
+          "name": "depth"
+        },
+        {
+          "type": "symmetric",
+          "on": [
+            "base_front.p1",
+            "base_back.p1",
+            "origin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "base",
+      "type": "extrude",
+      "intent": "Base plate",
+      "profile": {
+        "sketch": "base_sketch"
+      },
+      "distance": "base_t",
+      "mode": "new"
+    },
+    {
+      "id": "housing_sketch",
+      "type": "sketch",
+      "intent": "Housing outline: posts up to a half-round top around the shaft axis",
+      "plane": {
+        "datum": "XZ"
+      },
+      "entities": [
+        {
+          "id": "h_bottom",
+          "p1": [
+            -20.0,
+            0.0
+          ],
+          "p2": [
+            20.0,
+            0.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "h_right",
+          "p1": [
+            20.0,
+            0.0
+          ],
+          "p2": [
+            20.0,
+            24.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "h_top",
+          "center": [
+            0.0,
+            24.0
+          ],
+          "r": 20.0,
+          "start_angle": 0.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "h_left",
+          "p1": [
+            -20.0,
+            24.0
+          ],
+          "p2": [
+            -20.0,
+            0.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "h_bottom.p2",
+            "h_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "h_right.p2",
+            "h_top.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "h_top.end",
+            "h_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "h_left.p2",
+            "h_bottom.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "h_right",
+            "h_top",
+            "h_right.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "h_top",
+            "h_left",
+            "h_left.p1"
+          ]
+        },
+        {
+          "type": "point_on",
+          "on": [
+            "h_bottom.p1",
+            "x_axis"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "h_bottom"
+          ]
+        },
+        {
+          "type": "radius",
+          "on": [
+            "h_top"
+          ],
+          "value": "housing_r",
+          "name": "housing_r"
+        },
+        {
+          "type": "point_on",
+          "on": [
+            "h_top.center",
+            "y_axis"
+          ]
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "h_top.center"
+          ],
+          "value": "shaft_h",
+          "name": "shaft_h"
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "h_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "h_left"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "housing",
+      "type": "extrude",
+      "intent": "Housing, full depth, symmetric about XZ",
+      "profile": {
+        "sketch": "housing_sketch"
+      },
+      "distance": "depth",
+      "direction": "symmetric"
+    },
+    {
+      "id": "pocket_sketch",
+      "type": "sketch",
+      "intent": "Bearing pocket on the front face, concentric with the shaft axis",
+      "plane": {
+        "face": {
+          "feature": "housing",
+          "role": "end",
+          "note": "front face of the housing (y = -depth/2); normal -Y"
+        }
+      },
+      "entities": [
+        {
+          "id": "pocket",
+          "center": [
+            0.0,
+            24.0
+          ],
+          "r": 14.0,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "pocket"
+          ],
+          "value": "brg_od",
+          "name": "brg_od"
+        },
+        {
+          "type": "point_on",
+          "on": [
+            "pocket.center",
+            "y_axis"
+          ]
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "pocket.center"
+          ],
+          "value": "shaft_h"
+        }
+      ]
+    },
+    {
+      "id": "pocket_cut",
+      "type": "extrude",
+      "intent": "Bearing pocket, bearing width deep; face normal points out so reverse",
+      "profile": {
+        "sketch": "pocket_sketch"
+      },
+      "distance": "brg_w",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "shaft_sketch",
+      "type": "sketch",
+      "intent": "Shaft clearance bore on the pocket floor",
+      "plane": {
+        "face": {
+          "feature": "pocket_cut",
+          "role": "end",
+          "note": "flat floor of the bearing pocket"
+        }
+      },
+      "entities": [
+        {
+          "id": "shaft_clear",
+          "center": [
+            0.0,
+            24.0
+          ],
+          "r": 8.0,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "shaft_clear"
+          ],
+          "value": "shaft_clear_d",
+          "name": "shaft_clear_d"
+        },
+        {
+          "type": "point_on",
+          "on": [
+            "shaft_clear.center",
+            "y_axis"
+          ]
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "shaft_clear.center"
+          ],
+          "value": "shaft_h"
+        }
+      ]
+    },
+    {
+      "id": "shaft_cut",
+      "type": "extrude",
+      "intent": "Clearance bore through the back of the housing; the pocket-floor normal points toward the front, so reverse",
+      "profile": {
+        "sketch": "shaft_sketch"
+      },
+      "direction": "reverse",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "bolt_sketch",
+      "type": "sketch",
+      "intent": "Two mounting holes on the base, symmetric about the part centerline",
+      "plane": {
+        "face": {
+          "feature": "base",
+          "role": "end",
+          "note": "top face of the base plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "bolt_l",
+          "center": [
+            -22.0,
+            0.0
+          ],
+          "r": 2.75,
+          "type": "circle"
+        },
+        {
+          "id": "bolt_r",
+          "center": [
+            22.0,
+            0.0
+          ],
+          "r": 2.75,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "bolt_l"
+          ],
+          "value": "bolt_d",
+          "name": "bolt_d"
+        },
+        {
+          "type": "equal",
+          "on": [
+            "bolt_l",
+            "bolt_r"
+          ]
+        },
+        {
+          "type": "symmetric",
+          "on": [
+            "bolt_l.center",
+            "bolt_r.center",
+            "origin"
+          ]
+        },
+        {
+          "type": "point_on",
+          "on": [
+            "bolt_l.center",
+            "x_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "bolt_l.center",
+            "bolt_r.center"
+          ],
+          "value": "bolt_spacing",
+          "name": "bolt_spacing"
+        }
+      ]
+    },
+    {
+      "id": "bolt_cut",
+      "type": "extrude",
+      "intent": "Bolt holes through the base",
+      "profile": {
+        "sketch": "bolt_sketch"
+      },
+      "direction": "reverse",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "pocket_chamfer",
+      "type": "chamfer",
+      "intent": "Lead-in for pressing the bearing",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "housing",
+              "role": "end"
+            },
+            {
+              "feature": "pocket_cut",
+              "role": "side",
+              "entity": "pocket"
+            }
+          ],
+          "note": "mouth of the bearing pocket"
+        }
+      ],
+      "distance": "0.6 mm"
+    }
+  ]
+}

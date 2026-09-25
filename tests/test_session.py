@@ -1,0 +1,159 @@
+"""Edit ops, sessions and the MCP server."""
+import asyncio
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+from vibecad.session import Session
+
+EX = Path(__file__).resolve().parent.parent / "examples"
+
+
+@pytest.fixture
+def lb(tmp_path):
+    p = tmp_path / "lb.vcad.json"
+    shutil.copy(EX / "l_bracket.vcad.json", p)
+    return Session(p)
+
+
+def vol(s):
+    return s.result.part.volume
+
+
+def test_param_driven_dimension_updates_param(lb):
+    r = lb.apply([{"op": "set_dimension", "sketch": "hole_sketch", "name": "hole_spacing", "value": "40 mm"}], "spread")
+    assert r["ok"]
+    assert lb.doc.params["hole_spacing"] == "40 mm"
+    assert any("driven by param" in n for n in r["notes"])
+
+
+def test_failed_batch_changes_nothing(lb):
+    before = lb.path.read_text()
+    v = vol(lb)
+    r = lb.apply([{"op": "set_param", "name": "width", "value": "90"},
+                  {"op": "update_feature", "id": "wall", "set": {"distanc": 3}}], "typo")
+    assert not r["ok"] and r["applied"] == 0 and "distanc" in r["error"]
+    assert lb.path.read_text() == before and vol(lb) == v
+
+
+def test_undo_redo(lb):
+    v0 = vol(lb)
+    lb.apply([{"op": "set_param", "name": "width", "value": "80 mm"}], "wider")
+    v1 = vol(lb)
+    assert v1 > v0
+    lb.undo()
+    assert vol(lb) == pytest.approx(v0)
+    lb.redo()
+    assert vol(lb) == pytest.approx(v1)
+    log = lb.history_path.read_text().splitlines()
+    assert [json.loads(x)["author"] for x in log] == ["agent", "undo", "redo"]
+
+
+def test_scope(lb):
+    lb.scope = {"hole_sketch", "hole_cut"}
+    r = lb.apply([{"op": "set_dimension", "sketch": "slot_sketch", "name": "slot_w", "value": 8}], "x")
+    assert not r["ok"] and "outside the current scope" in r["error"]
+    assert lb.apply([{"op": "update_feature", "id": "hole_cut", "set": {"intent": "holes"}}], "ok")["ok"]
+
+
+def test_remove_entity_cascades(lb):
+    r = lb.apply([{"op": "remove_entity", "sketch": "slot_sketch", "id": "slot_left"}], "break")
+    assert any("also removed 5 constraint" in n for n in r["notes"])
+    assert not r["ok"]  # the slot is now open; the report says so
+
+
+def test_zero_volume_cut_warns(lb):
+    r = lb.apply([{"op": "update_feature", "id": "hole_cut", "set": {"direction": "normal"}}], "wrong way")
+    assert not r["ok"]
+    assert any("changed no volume" in w and "reverse" in w for w in r["warnings"])
+
+
+def test_new_part_from_scratch(tmp_path):
+    s = Session(tmp_path / "blk.vcad.json", create_name="block")
+    r = s.apply([
+        {"op": "set_param", "name": "a", "value": "10 mm"},
+        {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"},
+                                          "entities": [{"id": "c", "type": "circle", "center": [0, 0], "r": 4}],
+                                          "constraints": [{"type": "coincident", "on": ["c.center", "origin"]},
+                                                          {"type": "diameter", "on": ["c"], "value": "a"}]}},
+        {"op": "add_feature", "feature": {"id": "rod", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 20}},
+    ], "rod")
+    assert r["ok"] and vol(s) == pytest.approx(3.14159265 * 25 * 20, rel=1e-6)
+    reopened = Session(tmp_path / "blk.vcad.json")
+    assert reopened.result.part.volume == pytest.approx(vol(s))
+
+
+def test_mcp_server_tools(tmp_path):
+    from vibecad.mcp_server import server
+
+    p = tmp_path / "pb.vcad.json"
+    shutil.copy(EX / "pillow_block.vcad.json", p)
+
+    async def run():
+        names = {t.name for t in await server.list_tools()}
+        assert {"open_part", "apply_ops", "render", "get_sketch", "undo"} <= names
+        tree = (await server.call_tool("open_part", {"path": str(p)})).content[0].text
+        assert "pillow_block" in tree
+        img = (await server.call_tool("render", {"views": ["iso"]})).content[0]
+        assert len(img.data) > 1000
+        rep = json.loads((await server.call_tool("apply_ops", {
+            "ops": [{"op": "set_param", "name": "bolt_spacing", "value": "46 mm"}], "message": "wider bolts"})).content[0].text)
+        assert rep["ok"]
+        sk = json.loads((await server.call_tool("get_sketch", {"sketch_id": "bolt_sketch"})).content[0].text)
+        assert sk["dof"] == 0
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("op,expected", [
+    ({"op": "add_rectangle", "sketch": "sk", "id": "p", "width": "W", "height": 40, "center": [0, 0]}, 60 * 40 * 2),
+    ({"op": "add_rectangle", "sketch": "sk", "id": "p", "width": "W", "height": 40, "corner": [5, 5]}, 60 * 40 * 2),
+    ({"op": "add_circle", "sketch": "sk", "id": "c", "diameter": "W / 2", "center": [3, "W"]}, 3.14159265 * 15 ** 2 * 2),
+    ({"op": "add_slot", "sketch": "sk", "id": "s", "length": 12, "width": 4, "center": [3, -2], "angle": 30},
+     (3.14159265 * 4 + 12 * 4) * 2),
+])
+def test_sketch_shortcuts_fully_constrained(tmp_path, op, expected):
+    s = Session(tmp_path / "m.vcad.json", create_name="m")
+    r = s.apply([{"op": "set_param", "name": "W", "value": "60 mm"},
+                 {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}}, op,
+                 {"op": "add_feature", "feature": {"id": "ex", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 2}}],
+                "shortcut")
+    assert r["ok"], r
+    assert s.result.sketches["sk"][0].report.dof == 0
+    assert s.result.part.volume == pytest.approx(expected, rel=1e-6)
+    # dimensions stay driven by params
+    s.apply([{"op": "set_param", "name": "W", "value": "70 mm"}], "resize")
+    assert s.result.sketches["sk"][0].report.dof == 0
+
+
+def test_batch_inserts_at_same_anchor_keep_order(lb):
+    r = lb.apply([
+        {"op": "add_feature", "after": "wall", "feature": {"id": "rib_sk", "type": "sketch", "plane": {"datum": "YZ", "offset": 30}}},
+        {"op": "add_rectangle", "sketch": "rib_sk", "id": "rib", "width": 10, "height": 10, "corner": [5, 5]},
+        {"op": "add_feature", "after": "wall", "feature": {"id": "rib", "type": "extrude", "profile": {"sketch": "rib_sk"}, "distance": 2}},
+    ], "rib")
+    ids = [f.id for f in lb.doc.features]
+    assert ids.index("wall") + 1 == ids.index("rib_sk") and ids.index("rib_sk") + 1 == ids.index("rib")
+    assert r["applied"] == 3 and not r.get("errors"), r
+
+
+def test_add_polygon_l_profile(tmp_path):
+    s = Session(tmp_path / "m.vcad.json", create_name="m")
+    r = s.apply([{"op": "set_param", "name": "leg", "value": "40 mm"}, {"op": "set_param", "name": "t", "value": "4 mm"},
+                 {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+                 {"op": "add_polygon", "sketch": "sk", "id": "l",
+                  "points": [[0, 0], ["leg", 0], ["leg", "t"], ["t", "t"], ["t", "leg"], [0, "leg"]]},
+                 {"op": "add_feature", "feature": {"id": "ex", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 20}}], "L")
+    assert r["ok"], r
+    assert s.result.sketches["sk"][0].report.dof == 0
+    assert s.result.part.volume == pytest.approx((40 * 4 + 36 * 4) * 20)
+    s.apply([{"op": "set_param", "name": "leg", "value": "50 mm"}], "longer")
+    assert s.result.part.volume == pytest.approx((50 * 4 + 46 * 4) * 20)
+
+
+def test_point_id_as_coordinate_gets_hint(lb):
+    r = lb.apply([{"op": "add_feature", "feature": {"id": "sk2", "type": "sketch", "plane": {"datum": "XY"},
+                   "entities": [{"id": "a", "type": "line", "p1": "pt1", "p2": "pt2"}]}}], "bad")
+    assert "not point ids" in r["error"]

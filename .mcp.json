@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "vibecad": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--quiet",
+        "vibecad-mcp"
+      ],
+      "env": {}
+    }
+  }
+}

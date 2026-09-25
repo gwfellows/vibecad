@@ -1,0 +1,326 @@
+{
+  "vibecad": "0.1",
+  "name": "nema17_mount",
+  "material": "PETG",
+  "process": "FDM 3D print",
+  "design_notes": "Flat NEMA 17 motor mount plate centered on the motor axis (world Z through the origin). Pilot bore clears the motor's 22 mm boss; four M3 clearance holes on the 31 mm square pattern. Plate corners rounded.",
+  "params": {
+    "plate_w": "60 mm",
+    "plate_t": "5 mm",
+    "pilot_d": "22.5 mm",
+    "screw_d": "3.4 mm",
+    "screw_spacing": "31 mm",
+    "corner_r": "4 mm",
+    "pilot_chamfer": "0.5 mm"
+  },
+  "features": [
+    {
+      "id": "plate_sketch",
+      "type": "sketch",
+      "intent": "Square plate centered on the origin",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "plate_bottom",
+          "type": "line",
+          "p1": [
+            -30,
+            -30
+          ],
+          "p2": [
+            30,
+            -30
+          ]
+        },
+        {
+          "id": "plate_right",
+          "type": "line",
+          "p1": [
+            30,
+            -30
+          ],
+          "p2": [
+            30,
+            30
+          ]
+        },
+        {
+          "id": "plate_top",
+          "type": "line",
+          "p1": [
+            30,
+            30
+          ],
+          "p2": [
+            -30,
+            30
+          ]
+        },
+        {
+          "id": "plate_left",
+          "type": "line",
+          "p1": [
+            -30,
+            30
+          ],
+          "p2": [
+            -30,
+            -30
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plate_bottom.p2",
+            "plate_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_right.p2",
+            "plate_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_top.p2",
+            "plate_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_left.p2",
+            "plate_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_left"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_right"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "plate_bottom",
+            "plate_right"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_bottom"
+          ],
+          "value": "plate_w",
+          "name": "plate_w"
+        },
+        {
+          "type": "symmetric",
+          "on": [
+            "plate_bottom.p1",
+            "plate_top.p1",
+            "origin"
+          ],
+          "note": "centered on the motor axis"
+        }
+      ]
+    },
+    {
+      "id": "plate",
+      "type": "extrude",
+      "intent": "Plate body",
+      "profile": {
+        "sketch": "plate_sketch"
+      },
+      "distance": "plate_t",
+      "mode": "new"
+    },
+    {
+      "id": "corner_round",
+      "type": "fillet",
+      "intent": "Round the four vertical plate corners",
+      "radius": "corner_r",
+      "edges": [
+        {
+          "of": {
+            "feature": "plate",
+            "role": "side"
+          },
+          "filter": {
+            "parallel_to": "Z"
+          },
+          "note": "the four vertical corner edges"
+        }
+      ]
+    },
+    {
+      "id": "pilot_sketch",
+      "type": "sketch",
+      "intent": "Pilot bore, concentric with the motor axis, on the plate's top face",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "top face"
+        }
+      },
+      "entities": [
+        {
+          "id": "pilot",
+          "type": "circle",
+          "center": [
+            0,
+            0
+          ],
+          "r": 11.25
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "pilot.center",
+            "origin"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "pilot"
+          ],
+          "value": "pilot_d",
+          "name": "pilot_d"
+        }
+      ]
+    },
+    {
+      "id": "pilot_cut",
+      "type": "extrude",
+      "intent": "Cut the pilot bore through",
+      "profile": {
+        "sketch": "pilot_sketch"
+      },
+      "extent": "through_all",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "screw_sketch",
+      "type": "sketch",
+      "intent": "First M3 clearance hole, upper-right of the 31 mm square",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "top face"
+        }
+      },
+      "entities": [
+        {
+          "id": "screw",
+          "type": "circle",
+          "center": [
+            15.5,
+            15.5
+          ],
+          "r": 1.7
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "screw"
+          ],
+          "value": "screw_d",
+          "name": "screw_d"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "screw.center"
+          ],
+          "value": "screw_spacing / 2",
+          "name": "screw_spacing"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "screw.center"
+          ],
+          "value": "screw_spacing / 2"
+        }
+      ]
+    },
+    {
+      "id": "screw_cut",
+      "type": "extrude",
+      "intent": "Cut the first screw hole through",
+      "profile": {
+        "sketch": "screw_sketch"
+      },
+      "extent": "through_all",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "screw_pattern",
+      "type": "circular_pattern",
+      "intent": "Other three screw holes, 90 degrees apart about the motor axis",
+      "features": [
+        "screw_cut"
+      ],
+      "axis": "Z",
+      "count": 4
+    },
+    {
+      "id": "pilot_chamfer",
+      "type": "chamfer",
+      "intent": "Chamfer the top edge of the pilot bore",
+      "distance": "pilot_chamfer",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "plate",
+              "role": "end"
+            },
+            {
+              "feature": "pilot_cut",
+              "role": "side",
+              "entity": "pilot"
+            }
+          ],
+          "note": "top edge of the pilot bore"
+        }
+      ]
+    }
+  ]
+}
