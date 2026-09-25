@@ -390,7 +390,7 @@ window.vibecadSketch = SK;  // for browser tests and the devtools console
 async function enterSketch(id) {
   const reframe = SK.active() !== id;
   if (!inSketch()) savedView = { pos: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone(), radius: viewRadius, persp: camera === persp };
-  $("#sketchBar").hidden = false;
+  $("#sketchBar").hidden = $("#sketchTools").hidden = false;
   $("#sketchName").textContent = id;
   if (camera === persp) $("#projBtn").click();  // sketches are always viewed orthographic
   controls.mouseButtons.LEFT = null;  // in a sketch the left button selects and draws; right-drag pans, wheel zooms
@@ -417,7 +417,7 @@ function viewSketch() {
 function exitSketch() {
   if (!inSketch()) return;
   SK.exit();
-  $("#sketchBar").hidden = true;
+  $("#sketchBar").hidden = $("#sketchTools").hidden = true;
   controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   ghostPart(false);
   if (savedView) {
@@ -464,7 +464,8 @@ const HINTS = {
 function sketchBarUpdate() {
   const d = SK.data();
   if (!d) return;
-  const conf = d.conflicting?.length ? ` · conflicting: ${d.conflicting.join(", ")}` : d.redundant?.length ? ` · redundant: ${d.redundant.join(", ")}` : "";
+  const names = (list) => list.map((x) => x.split(" ")[0]).join(", ");  // "slot_w distance(...)=6" -> "slot_w"
+  const conf = d.conflicting?.length ? ` · conflicting: ${names(d.conflicting)}` : d.redundant?.length ? ` · redundant: ${names(d.redundant)}` : "";
   const info = $("#sketchInfo");
   info.textContent = `· ${d.dof} DOF · ${d.dof === 0 && !conf ? "fully constrained" : d.status}${conf}`;
   info.className = conf ? "bad" : d.dof === 0 ? "okc" : "muted";

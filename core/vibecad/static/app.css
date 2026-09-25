@@ -68,16 +68,17 @@ section { min-height: 0; overflow: auto; }
 .vtools { position: absolute; top: 10px; display: flex; gap: 4px; }
 .vtools.left { left: 10px; } .vtools.right { right: 10px; }
 .vtools button { background: rgba(255,255,255,.92); font-size: 12px; padding: 2px 8px; }
-.sketchbar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 20px);
-  background: rgba(37,99,235,.96); color: #fff; border-radius: 8px; padding: 6px 10px; display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.sketchbar { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 140px);
+  background: rgba(37,99,235,.96); color: #fff; border-radius: 8px; padding: 5px 10px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .sketchbar .skhead { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .sketchbar .muted { color: #dbeafe; } .sketchbar .okc { color: #bbf7d0; } .sketchbar .bad { color: #fecaca; font-weight: 600; }
 .sketchbar button { background: #fff; border: 0; font-size: 12px; padding: 2px 8px; }
-.sktools { display: flex; flex-wrap: wrap; gap: 8px; }
-.skgroup { display: flex; gap: 2px; }
-.sktools button { padding: 2px 7px; min-width: 26px; }
+.sktools { position: absolute; left: 10px; top: 44px; z-index: 3; display: flex; flex-direction: column; gap: 8px;
+  max-height: calc(100% - 54px); overflow: auto; }
+.skgroup { display: flex; flex-direction: column; gap: 2px; background: rgba(37,99,235,.96); padding: 3px; border-radius: 7px; }
+.sktools button { padding: 2px 4px; min-width: 50px; font-size: 12px; border: 0; background: #fff; }
 .sktools button.on { background: #fde68a; font-weight: 600; }
-.sktools button:disabled { opacity: .4; }
+.sktools button:disabled { opacity: .45; }
 .skhint { color: #dbeafe; font-size: 11px; min-height: 14px; }
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #labels .lbl { position: absolute; transform: translate(-50%, -50%); font: 11px ui-monospace, Menlo, monospace; white-space: nowrap; }

@@ -4,7 +4,8 @@
 
 Each prompt runs the next scripted turn: it emits the same events AgentRunner does (thinking, tool calls with
 real tool results, images, text, metrics) and calls the real Workspace tools, so the tree and 3D view update
-exactly as they would for a model. The first line of every reply echoes the prompt's context prefix.
+exactly as they would for a model. The first line of every reply echoes the prompt's context prefix; a prompt
+containing "(echo)" runs no tools and only echoes.
 """
 from __future__ import annotations
 
@@ -63,7 +64,8 @@ class ScriptedAgent:
         t0 = time.perf_counter()
         pub({"type": "run_start", "prompt": prompt, "t": time.time()})
         pub({"type": "agent_thinking", "text": "Planning the change."})
-        for k, (name, args) in enumerate(TURNS[self.n % len(TURNS)]):
+        turn = [] if "(echo)" in prompt else TURNS[self.n % len(TURNS)]  # "(echo)": just report the context
+        for k, (name, args) in enumerate(turn):
             tid = f"t{self.n}_{k}"
             pub({"type": "tool_call", "id": tid, "name": name, "input": args, "t": time.time()})
             tc = ToolCall(name, len(json.dumps(args)), time.time())
@@ -79,7 +81,7 @@ class ScriptedAgent:
             pub({"type": "tool_result", "id": tid, "is_error": False, "text": text, "t": time.time()})
         context = [ln for ln in prompt.splitlines() if ln.startswith("[")]
         pub({"type": "agent_text", "text": "Context: " + (" ".join(context) or "none") + "\nDone.", "t": time.time()})
-        self.n += 1
+        self.n += bool(turn)
         m.wall_s, m.turns, m.output_tokens = time.perf_counter() - t0, 3, 123
         pub({"type": "run_done", "metrics": m.summary()})
         return m

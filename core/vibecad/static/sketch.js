@@ -465,7 +465,8 @@ export function createSketchEditor(ctx) {
     });
   }
   async function editDim(c, el) {
-    const text = await askValue(el, c.param || c.expr || String(c.value), `${c.name || c.type} =`);
+    const shown = c.param || (c.expr && isNaN(+c.expr) ? c.expr : String(+(+c.value).toFixed(6)));
+    const text = await askValue(el, shown, `${c.name || c.type} =`);
     if (text == null) return;
     const v = parseValue(text);
     if (v.error) return ctx.note(v.error, "err");

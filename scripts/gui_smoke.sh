@@ -2,6 +2,7 @@
 # Browser tests of the GUI against throwaway copies of examples/:
 #   tests/gui/smoke.js        main flows (open, edit, undo, sketch mode, rollback, dialogs, new part)
 #   tests/gui/agent_panel.js  the agent panel, driven by a scripted agent (tests/gui/fake_agent_app.py; no model)
+#   tests/gui/sketch_editor.js  drawing, constraining, dragging and dimensioning in a sketch (same server)
 #   scripts/gui_smoke.sh [screenshot_dir]
 # Needs node with playwright (npm i -g playwright) and a Chromium it can find.
 set -euo pipefail
@@ -32,5 +33,6 @@ export NODE_PATH=$(npm root -g)
 status=0
 node "$REPO/tests/gui/smoke.js" "http://127.0.0.1:$PORT" "$SHOTS" $THREE || status=1
 node "$REPO/tests/gui/agent_panel.js" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
+node "$REPO/tests/gui/sketch_editor.js" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
 echo "screenshots: $SHOTS   server logs: $WORK/*.log"
 exit $status
