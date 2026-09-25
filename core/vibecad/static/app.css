@@ -132,3 +132,15 @@ dialog img { max-width: 88vw; max-height: 80vh; display: block; }
 #history .who { font-weight: 600; } #history .rej { color: var(--err); }
 .tip { position: fixed; pointer-events: none; background: rgba(20,24,32,.88); color: #fff; font-size: 11px; padding: 3px 6px; border-radius: 4px; z-index: 5; display: none; }
 [hidden] { display: none !important; }
+
+/* new sketch / extrude / revolve forms */
+.popmenu { position: absolute; z-index: 5; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.14); display: flex; flex-direction: column; gap: 6px; min-width: 220px; font-size: 12px; }
+.popmenu .ttl { font-weight: 600; }
+.popmenu .row { display: flex; gap: 6px; align-items: center; }
+.popmenu .row label { width: 72px; color: var(--muted); }
+.popmenu .row input, .popmenu .row select { flex: 1; font-size: 12px; padding: 2px 5px; }
+.popmenu button { font-size: 12px; text-align: left; }
+.popmenu .go { background: var(--accent); color: #fff; border-color: var(--accent); text-align: center; }
+.popmenu .err { color: var(--err); }
+.sketchbar .skacts { display: flex; gap: 4px; }

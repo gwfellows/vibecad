@@ -213,6 +213,7 @@ async function edit(ops, message) {  // true if the batch was applied
   let r;
   try { r = await api("/api/ops", { ops, message }); } catch { return false; }
   const rep = r.report;
+  if (r.state) setState(r.state);
   if (!rep.applied) note(rep.error || "edit rejected", "err");
   else if (rep.errors || rep.warnings) note([...(rep.errors || []), ...(rep.warnings || [])].join("\n"), "err");
   return !!rep.applied;
@@ -248,7 +249,8 @@ const partGroup = new THREE.Group();
 scene.add(partGroup);
 const axes = new THREE.AxesHelper(10);
 scene.add(axes);
-const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8);
+const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
+let pickedFace = null;  // the face last clicked in the 3D view: {mesh, labels, point}
 let faceMeshes = [], edgeLines = null, meshRev = null, hovered = null;
 
 function resize() {
@@ -312,13 +314,18 @@ async function loadMesh(fit) {
   eg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
   edgeLines = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x1b1f27, transparent: true }));
   partGroup.add(edgeLines);
+  if (pickedFace) {
+    const same = faceMeshes.find((x) => x.userData.labels.join() === pickedFace.labels.join());
+    pickedFace = same ? { ...pickedFace, mesh: same } : null;
+  }
   colorFaces();
   if (inSketch()) ghostPart(true);
   if (fit) pendingFit = !fitView("iso");
 }
 
 function colorFaces() {
-  for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : selected && m.userData.features.includes(selected) ? HI : BASE);
+  for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : m === pickedFace?.mesh ? PICKED
+    : selected && m.userData.features.includes(selected) ? HI : BASE);
 }
 
 function frame(center, radius, dir, up) {
@@ -347,12 +354,13 @@ $("#fitBtn").onclick = () => (inSketch() ? viewSketch() : fitView("iso"));
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
 const tip = Object.assign(document.createElement("div"), { className: "tip" });
 document.body.appendChild(tip);
-function pick(ev) {
+function pickHit(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  return ray.intersectObjects(faceMeshes)[0]?.object || null;
+  return ray.intersectObjects(faceMeshes)[0] || null;
 }
+const pick = (ev) => pickHit(ev)?.object || null;
 renderer.domElement.addEventListener("pointermove", (ev) => {
   if (inSketch()) return;
   const m = pick(ev);
@@ -365,7 +373,8 @@ let downAt = null;
 renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.clientX, ev.clientY]));
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
-  const m = pick(ev);
+  const hit = pickHit(ev), m = hit?.object;
+  pickedFace = m ? { mesh: m, labels: m.userData.labels, point: hit.point.toArray() } : null;
   if (m) { const fs = m.userData.features, i = fs.indexOf(selected); select(fs[(i + 1) % fs.length]); }
   else select(null);
 });
@@ -389,7 +398,8 @@ window.vibecadSketch = SK;  // for browser tests and the devtools console
 
 async function enterSketch(id) {
   const reframe = SK.active() !== id;
-  if (!inSketch()) savedView = { pos: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone(), radius: viewRadius, persp: camera === persp };
+  if (!inSketch()) savedView = { pos: camera.position.clone(), up: camera.up.clone(), target: controls.target.clone(), radius: viewRadius,
+                                 persp: camera === persp, empty: new THREE.Box3().setFromObject(partGroup).isEmpty() };
   $("#sketchBar").hidden = $("#sketchTools").hidden = false;
   $("#sketchName").textContent = id;
   if (camera === persp) $("#projBtn").click();  // sketches are always viewed orthographic
@@ -412,7 +422,18 @@ function viewSketch() {
     c = pc.clone().addScaledVector(F.n, -pc.clone().sub(F.o).dot(F.n));
     r = pb.isEmpty() ? 30 : Math.max(pb.getSize(new THREE.Vector3()).length() / 2, 10);
   }
+  // keep the sketch clear of the status bar (top) and tool palette (left): fit it to the free area
+  const h = host.clientHeight || 1, w = host.clientWidth || 1;
+  const top = $("#sketchBar").getBoundingClientRect().bottom - host.getBoundingClientRect().top + 8;
+  const left = $("#sketchTools").getBoundingClientRect().right - host.getBoundingClientRect().left + 8;
+  r *= Math.max(h / Math.max(h - top, h / 2), w / Math.max(w - left, w / 2));
   frame(c, r, F.n, F.y);
+  const upp = (ortho.top - ortho.bottom) / ortho.zoom / h;
+  const right = new THREE.Vector3().crossVectors(F.y, F.n);
+  const shift = F.y.clone().multiplyScalar((top / 2) * upp).addScaledVector(right, -(left / 2) * upp);
+  camera.position.add(shift);
+  controls.target.add(shift);
+  controls.update();
 }
 function exitSketch() {
   if (!inSketch()) return;
@@ -420,7 +441,9 @@ function exitSketch() {
   $("#sketchBar").hidden = $("#sketchTools").hidden = true;
   controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   ghostPart(false);
-  if (savedView) {
+  if (savedView?.empty) {  // the part was empty when the sketch opened: show whatever it has become
+    if (!fitView("iso")) pendingFit = true;
+  } else if (savedView) {
     if (savedView.persp && camera === ortho) $("#projBtn").click();
     viewRadius = savedView.radius;
     camera.position.copy(savedView.pos); camera.up.copy(savedView.up); controls.target.copy(savedView.target);
@@ -480,6 +503,112 @@ function sketchBarUpdate() {
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;
 }
+
+// ── modelling by hand: new sketches, extrude, revolve ─────────────
+function nextId(prefix) {
+  const ids = new Set(S.features.map((f) => f.id));
+  let n = 1;
+  while (ids.has(`${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+}
+async function addFeature(feature, message, after) {
+  // new features go at the rollback bar if it is up, and the bar moves past them
+  const rb = S.rollback, anchor = after ? { after } : rb != null && rb > 0 ? { after: S.features[rb - 1].id } : rb === 0 ? { before: S.features[0].id } : {};
+  const pos = after ? S.features.findIndex((f) => f.id === after) + 1 : rb;
+  const ok = await edit([{ op: "add_feature", ...anchor, feature }], message);
+  if (ok && rb != null && pos <= rb) setState((await api("/api/rollback", { index: rb + 1 })).state);
+  return ok;
+}
+function faceRef(label, point) {
+  const m = label.match(/^([^.]+)\.([a-z_]+)(?:\[([^\]]+)\])?(?:@(.+))?$/);
+  if (!m) return null;
+  const ref = { feature: m[1], role: m[2] };
+  if (m[3]) ref.entity = m[3];
+  if (m[4]) ref.instance = m[4];
+  if (faceMeshes.filter((x) => x.userData.labels.includes(label)).length > 1)  // label on several faces: take the clicked one
+    Object.assign(ref, { pick: "nearest", near: point.map((v) => +v.toFixed(4)) });
+  ref.note = `face ${label}, picked in the GUI`;
+  return ref;
+}
+function popup(el, anchor) {
+  const a = anchor.getBoundingClientRect(), h = $("#center").getBoundingClientRect();
+  el.style.left = Math.min(a.left - h.left, h.width - 260) + "px";
+  el.style.top = a.bottom - h.top + 6 + "px";
+  el.hidden = false;
+  const close = (ev) => { if (!el.contains(ev.target) && ev.target !== anchor) { el.hidden = true; document.removeEventListener("pointerdown", close, true); } };
+  document.addEventListener("pointerdown", close, true);
+}
+const numOrExpr = (t) => (/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t.trim()) ? +t : t.trim());
+
+$("#newSketchBtn").onclick = () => {
+  if (!S) return note("Open or create a part first.", "err");
+  const m = $("#newMenu"), face = pickedFace?.labels?.[0];
+  m.innerHTML = `<div class="ttl">New sketch on…</div>
+    <button data-d="XY">XY plane (top, normal +Z)</button><button data-d="XZ">XZ plane (front, normal −Y)</button>
+    <button data-d="YZ">YZ plane (right, normal +X)</button>
+    <div class="row"><label>offset</label><input id="nsOffset" value="0"></div>
+    <button data-face ${face ? "" : "disabled"}>${face ? `Picked face: ${esc(face)}` : "Picked face (click a face first)"}</button>`;
+  popup(m, $("#newSketchBtn"));
+  const make = async (plane) => {
+    m.hidden = true;
+    const id = nextId("sketch");
+    const off = numOrExpr($("#nsOffset").value || "0");
+    if (off !== 0) plane.offset = off;
+    if (await addFeature({ id, type: "sketch", plane }, `new ${id}`)) select(id);
+  };
+  m.querySelectorAll("[data-d]").forEach((b) => (b.onclick = () => make({ datum: b.dataset.d })));
+  m.querySelector("[data-face]").onclick = () => {
+    const ref = faceRef(face, pickedFace.point);
+    if (!ref) return note(`can't make a face reference from ${face}`, "err");
+    pickedFace = null;
+    make({ face: ref });
+  };
+};
+
+function featureForm(kind) {
+  const sid = SK.active(), d = SK.data();
+  if (!sid || !d) return;
+  const m = $("#featMenu"), hasBody = S.volume != null;
+  const lines = d.entities.filter((e) => e.type === "line").map((e) => e.id);
+  const mode = (def) => `<div class="row"><label>mode</label><select id="ffMode">${["add", "cut", "new", "intersect"].map((x) =>
+    `<option ${x === def ? "selected" : ""}>${x}</option>`).join("")}</select></div>`;
+  m.innerHTML = kind === "extrude"
+    ? `<div class="ttl">Extrude ${esc(sid)}</div>
+       <div class="row"><label>distance</label><input id="ffDist" value="10"></div>
+       <div class="row"><label>direction</label><select id="ffDir"><option>normal</option><option>reverse</option><option>symmetric</option></select></div>
+       <div class="row"><label>through all</label><input id="ffThru" type="checkbox" style="flex:0"></div>
+       ${mode(hasBody ? "add" : "new")}<button class="go" id="ffGo">Extrude</button><div class="err" id="ffErr"></div>`
+    : `<div class="ttl">Revolve ${esc(sid)}</div>
+       <div class="row"><label>axis</label><select id="ffAxis">${["x_axis", "y_axis", ...lines].map((a) => `<option>${esc(a)}</option>`).join("")}</select></div>
+       <div class="row"><label>angle</label><input id="ffAngle" value="360"></div>
+       ${mode(hasBody ? "add" : "new")}<button class="go" id="ffGo">Revolve</button><div class="err" id="ffErr"></div>`;
+  popup(m, $(kind === "extrude" ? "#extrudeBtn" : "#revolveBtn"));
+  $("#ffGo").onclick = async () => {
+    const id = nextId(kind), f = { id, type: kind, profile: { sketch: sid }, mode: $("#ffMode").value };
+    if (kind === "extrude") {
+      if ($("#ffThru").checked) f.extent = "through_all"; else f.distance = numOrExpr($("#ffDist").value);
+      if ($("#ffDir").value !== "normal") f.direction = $("#ffDir").value;
+    } else {
+      f.axis = $("#ffAxis").value;
+      f.angle = numOrExpr($("#ffAngle").value);
+    }
+    m.hidden = true;
+    if (await addFeature(f, `${kind} ${sid}`, sid)) {
+      selected = null;
+      exitSketch();
+      select(id);
+    }
+  };
+}
+$("#extrudeBtn").onclick = () => featureForm("extrude");
+$("#revolveBtn").onclick = () => featureForm("revolve");
+window.vibecadView = {  // for browser tests and the devtools console
+  toScreen: (x, y, z) => {
+    const p = new THREE.Vector3(x, y, z).project(camera), r = renderer.domElement.getBoundingClientRect();
+    return [r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height];
+  },
+  pickedFace: () => pickedFace && { labels: pickedFace.labels, point: pickedFace.point },
+};
 
 // ── dialogs ───────────────────────────────────────────────────────
 $("#rendersBtn").onclick = () => {

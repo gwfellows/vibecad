@@ -45,18 +45,23 @@
       <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
       <button data-view="top">Top</button><button data-view="right">Right</button>
       <button id="fitBtn" title="Fit the part in view">Fit</button>
+      <button id="newSketchBtn" title="Start a sketch on a datum plane or on the face you clicked">+ Sketch</button>
     </div>
     <div class="vtools right">
       <button id="projBtn" title="Switch between orthographic and perspective">Orthographic</button>
     </div>
     <div id="sketchBar" class="sketchbar" hidden>
       <div class="skhead"><span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
-        <button id="exitSketch">Exit sketch (Esc)</button></div>
+        <span class="skacts"><button id="extrudeBtn" title="Extrude this sketch's closed profiles: add, cut or a new body">Extrude…</button>
+        <button id="revolveBtn" title="Revolve this sketch's closed profiles about a line">Revolve…</button>
+        <button id="exitSketch">Exit sketch (Esc)</button></span></div>
       <div id="sketchHint" class="skhint"></div>
     </div>
     <div id="sketchTools" class="sktools" hidden></div>
     <div id="labels"></div>
     <div id="boxSel" class="boxsel" hidden></div>
+    <div id="newMenu" class="popmenu" hidden></div>
+    <div id="featMenu" class="popmenu" hidden></div>
     <div id="dimEdit" class="dimedit" hidden><span class="what"></span><input spellcheck="false" autocomplete="off"><span class="keys">Enter · Esc</span></div>
     <div id="rollbackNote" class="rollnote" hidden></div>
   </section>

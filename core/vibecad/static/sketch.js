@@ -679,8 +679,10 @@ export function createSketchEditor(ctx) {
   // ── lifecycle ─────────────────────────────────────────────────
   async function refresh() {
     if (!sid) return;
+    const want = sid;
     let d;
-    try { d = await ctx.api(`/api/sketch/${encodeURIComponent(sid)}.json`); } catch { return ctx.onLost?.(); }
+    try { d = await ctx.api(`/api/sketch/${encodeURIComponent(want)}.json`); } catch { return sid === want ? ctx.onLost?.() : undefined; }
+    if (sid !== want) return;  // the sketch was closed or switched while this was loading
     D = d;
     const f = D.frame;
     F = { o: new THREE.Vector3(...f.origin), x: new THREE.Vector3(...f.x_dir), y: new THREE.Vector3(...f.y_dir), n: new THREE.Vector3(...f.normal) };
