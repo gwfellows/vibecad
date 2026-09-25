@@ -147,6 +147,66 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   check("face reference saved semantically with a note", saved.profile?.sketch === "sketch2" &&
     JSON.stringify(await page.evaluate(() => fetch("/api/feature/sketch2").then((r) => r.json()))).includes('"feature":"extrude1","role":"end"'));
 
+  // tidy the hand-made part: a named parameter, meaningful names, an intent
+  const answer = (text) => page.once("dialog", (d) => d.accept(text));
+  const clickTree = (id) => page.click(`#tree li.feat >> text=/^${id}$/`);
+  await clickTree("sketch1");
+  await page.waitForSelector("#sketchBar:not([hidden])");
+  await settle();
+  await page.locator("#labels .dim", { hasText: "rect1_bottom_len" }).click();
+  check("→ Param enabled for a plain dimension", !(await page.isDisabled("#sketchTools [data-act=param]")));
+  answer("plate_w");
+  await page.click("#sketchTools [data-act=param]");
+  await settle();
+  const pw = page.locator("#params tr", { hasText: "plate_w" }).locator("input");
+  check("dimension became a parameter", (await pw.inputValue()) === "40 mm", await pw.inputValue());
+  await atRef(await mid("rect1_top"));
+  answer("plate_back");
+  await page.click("#sketchTools [data-act=rename]");
+  await settle();
+  check("entity renamed", (await SK((sk) => sk.data().entities.map((e) => e.id))).includes("plate_back"));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await pw.fill("50");
+  await pw.press("Enter");
+  await settle();
+  check("editing the parameter resizes the part", Math.abs((await vol()) - (50 * 20 * 5 - Math.PI * 9 * 5)) < 0.5, `${await vol()}`);
+
+  await clickTree("extrude1");
+  answer("plate");
+  await page.click("#details [data-a=rename]");
+  await settle();
+  check("feature renamed in the tree", (await tree())[1] === "plate", (await tree()).join());
+  check("the sketch on its face still builds", !(await page.textContent("#partStatus")).includes("errors"), await page.textContent("#partStatus"));
+  await page.click("#details .intent");
+  await page.keyboard.type("base plate the hole goes through");
+  await page.keyboard.press("Enter");
+  await settle();
+  check("intent edited", (await page.evaluate(() => fetch("/api/feature/plate").then((r) => r.json()))).intent === "base plate the hole goes through");
+
+  await clickTree("extrude2");
+  const vHole = await vol();
+  await page.click("#details [data-a=suppress]");
+  await settle();
+  check("suppressing the cut restores the volume", Math.abs((await vol()) - 50 * 20 * 5) < 0.5, `${await vol()}`);
+  check("suppressed feature marked in the tree", await page.isVisible("#tree li.suppressed"));
+  await page.click("#details [data-a=suppress]");
+  await settle();
+  check("unsuppress brings the hole back", Math.abs((await vol()) - vHole) < 0.5);
+  await page.click("#details [data-a=up]");
+  await settle();
+  check("move up reorders", (await tree()).indexOf("extrude2") === 2, (await tree()).join());
+  check("cut before its sketch fails, visibly", (await page.textContent("#partStatus")).includes("errors"));
+  await page.click("#details [data-a=down]");
+  await settle();
+  check("move down restores", (await tree()).join() === "sketch1,plate,sketch2,extrude2,sketch3", (await tree()).join());
+  await page.click("#details [data-a=delete]");
+  await settle();
+  check("delete removes the feature", !(await tree()).includes("extrude2"));
+  await page.keyboard.press("Control+z");
+  await settle();
+  check("undo brings it back", (await tree()).includes("extrude2"));
+
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} passed`);

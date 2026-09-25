@@ -114,9 +114,10 @@ function renderTree(before) {
   S.features.forEach((f, i) => {
     if (i === rb) ol.appendChild(rollbar());
     const li = document.createElement("li");
-    const st = f.status === "error" ? "error" : f.warnings?.length ? "warn" : "ok";
+    const st = f.status === "error" ? "error" : f.warnings?.length ? "warn" : f.status === "suppressed" ? "suppressed" : "ok";
     li.className = `feat ${st}` + (f.id === selected ? " selected" : "") + (i >= rb ? " rolled" : "");
-    const meta = f.status === "error" ? "error" : f.warnings?.length ? "warning" : f.type === "sketch" ? `${f.dof ?? "?"} DOF` : "";
+    const meta = f.status === "error" ? "error" : f.warnings?.length ? "warning" : f.status === "suppressed" ? "suppressed"
+      : f.type === "sketch" ? `${f.dof ?? "?"} DOF` : "";
     li.innerHTML = `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}</span><span class="meta ${st}">${esc(meta)}</span>`
       + (f.status === "error" ? `<span class="err-msg">${esc(f.message)}</span>` : "")
       + (f.warnings || []).map((w) => `<span class="warn-msg">${esc(w)}</span>`).join("");
@@ -179,13 +180,55 @@ async function renderDetails() {
   $("#selName").textContent = selected || "";
   if (!selected) { d.innerHTML = "Click a feature in the tree or a face in the view."; d.className = "muted small"; return; }
   const f = S.features.find((x) => x.id === selected);
+  if (!f) return;
   const json = await api(`/api/feature/${encodeURIComponent(selected)}`);
+  if (json.id !== selected) return;  // selection changed while loading
+  const i = S.features.indexOf(f), off = f.status === "suppressed";
   d.className = "";
-  d.innerHTML = `<div class="intent small">${esc(f.intent || "No intent written.")}</div>
+  d.innerHTML = `<div class="factions">
+      <button data-a="rename" title="Rename; every reference to it is updated">Rename</button>
+      <button data-a="suppress" title="${off ? "Build this feature again" : "Skip this feature when building (keeps it in the tree)"}">${off ? "Unsuppress" : "Suppress"}</button>
+      <button data-a="up" title="Move up the tree" ${i === 0 ? "disabled" : ""}>↑</button>
+      <button data-a="down" title="Move down the tree" ${i === S.features.length - 1 ? "disabled" : ""}>↓</button>
+      <span class="grow"></span><button data-a="delete" class="danger" title="Delete this feature (undo brings it back)">Delete</button></div>
+    <div class="intent small" title="Click to edit: one line on why this feature exists">${esc(f.intent || "No intent written. Click to add one.")}</div>
     <textarea spellcheck="false"></textarea>
     <div class="row"><button id="applyFeat">Apply edit</button><span class="grow"></span>
     <button id="askAbout" title="Ask the agent about this feature">Ask agent</button></div>`;
   d.querySelector("textarea").value = JSON.stringify(json, null, 1);
+  const act = {
+    rename: async () => {
+      const to = prompt(`Rename ${f.id} to (letters, digits, underscores):`, f.id);
+      if (!to || to === f.id) return;
+      const wasSketch = inSketch() && SK.active() === f.id;
+      if (await edit([{ op: "rename_feature", id: f.id, to }], `rename ${f.id} to ${to}`)) {
+        if (wasSketch) exitSketch();
+        select(to);
+      }
+    },
+    suppress: () => edit([{ op: "update_feature", id: f.id, set: { suppressed: !off } }], `${off ? "unsuppress" : "suppress"} ${f.id}`),
+    up: () => edit([{ op: "move_feature", id: f.id, before: S.features[i - 1].id }], `move ${f.id} up`),
+    down: () => edit([{ op: "move_feature", id: f.id, after: S.features[i + 1].id }], `move ${f.id} down`),
+    delete: async () => {
+      if (await edit([{ op: "remove_feature", id: f.id }], `delete ${f.id}`)) select(null);
+    },
+  };
+  d.querySelectorAll(".factions [data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
+  const intent = d.querySelector(".intent");
+  intent.onclick = () => {
+    const inp = Object.assign(document.createElement("input"), { value: f.intent || "", placeholder: "why this feature exists", className: "intent-edit" });
+    intent.replaceWith(inp);
+    inp.focus();
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      if (save && inp.value.trim() !== (f.intent || "")) edit([{ op: "update_feature", id: f.id, set: { intent: inp.value.trim() || null } }], `intent of ${f.id}`);
+      else renderDetails();
+    };
+    inp.onkeydown = (ev) => { if (ev.key === "Enter") finish(true); if (ev.key === "Escape") finish(false); };
+    inp.onblur = () => finish(true);
+  };
   d.querySelector("#applyFeat").onclick = () => {
     let obj;
     try { obj = JSON.parse(d.querySelector("textarea").value); } catch (err) { note(`JSON error: ${err.message}`, "err"); return; }
@@ -390,6 +433,7 @@ const SK = createSketchEditor({
     tip.textContent = t.text;
   },
   hint: (t) => { $("#sketchHint").textContent = t; },
+  ask: (q, def) => prompt(q, def),
   onChange: () => sketchBarUpdate(),
   onLost: () => exitSketch(),
 });
@@ -468,7 +512,9 @@ function ghostPart(on) {
   const group = (items) => { const g = document.createElement("span"); g.className = "skgroup"; items.forEach((i) => g.appendChild(i)); bar.appendChild(g); };
   group(SKETCH_TOOLS.map((t) => btn(t.label, t.title, () => SK.setTool(t.id), { tool: t.id })));
   group(SKETCH_CONSTRAINTS.map((c) => btn(c.label, c.title, () => SK.constrain(c.id), { con: c.id })));
-  group([btn("Constr.", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
+  group([btn("Rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
+         btn("→ Param", "Drive the selected dimension from a new part parameter (shows in the Parameters table)", () => SK.toParam(), { act: "param" }),
+         btn("Constr.", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
          btn("Delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
          btn("Ask agent", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
 })();
@@ -500,6 +546,8 @@ function sketchBarUpdate() {
   const sel = SK.selection();
   $("#sketchTools [data-act=delete]").disabled = !sel.some((k) => k.startsWith("#") || !k.includes(".") && k !== "origin");
   $("#sketchTools [data-act=construction]").disabled = !sel.some((k) => !k.startsWith("#") && !k.includes(".") && k !== "origin");
+  $("#sketchTools [data-act=rename]").disabled = !SK.canRename();
+  $("#sketchTools [data-act=param]").disabled = !SK.canParam();
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;
 }

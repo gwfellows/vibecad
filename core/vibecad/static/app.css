@@ -144,3 +144,12 @@ dialog img { max-width: 88vw; max-height: 80vh; display: block; }
 .popmenu .go { background: var(--accent); color: #fff; border-color: var(--accent); text-align: center; }
 .popmenu .err { color: var(--err); }
 .sketchbar .skacts { display: flex; gap: 4px; }
+
+/* feature actions */
+#details .factions { display: flex; gap: 4px; margin: 2px 0 6px; }
+#details .factions button { font-size: 12px; padding: 2px 8px; }
+#details .factions .danger { color: var(--err); }
+#details .intent { cursor: text; border-radius: 4px; padding: 2px 3px; margin-left: -3px; }
+#details .intent:hover { background: #f3f4f6; }
+#details .intent-edit { width: 100%; font-size: 12px; margin: 4px 0 8px; }
+#tree li.suppressed .fid { text-decoration: line-through; color: var(--muted); }

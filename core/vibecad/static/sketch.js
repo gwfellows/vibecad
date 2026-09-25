@@ -506,6 +506,39 @@ export function createSketchEditor(ctx) {
     sel = new Set();
     await commit(ops, `delete ${ops.length} item(s) in ${sid}`);
   }
+  function one() {  // the single selected entity id, or constraint, if exactly one thing is selected
+    if (sel.size !== 1) return null;
+    const [k] = [...sel];
+    if (k.startsWith("#")) return { con: D.constraints[+k.slice(1)] };
+    return ent(k) ? { ent: k } : null;
+  }
+  const canRename = () => { const o = one(); return !!(o?.ent || (o?.con && DIMS.has(o.con.type))); };
+  const canParam = () => { const o = one(); return !!(o?.con && DIMS.has(o.con.type) && !o.con.param); };
+  async function rename() {
+    const o = one();
+    if (!canRename()) return ctx.note("Rename: select one entity or one dimension", "err");
+    const cur = o.ent || o.con.name || "";
+    const to = (ctx.ask(`Rename ${o.ent ? "entity" : "dimension"} ${cur || o.con.type} to:`, cur) || "").trim();
+    if (!to || to === cur) return;
+    if (!/^[A-Za-z_]\w*$/.test(to)) return ctx.note(`${to}: use letters, digits and underscores`, "err");
+    if (o.ent) {
+      sel = new Set([to]);
+      return commit([{ op: "rename_entity", sketch: sid, id: o.ent, to }], `rename ${o.ent} to ${to} in ${sid}`);
+    }
+    await commit([{ op: "update_constraint", sketch: sid, match: { index: o.con.index }, set: { name: to } }], `rename dimension ${cur} to ${to} in ${sid}`);
+  }
+  async function toParam() {  // drive the selected dimension from a new part parameter of the same value
+    if (!canParam()) return ctx.note("→ Param: select one dimension that isn't driven by a parameter yet", "err");
+    const c = one().con;
+    const name = (ctx.ask("Parameter name:", c.name || `${sid}_${c.type}`) || "").trim();
+    if (!name) return;
+    if (!/^[A-Za-z_]\w*$/.test(name)) return ctx.note(`${name}: use letters, digits and underscores`, "err");
+    if (D.params.includes(name)) return ctx.note(`a parameter ${name} already exists`, "err");
+    const unit = c.type === "angle" ? " deg" : " mm";
+    await commit([{ op: "set_param", name, value: isNaN(+c.expr) ? c.expr : `${+(+c.value).toFixed(6)}${unit}` },
+                  { op: "update_constraint", sketch: sid, match: { index: c.index }, set: { value: name, name } }],
+                 `make ${name} a parameter driving ${c.name || c.type} in ${sid}`);
+  }
   async function toggleConstruction() {
     const { curves } = selected();
     if (!curves.length) return ctx.note("Construction: select lines, circles or arcs", "err");
@@ -721,6 +754,7 @@ export function createSketchEditor(ctx) {
 
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
+    rename, toParam, canRename, canParam,
     active: () => sid,
     data: () => D,
     tool: () => tool,
