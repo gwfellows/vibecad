@@ -101,6 +101,12 @@ class App:
         }
 
     def mesh(self) -> dict:
+        # OCCT meshes a shape in place and is not thread-safe: two requests tessellating the same shape at
+        # once (the GUI asks twice per edit, the agent may render meanwhile) yield faces with no triangulation
+        with self.ws.lock:
+            return self._mesh()
+
+    def _mesh(self) -> dict:
         s = self.ws.session()
         rev = _rev(s) + f"@{self.rollback}"
         key = f"{self.ws.active}:{rev}"

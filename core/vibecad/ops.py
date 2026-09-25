@@ -26,6 +26,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from . import schema as S
+from .expr import ExprError, evaluate_params
 
 
 class OpError(ValueError):
@@ -73,6 +74,10 @@ def apply_ops(doc: S.Document, ops: list[dict[str, Any]]) -> tuple[S.Document, l
         new = S.Document.model_validate(raw)
     except ValidationError as e:
         raise OpError("result does not validate:\n" + _short_validation(e)) from None
+    try:  # a param that doesn't evaluate would break every later regeneration of the part
+        evaluate_params(new.params)
+    except ExprError as e:
+        raise OpError(f"params do not evaluate: {e}") from None
     return new, notes
 
 

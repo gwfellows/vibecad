@@ -196,7 +196,7 @@ class Workspace:
         if bad:
             raise ToolError(f"unknown views {bad}; valid: {list(VIEWS)}")
         tiles = []
-        with tempfile.TemporaryDirectory() as td:
+        with self.lock, tempfile.TemporaryDirectory() as td:  # meshing is not thread-safe (see App.mesh)
             for v in views:
                 p = Path(td) / f"{v}.png"
                 render_view(s.result.body, p, v, f"{s.doc.name}  {v}", highlight=set(highlight or []), size_px=size)
@@ -224,7 +224,8 @@ class Workspace:
             raise ToolError("no solid to export")
         out = self._path(path) if path else self.root / "out" / s.doc.name / f"{s.doc.name}.{fmt}"
         out.parent.mkdir(parents=True, exist_ok=True)
-        {"step": bd.export_step, "stl": bd.export_stl}[fmt](part, str(out))
+        with self.lock:
+            {"step": bd.export_step, "stl": bd.export_stl}[fmt](part, str(out))
         return f"wrote {out}"
 
 

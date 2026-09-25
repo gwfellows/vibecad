@@ -39,6 +39,20 @@ def test_failed_batch_changes_nothing(lb):
     assert lb.path.read_text() == before and vol(lb) == v
 
 
+@pytest.mark.parametrize("ops,why", [
+    ([{"op": "set_param", "name": "hole_d", "value": "2 *"}], "cannot parse"),
+    ([{"op": "set_param", "name": "a", "value": "b + 1"}, {"op": "set_param", "name": "b", "value": "a"}], "circular"),
+    ([{"op": "set_param", "name": "hole_r", "value": "hole_d / 2"}, {"op": "remove_param", "name": "hole_d"}], "unknown"),
+])
+def test_bad_params_rejected_without_wedging_session(lb, ops, why):
+    v = vol(lb)
+    r = lb.apply(ops, "bad params")
+    assert not r["ok"] and r["applied"] == 0 and why in r["error"]
+    assert lb.doc.params["hole_d"] == "5.5 mm" and not lb.undo_stack
+    assert lb.apply([{"op": "set_param", "name": "width", "value": "70 mm"}], "next edit")["ok"]
+    assert vol(lb) > v
+
+
 def test_undo_redo(lb):
     v0 = vol(lb)
     lb.apply([{"op": "set_param", "name": "width", "value": "80 mm"}], "wider")

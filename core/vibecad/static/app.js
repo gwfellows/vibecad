@@ -32,9 +32,14 @@ const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy=
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) { note(`Error: ${j.detail || r.statusText}`, "err"); throw new Error(j.detail); }
+  if (!r.ok) {
+    note(`Error: ${j.detail || r.statusText}`, "err");
+    throw Object.assign(new Error(j.detail || r.statusText), { shown: true });
+  }
   return j;
 }
+// errors api() already showed in the log need no further handling by every button handler
+window.addEventListener("unhandledrejection", (ev) => { if (ev.reason?.shown) ev.preventDefault(); });
 let sock;
 function connect() {
   sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -161,7 +166,9 @@ function renderParams() {
     tr.innerHTML = `<td title="${esc(p.name)}">${esc(p.name)}</td><td><input value="${esc(p.expr)}"></td><td class="val">${fmt(p.value, 3)}</td>`;
     const inp = tr.querySelector("input");
     inp.onkeydown = (ev) => { if (ev.key === "Enter") inp.blur(); if (ev.key === "Escape") { inp.value = p.expr; inp.blur(); } };
-    inp.onchange = () => edit([{ op: "set_param", name: p.name, value: inp.value }], `set ${p.name} = ${inp.value}`);
+    inp.onchange = async () => {
+      if (!(await edit([{ op: "set_param", name: p.name, value: inp.value }], `set ${p.name} = ${inp.value}`))) inp.value = p.expr;
+    };
     tb.appendChild(tr);
   }
 }
@@ -201,11 +208,13 @@ function select(id) {
   colorFaces();
 }
 
-async function edit(ops, message) {
-  const r = await api("/api/ops", { ops, message });
+async function edit(ops, message) {  // true if the batch was applied
+  let r;
+  try { r = await api("/api/ops", { ops, message }); } catch { return false; }
   const rep = r.report;
   if (!rep.applied) note(rep.error || "edit rejected", "err");
   else if (rep.errors || rep.warnings) note([...(rep.errors || []), ...(rep.warnings || [])].join("\n"), "err");
+  return !!rep.applied;
 }
 
 async function loadParts() {
