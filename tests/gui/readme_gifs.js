@@ -256,4 +256,82 @@ function helpers(page) {
     await sleep(2500);
     await h.caption("");
   });
+
+  // 5. holes: pick a face, counterbored M5 from the table; then points in a sketch -> tapped holes
+  await record("holes", BASE, null, async (page, h) => {
+    const post = (url, body) => page.evaluate(([u, b]) => fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then((r) => r.json()), [url, body]);
+    const name = `demo_holes_${Date.now().toString(36)}`;
+    await post("/api/new", { path: `parts/${name}.vcad.json`, name });
+    await post("/api/ops", { message: "plate", ops: [
+      { op: "add_feature", feature: { id: "plate_sk", type: "sketch", plane: { datum: "XY" } } },
+      { op: "add_rectangle", sketch: "plate_sk", id: "r", width: 80, height: 50, center: [0, 0] },
+      { op: "add_feature", feature: { id: "plate", type: "extrude", profile: { sketch: "plate_sk" }, distance: 10 } }] });
+    await page.reload();
+    await page.waitForSelector("#conn.live");
+    await sleep(1500);
+    await page.click("#fitBtn"); await sleep(700);
+    await h.caption("Click a flat face where the hole goes");
+    let [x, y] = await h.world(-28, -15, 10); await h.click(x, y, { wait: 500 });
+    await h.caption("Hole: pick the type and fastener; the sizes come from the table");
+    await h.clickSel("#holeBtn", 500);
+    await page.selectOption("#hoKind", "counterbore"); await sleep(500);
+    await page.selectOption("#hoSize", "M5"); await sleep(1200);
+    await h.clickSel("#hoGo", 400);
+    await h.settle(); await sleep(800);
+    await h.caption("Or place points in a sketch (P) and drill them all");
+    await h.clickSel("#newSketchBtn", 400);
+    [x, y] = await h.world(0, 0, 10);
+    await page.mouse.click(x, y); await sleep(300);
+    await h.clickSel("#newSketchBtn", 400);
+    await h.clickSel("#newMenu [data-face]", 1200);
+    await page.keyboard.press("p");
+    for (const [u, v] of [[10, 12], [25, 12], [10, -12], [25, -12]]) { [x, y] = await h.sk(u, v); await h.click(x, y, { wait: 450 }); }
+    await page.keyboard.press("Escape");
+    await h.clickSel("#holeSkBtn", 500);
+    await page.selectOption("#hoKind", "tapped"); await sleep(400);
+    await page.selectOption("#hoSize", "M3"); await sleep(400);
+    await h.type("#hoDepth", "8");
+    await sleep(600);
+    await h.clickSel("#hoGo", 400);
+    await h.settle();
+    await page.click("#fitBtn"); await sleep(1500);
+    await h.caption("");
+  });
+
+  // 6. design around a bought part: import a STEP motor, sketch on its face, project its holes
+  await record("import", BASE, null, async (page, h) => {
+    const STEP = path.join(__dirname, "..", "..", "examples", "imports", "nema17.step");
+    page.once("dialog", (d) => d.accept(`demo_motor_${Date.now().toString(36)}`));
+    await h.clickSel("#newBtn", 1200);
+    await h.caption("Import a STEP of the part you're designing around");
+    const ib = await page.locator("#importBtn").boundingBox();
+    await h.glide(ib.x + ib.width / 2, ib.y + ib.height / 2);
+    await page.setInputFiles("#importInput", STEP);
+    await page.waitForSelector("#featMenu:not([hidden]) #imMode", { timeout: 15000 });
+    await sleep(1200);
+    await h.clickSel("#imGo", 400);
+    await h.settle(); await sleep(600);
+    await page.click("#fitBtn"); await sleep(500);
+    await h.clickSel('#tree li.feat[data-id="nema171"] .fid', 700);  // toggle the selection off: its own colour, not orange
+    await h.caption("It stays a reference: shown, never part of the solid");
+    await sleep(1500);
+    await h.caption("Sketch on its face and project its outline and holes");
+    let [x, y] = await h.world(0, -18, 0); await h.click(x, y, { wait: 500 });
+    await h.clickSel("#newSketchBtn", 400);
+    await h.clickSel("#newMenu [data-face]", 1400);
+    await h.clickSel("#sketchTools [data-act=project]", 1500);
+    await h.caption("Draw the plate over it and extrude");
+    await page.keyboard.press("r");
+    [x, y] = await h.sk(-26, -26); await h.click(x, y);
+    [x, y] = await h.sk(26, 26); await h.click(x, y, { wait: 700 });
+    await page.keyboard.press("Escape");
+    await h.clickSel("#extrudeBtn", 500);
+    await h.type("#ffDist", "5");
+    await h.clickSel("#ffGo", 400);
+    await h.settle();
+    await page.click("#fitBtn"); await sleep(1200);
+    await h.caption("It runs into the motor's pilot boss and shaft: the import warns");
+    await sleep(2600);
+    await h.caption("");
+  });
 })().catch((e) => { console.error("SCRIPT ERROR", e); process.exit(2); });

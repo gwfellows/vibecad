@@ -194,7 +194,10 @@ def _visible_edges(shape, b: np.ndarray, diag: float):
         for i in range(1, inter.NbPnt() + 1):
             f = bd.Face(inter.Face(i))
             hit = inter.Pnt(i)
-            n = f.normal_at(bd.Vector(hit.X(), hit.Y(), hit.Z()))
+            try:
+                n = f.normal_at(bd.Vector(hit.X(), hit.Y(), hit.Z()))
+            except Exception:  # no normal at a singular point (a cone's apex, e.g. a drill point): it still hides
+                return False
             if abs(n.X * b[0] + n.Y * b[1] + n.Z * b[2]) > 1e-3:  # ignore faces seen exactly edge-on
                 return False
         return True

@@ -1,0 +1,89 @@
+[
+  {
+    "id": "controller_tray",
+    "level": "create-medium, from STEP + edit",
+    "expect_parts": 1,
+    "setup_copy": ["examples/imports/controller_board.step"],
+    "prompt": "controller_board.step is the controller board for our robot. Design a 3D-printed PETG tray to mount it: the board screws down with M3 screws into heat-set inserts in standoffs, with 3 mm of air under the board, and the side with the USB and barrel jack has to stay open so the cables fit. Save it as controller_tray.vcad.json.",
+    "checks": [
+      {"kind": "feature_type", "type": "import"},
+      {"kind": "holes", "d_min": 2.4, "d_max": 4.8, "min": 4, "max": 4},
+      {"kind": "clear_of_refs", "max_mm3": 2.0}
+    ],
+    "followups": [
+      {"prompt": "The standoffs look thin. Make them 8 mm in diameter and add 1 mm fillets where they meet the floor.",
+       "checks": [{"kind": "feature_type", "type": "fillet"}, {"kind": "volume_change", "from": "@prev", "min": 0.0001, "max": 0.5},
+                  {"kind": "holes", "d_min": 2.4, "d_max": 4.8, "min": 4, "max": 4}, {"kind": "clear_of_refs", "max_mm3": 2.0}]}
+    ]
+  },
+  {
+    "id": "bearing_block",
+    "level": "create-medium, from STEP",
+    "expect_parts": 1,
+    "setup_copy": ["examples/imports/bearing_608.step"],
+    "prompt": "bearing_608.step is a 608 bearing. Design an aluminium pillow block that holds it with a light press fit (21.98 mm bore) with its axis horizontal, 20 mm above the base, bolted down with two M5 socket head screws in counterbored holes. Save it as bearing_block.vcad.json.",
+    "checks": [
+      {"kind": "feature_type", "type": "import"},
+      {"kind": "holes", "d_min": 21.9, "d_max": 22.05, "min": 1, "max": 1},
+      {"kind": "hole_spec", "size": "M5", "hole_kind": "counterbore", "min": 2, "max": 2},
+      {"kind": "clear_of_refs", "max_mm3": 20.0}
+    ]
+  },
+  {
+    "id": "extrusion_motor_mount",
+    "level": "create-hard, two STEPs",
+    "expect_parts": 1,
+    "setup_copy": ["examples/imports/extrusion_2020.step", "examples/imports/nema17.step"],
+    "prompt": "Our frame is 2020 aluminium extrusion (extrusion_2020.step, running along X). Design a 3D-printed bracket that bolts to the top face of the extrusion with two M5 screws into T-nuts in the top slot, and holds a NEMA 17 stepper (nema17.step) with its shaft pointing straight up, next to the extrusion. Use the motor's own M3 holes. Save it as motor_bracket.vcad.json.",
+    "checks": [
+      {"kind": "feature_type", "type": "import"},
+      {"kind": "holes", "d_min": 3.1, "d_max": 3.7, "min": 4, "max": 4},
+      {"kind": "holes", "d_min": 5.2, "d_max": 5.9, "min": 2, "max": 2},
+      {"kind": "clear_of_refs", "max_mm3": 2.0}
+    ]
+  },
+  {
+    "id": "adapter_plate_conversation",
+    "level": "create-medium + edits",
+    "expect_parts": 1,
+    "prompt": "Design a 6 mm aluminium adapter plate, 100 x 60 mm, that bolts to a frame with four M5 socket head screws in counterbored holes 10 mm in from each corner, and carries a NEMA 17 stepper: its 31 mm square pattern of M3 screws and a 22 mm pilot bore in the middle. Save it as adapter.vcad.json.",
+    "checks": [
+      {"kind": "hole_spec", "size": "M5", "hole_kind": "counterbore", "min": 4, "max": 4},
+      {"kind": "holes", "d_min": 3.1, "d_max": 3.7, "min": 4, "max": 4},
+      {"kind": "holes", "d_min": 21.9, "d_max": 22.6, "min": 1, "max": 1},
+      {"kind": "bbox_max", "size": [100.5, 60.5, 6.5]}
+    ],
+    "followups": [
+      {"prompt": "The frame uses M4 screws now; change the mounting holes.",
+       "checks": [{"kind": "hole_spec", "size": "M4", "hole_kind": "counterbore", "min": 4, "max": 4},
+                  {"kind": "holes", "d_min": 5.2, "d_max": 5.9, "min": 0, "max": 0}]},
+      {"prompt": "Round the four outside corners of the plate with a 5 mm radius.",
+       "checks": [{"kind": "feature_type", "type": "fillet"}, {"kind": "volume_change", "from": "@prev", "min": -0.01, "max": -0.0005}]}
+    ]
+  },
+  {
+    "id": "motor_plate_from_step",
+    "level": "create-medium, from STEP",
+    "expect_parts": 1,
+    "setup_copy": ["examples/imports/nema17.step"],
+    "prompt": "nema17.step in this folder is the stepper motor we use. Design a 5 mm aluminium plate that bolts to its front face with M3 socket head screws into the motor's own threaded holes, with clearance for its pilot boss. Save it as motor_plate.vcad.json.",
+    "checks": [
+      {"kind": "feature_type", "type": "import"},
+      {"kind": "holes", "d_min": 3.1, "d_max": 3.7, "min": 4, "max": 4},
+      {"kind": "holes", "d_min": 22.0, "d_max": 25.0, "min": 1, "max": 1},
+      {"kind": "clear_of_refs", "max_mm3": 2.0}
+    ]
+  },
+  {
+    "id": "hole_plate_edit",
+    "level": "edit-operation",
+    "expect_parts": 1,
+    "setup_copy": ["examples/hole_plate.vcad.json"],
+    "prompt": "Open hole_plate.vcad.json. The sensor changed: it needs M4 threads now, 10 mm deep, and its holes are 30 mm apart. The plate has to get thicker for that.",
+    "checks": [
+      {"kind": "hole_spec", "size": "M4", "hole_kind": "tapped", "min": 2, "max": 2},
+      {"kind": "param_any", "value": 30, "why": "sensor hole spacing"},
+      {"kind": "hole_spec", "size": "M4", "hole_kind": "counterbore", "min": 4, "max": 4}
+    ]
+  }
+]

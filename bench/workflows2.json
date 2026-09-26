@@ -1,0 +1,52 @@
+[
+  {
+    "id": "board_enclosure",
+    "level": "create-hard, two parts around a STEP",
+    "expect_parts": 2,
+    "setup_copy": ["examples/imports/controller_board.step"],
+    "prompt": "Design a 3D-printed PETG enclosure for controller_board.step: a base the board screws into (M3 into heat-set inserts on standoffs) and a lid that screws onto the base with four M3 screws. The USB and barrel jack on the board's edge need cutouts in the wall so the cables plug in with the lid on. 2 mm walls. Save them as enclosure_base.vcad.json and enclosure_lid.vcad.json.",
+    "checks": [
+      {"kind": "feature_type", "type": "import", "file": "enclosure_base.vcad.json"},
+      {"kind": "clear_of_refs", "max_mm3": 2.0, "file": "enclosure_base.vcad.json"},
+      {"kind": "holes", "d_min": 2.4, "d_max": 4.8, "min": 8, "max": 8, "file": "enclosure_base.vcad.json"},
+      {"kind": "holes", "d_min": 3.1, "d_max": 3.7, "min": 4, "max": 4, "file": "enclosure_lid.vcad.json"}
+    ]
+  },
+  {
+    "id": "servo_bracket",
+    "level": "create-medium, from a datasheet",
+    "expect_parts": 1,
+    "prompt": "Design a 3D-printed bracket that holds an MG996R servo on its side and bolts to a flat plate. The servo body is 40.7 x 19.7 mm and 42.9 mm tall; its two mounting tabs sit 26.8 mm above the bottom, 2.5 mm thick, with four 4.2 mm holes on a 48.5 x 10 mm pattern for M4 screws. The bracket bolts down with two M5 screws. Save it as servo_bracket.vcad.json.",
+    "checks": [
+      {"kind": "holes", "d_min": 3.3, "d_max": 4.9, "min": 4, "max": 4},
+      {"kind": "holes", "d_min": 5.2, "d_max": 5.9, "min": 2, "max": 2}
+    ],
+    "followups": [
+      {"prompt": "Our M4 screws are self-tapping into plastic, so make the servo screw holes 3.5 mm pilot holes, 10 mm deep, instead of going through.",
+       "checks": [{"kind": "holes", "d_min": 3.4, "d_max": 3.6, "min": 4, "max": 4}]}
+    ]
+  },
+  {
+    "id": "shaft_collar",
+    "level": "create-medium, revolve + radial hole",
+    "expect_parts": 1,
+    "prompt": "Design a steel shaft collar for a 12 mm shaft: 22 mm outside diameter, 10 mm wide, with an M4 set screw through the side into the bore. Save it as shaft_collar.vcad.json.",
+    "checks": [
+      {"kind": "holes", "d_min": 11.9, "d_max": 12.3, "min": 1, "max": 1},
+      {"kind": "hole_spec", "size": "M4", "hole_kind": "tapped", "min": 1, "max": 2},
+      {"kind": "bbox_max", "size": [22.2, 22.2, 10.2]}
+    ]
+  },
+  {
+    "id": "extrusion_corner_gusset",
+    "level": "create-medium, from STEP",
+    "expect_parts": 1,
+    "setup_copy": ["examples/imports/extrusion_2020.step"],
+    "prompt": "extrusion_2020.step is a 2020 extrusion along X. I need a 3D-printed corner gusset joining it to a second 2020 extrusion standing vertically on top of its end (at x = 10). Two M5 screws into T-nuts in each extrusion, on the side facing -Y. Save it as corner_gusset.vcad.json.",
+    "checks": [
+      {"kind": "feature_type", "type": "import"},
+      {"kind": "holes", "d_min": 5.2, "d_max": 5.9, "min": 4, "max": 4},
+      {"kind": "clear_of_refs", "max_mm3": 2.0}
+    ]
+  }
+]

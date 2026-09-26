@@ -162,9 +162,36 @@ class Regenerator:
             else:
                 self._cache[key] = (ctx.body, dict(ctx.sketches), dict(ctx.tools), dict(ctx.refs), res)
             results.append(res)
+        _check_refs(ctx, results)
         if rebuilt:
             _progress(doc.name, len(doc.features), len(doc.features), None)
         return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0, dict(ctx.refs))
+
+
+def _check_refs(ctx, results: list[FeatureResult]) -> None:
+    """Warn on an import whose reference geometry the finished part runs into: a bracket through the motor it
+    carries. A press fit overlaps a little, so only more than 0.5 % of the reference's volume (and 1 mm³) counts."""
+    if not ctx.refs or ctx.body.shape is None:
+        return
+    part = bd.Shape.cast(ctx.body.shape)
+    for rid, rb in ctx.refs.items():
+        ref = bd.Shape.cast(rb.shape)
+        try:
+            common = part & ref
+            ov = common.volume
+        except Exception:
+            continue
+        if ov > max(1.0, 0.005 * ref.volume):
+            k = next((i for i, r in enumerate(results) if r.id == rid), None)
+            if k is None:
+                continue
+            bb = common.bounding_box()
+            where = (f"in x {bb.min.X:.1f}..{bb.max.X:.1f}, y {bb.min.Y:.1f}..{bb.max.Y:.1f}, z {bb.min.Z:.1f}..{bb.max.Z:.1f}")
+            res = copy.copy(results[k])  # a copy: the cached result must not collect a warning on every run
+            res.warnings = [*res.warnings, f"the part overlaps this reference by {ov:.0f} mm³ ({where}): they would collide. "
+                            "Check where the reference is placed (`at`, `rotate`) and which side of its faces the part is on "
+                            "(describe_import gives the overlap and gap)."]
+            results[k] = res
 
 
 def _collapse(warnings: list[str]) -> list[str]:

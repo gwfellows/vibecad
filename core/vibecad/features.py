@@ -405,6 +405,35 @@ def do_import(ctx: Ctx, f: S.Import) -> dict:
     return info
 
 
+def _rims(body: Body, cyl, lab) -> list[dict]:
+    """The circular edges where a round face meets a flat one (a hole's or boss's rim), each as a ready-made
+    EdgeRef that resolves to exactly that edge: paste it into an `external` entity to project the rim."""
+    out = []
+    ref = lambda l: {"feature": l.feature, "role": l.role, "entity": l.entity}
+    for e in list_edges(cyl):
+        E = bd.Edge(TopoDS.Edge(e))
+        if E.geom_type != bd.GeomType.CIRCLE:
+            continue
+        for f in list_faces(body.shape):
+            if f.IsSame(cyl) or not any(e.IsSame(x) for x in list_edges(f)):
+                continue
+            F = bd.Face(TopoDS.Face(f))
+            if F.geom_type != bd.GeomType.PLANE:
+                continue
+            for other in body.labels_of(f):
+                er = {"between": [ref(other), ref(lab)]}
+                try:
+                    hits = resolve_edges(body, S.EdgeRef.model_validate(er))
+                except Exception:
+                    continue
+                if len(hits) == 1 and hits[0].IsSame(e):
+                    c = E.arc_center
+                    out.append({"edge": er, "center": [round(c.X, 3) + 0.0, round(c.Y, 3) + 0.0, round(c.Z, 3) + 0.0],
+                                "on_face": other.entity})
+                    break
+    return out
+
+
 def describe_reference(body: Body, part: TopoDS_Shape | None = None, limit: int = 60) -> dict:
     """What an agent needs to design around imported geometry: its big flat faces (mounting faces) and its
     round faces (shafts, bores, bolt holes) with axes and positions, plus how it sits against the part."""
@@ -423,14 +452,20 @@ def describe_reference(body: Body, part: TopoDS_Shape | None = None, limit: int 
             c = F.center()
             p0 = bd.Vector(loc.X(), loc.Y(), loc.Z())
             foot = p0 + d * (c - p0).dot(d)  # axis point level with the face's middle
-            cyls.append({"face": lab.entity, "d": round(2 * cy.Radius(), 3), "axis": r3(d), "at": r3(foot), "area": round(F.area, 2)})
+            rec = {"face": lab.entity, "d": round(2 * cy.Radius(), 3), "axis": r3(d), "at": r3(foot), "area": round(F.area, 2)}
+            rims = _rims(body, fc, lab) if len(body.labels) <= 600 else []  # quadratic: skip on huge assemblies
+            if rims:
+                rec["rims"] = rims
+            cyls.append(rec)
     planes.sort(key=lambda x: -x["area"])
     cyls.sort(key=lambda x: (x["d"], x["at"]))
     bb = bd.Shape.cast(body.shape).bounding_box()
     out = {"faces": len(body.labels), "bbox": {"min": r3(bb.min), "max": r3(bb.max), "size": r3(bb.size)},
            "largest_flat_faces": planes[: limit // 3], "round_faces": cyls[:limit],
-           "note": "Reference faces as {\"feature\": <import id>, \"role\": \"face\", \"entity\": \"f<n>\"}: sketch on them, "
-                   "or project their edges into a sketch with an `external` entity."}
+           "note": "Reference faces as {\"feature\": <import id>, \"role\": \"face\", \"entity\": \"f<n>\"}: sketch on them. "
+                   "To put your holes or bosses on its holes, copy a round face's rim `edge` into an `external` entity "
+                   "({\"id\": \"rim1\", \"type\": \"external\", \"edge\": <rim edge>}) and make your point coincident with "
+                   "`rim1.center`: then your part follows the reference if it moves or is replaced."}
     if part is not None:
         P, R = bd.Shape.cast(part), bd.Shape.cast(body.shape)
         try:

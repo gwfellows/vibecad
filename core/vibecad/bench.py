@@ -15,6 +15,8 @@ import shutil
 import time
 from pathlib import Path
 
+import build123d as bd
+
 from .agent import AgentRunner
 from .regen import Regenerator, load
 from .workspace import ROOT, Workspace
@@ -123,6 +125,21 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
     if kind == "feature_type":
         types = [f.type for f in res.doc.features]
         return None if chk["type"] in types else f"no {chk['type']} feature"
+    if kind == "hole_spec":  # hole features of a fastener size (and kind), counting their holes
+        n = sum(f.info.get("holes", 0) for f in res.features if f.type == "hole" and f.status == "ok"
+                and str(f.info.get("size", "")).lower() == chk["size"].lower()
+                and (chk.get("hole_kind") is None or res.doc.feature(f.id).kind == chk["hole_kind"]))
+        ok = chk.get("min", 1) <= n <= chk.get("max", 10**6)
+        return None if ok else f"{n} {chk['size']} {chk.get('hole_kind') or ''} holes, expected {chk.get('min', 1)}..{chk.get('max', '')}"
+    if kind == "clear_of_refs":  # the part must not run into the imported parts it is designed around
+        if not res.refs:
+            return "no reference imports to check against"
+        bad = []
+        for rid, rb in res.refs.items():
+            ov = (part & bd.Shape.cast(rb.shape)).volume
+            if ov > chk.get("max_mm3", 1.0):
+                bad.append(f"{rid}: {ov:.1f} mm³")
+        return None if not bad else "part overlaps reference geometry: " + ", ".join(bad)
     return f"unknown check {kind}"
 
 
@@ -130,8 +147,9 @@ async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunn
     """Run a task's prompt, then each of its `followups` (user edit requests) in the same conversation,
     checking the parts after every turn."""
     workdir.mkdir(parents=True, exist_ok=True)
-    if task.get("setup_copy"):
-        shutil.copy(ROOT / task["setup_copy"], workdir / Path(task["setup_copy"]).name)
+    copies = task.get("setup_copy") or []
+    for src in [copies] if isinstance(copies, str) else copies:  # a starting part, reference STEP files, ...
+        shutil.copy(ROOT / src, workdir / Path(src).name)
     if variant.get("prompt_mode") == "claude_code":  # give it what a repo checkout would have
         shutil.copy(ROOT / "CLAUDE.md", workdir / "CLAUDE.md")
         (workdir / "agent").mkdir(exist_ok=True)

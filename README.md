@@ -12,6 +12,8 @@ Design doc: https://claude.ai/code/artifact/143cbf50-54de-4302-849d-9ac99055b488
 | ![Changing parameters, dragging the rollback bar](docs/img/params.gif) | ![Sketching a plate, dimensioning it, extruding, cutting a hole](docs/img/sketch.gif) |
 | [Fillets and edges](#pick-edges-and-faces-then-fillet-or-chamfer) | [The agent](#talk-to-the-agent-pointing-at-geometry) |
 | ![Changing a fillet's edges, then filleting two picked edges](docs/img/edges.gif) | ![Asking the agent, referencing an edge, attaching an image](docs/img/agent.gif) |
+| [Holes from the fastener table](#holes-sized-from-the-fastener) | [Design around a STEP](#design-around-a-bought-part-step-import) |
+| ![Counterbored and tapped holes sized from the table](docs/img/holes.gif) | ![A NEMA 17 STEP imported as reference geometry](docs/img/import.gif) |
 
 ## What it looks like
 
@@ -60,11 +62,15 @@ A picked edge is saved as a *semantic* reference, never an index: "the edge betw
 
 ### Holes sized from the fastener
 
+![Picking a face, a counterbored M5 hole from the table; then points in a sketch drilled as tapped M3 holes](docs/img/holes.gif)
+
 Click a flat face where the hole goes, then **Hole** in the tool column: pick clearance, counterbore, countersink or tapped, and a size (M1.6–M20, #2-56 to 1/2-13). The diameters come from a built-in table (ISO 273 clearances, tap drills, socket-head counterbores, flat-head countersinks), and the form shows the numbers before you commit. The hole's centre lands in its own sketch, so you can open it and dimension the centre from edges. Inside a sketch, the **Point** tool (P) places centres and the Hole button in the sketch bar drills them all.
 
 The agent uses the same `hole` feature, so a design says "M4 counterbore" instead of a 4.5 mm circle cut. Faces are labelled `hole.side[wall]`, `[cbore_floor]`, … per point, so fillets and references survive edits. See `examples/hole_plate.vcad.json` and the IR reference.
 
 ### Design around a bought part (STEP import)
+
+![Importing a NEMA 17 STEP as reference geometry, sketching on its face with its outline and holes projected, and the warning when the plate runs into it](docs/img/import.gif)
 
 **Import** in the tool column (or a STEP attached to a message for the agent) brings a STEP file in, stored next to the part under `imports/`. As a **reference** it is drawn translucent green: click its faces to sketch on them, **Project** its edges into a sketch, and put holes on its holes, so the part is dimensioned from the real motor or board and follows it when it moves. It is never part of the solid. It can also be merged in (added, cut or kept as a separate solid) to modify a vendor part. The agent reads imports through `describe_import`: the flat faces, round faces (shafts, bores, screw holes) with their axes and positions, and the gap to the part. See `examples/motor_plate.vcad.json`, a plate built on an imported NEMA 17.
 

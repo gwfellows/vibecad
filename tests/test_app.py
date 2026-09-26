@@ -349,3 +349,18 @@ def test_step_attachment_tells_the_agent_how_to_import_it(tmp_path):
     (tmp_path / "parts").mkdir()
     ctx, blocks = uploads.blocks(tmp_path, [up["id"]], tmp_path / "parts")
     assert blocks == [] and '"type": "import", "file": "../uploads/' in ctx and "describe_import" in ctx
+
+
+def test_part_running_into_a_reference_warns_once_with_where(tmp_path):
+    import json
+    a = _motor_part(tmp_path)  # motor front face at z = 10, body below it down to z = -30
+    ops = [{"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+           {"op": "add_rectangle", "sketch": "sk", "id": "r", "width": 60, "height": 60, "center": [0, 0]},
+           {"op": "add_feature", "feature": {"id": "plate", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 5}}]
+    rep = json.loads(a.ws.apply_ops(ops, "plate through the motor", "user"))
+    w = [x for x in rep.get("warnings", []) if x.startswith("motor:")]
+    assert len(w) == 1 and "would collide" in w[0] and "z 0.0..5.0" in w[0], w
+    rep = json.loads(a.ws.apply_ops([{"op": "set_param", "name": "unused", "value": "1 mm"}], "again", "user"))
+    assert len([x for x in rep.get("warnings", []) if x.startswith("motor:")]) == 1  # not repeated from the cache
+    rep = json.loads(a.ws.apply_ops([{"op": "update_feature", "id": "motor", "set": {"at": [0, 0, 50]}}], "move it clear", "user"))
+    assert not [x for x in rep.get("warnings", []) if x.startswith("motor:")], rep.get("warnings")
