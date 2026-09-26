@@ -129,6 +129,49 @@ GUI (Playwright, `scripts/gui_smoke.sh`, 66 checks; the agent panel is driven by
 
 **Don't run `vibecad-bench` from inside a Claude Code on the web session.** The nested agent reported the parent session's id and the CLI logged "message history mutated" on it, despite `agent.py` clearing the session env vars; the account also returned a five-hour rate-limit event. Run the benchmark from a local terminal.
 
+## 2026-09-26: realistic design workflows (holes, STEP imports), Sonnet at effort low
+
+Ten workflows of the kind a robotics team asks for (`bench/workflows.json`, `bench/workflows2.json`), five of them around STEP models of the real parts (`examples/imports/`: controller board, 608 bearing, 2020 extrusion, NEMA 17). Checks include `clear_of_refs` (the part must not collide with the parts it is designed around) and `hole_spec` (fastener size and hole kind).
+
+**Round 1** (before the fixes below): 4 of 6 passed.
+
+| Workflow | Result | Time, cost | Review |
+|---|---|---|---|
+| controller tray (board STEP), then "8 mm standoffs + 1 mm fillets" | pass, pass | 123 s + 51 s, $0.38 | flat PETG plate, standoffs on the board's holes, inserts 4.2 × 5.5 deep |
+| adapter plate, then "M4 now", then "5 mm corner radii" | pass ×3 | 40 s, 9 s, 15 s, $0.16 | clean tree; intents updated with the size |
+| plate on the NEMA 17 STEP | pass | 70 s, $0.16 | hole positions typed in from `describe_import`, not projected |
+| hole_plate edit: M4 tapped 10 deep, 30 mm apart | pass | 35 s, $0.11 | thickened the plate to 14 mm on its own so the threads stay blind |
+| pillow block for the 608 STEP | **fail** | 122 s, $0.22 | never imported the STEP; designed from memorised sizes |
+| NEMA 17 bracket beside a 2020 extrusion (two STEPs) | **fail** | 189 s, $0.32 | motor placed through the plate (10 cm³ overlap); the agent reported "no warnings" |
+
+**Fixes** (tools first, then the guide):
+
+| Problem | Evidence | Fix |
+|---|---|---|
+| Renders crashed | a visibility ray hit the apex of a blind hole's drill point (no normal): 3 failed renders in one run | treat a singular hit as hiding |
+| Collisions with the reference went unseen | the agent said it "can't run a fit check against reference imports" | the import gets a warning after every batch when the part overlaps it (> 0.5 % of its volume, so press fits pass), with the overlap's extent |
+| Reference holes typed as numbers | every STEP run copied coordinates, so the part wouldn't follow the reference | `describe_import` lists each round face's rims as ready-made EdgeRefs to paste into `external` entities |
+| STEP ignored for a standard part | pillow block designed from memory | guide: always import a given STEP and check against it |
+
+**Round 2** (after the fixes): 10 of 10 passed, including every follow-up.
+
+| Workflow | Runs | Time, cost | Review |
+|---|---|---|---|
+| pillow block (608 STEP) | 2/2 | 175 s, 140 s; $0.38, $0.23 | imports the bearing, places it on the bore axis; M5 counterbores; no bearing shoulder (bore straight through) |
+| NEMA 17 + 2020 bracket | 2/2 | 600 s, 202 s; $0.93, $0.34 | the overlap warning drove the fix in both; the 600 s run spent 5 min moving the motor and a gusset until the warning cleared |
+| plate on the NEMA 17 STEP | 2/2 | 128 s, 154 s; $0.24, $0.26 | both now project the motor's hole rims (4 `external`s) |
+| two-part enclosure around the board STEP | 1/1 | 339 s, $0.61 | shelled tray, standoffs with inserts, corner bosses, USB and jack cutouts in the right wall, flat lid with countersinks |
+| MG996R servo bracket from datasheet sizes, then "3.5 mm pilot holes 10 deep" | 1/1, 1/1 | 230 s + 41 s, $0.46 | servo passes through a window in an upright wall, tabs screwed to it |
+| shaft collar with a radial M4 set screw | 1/1 | 60 s, $0.10 | tapped hole from a datum plane tangent to the OD |
+| gusset joining two 2020 extrusions (one STEP, imported twice) | 1/1 | 208 s, $0.31 | imported the extrusion a second time, rotated upright; L plate on both -Y faces |
+
+Round 2 total: about $5.
+
+**Remaining friction:**
+- **Placement reasoning is the slow part.** Positioning a rotated reference (which way the motor hangs, which face is which) took most of the 600 s run. Candidates: an op that places a reference by mating one of its faces to a face or plane (`mate: {face, to, offset}`), and faces named by role in `describe_import` (e.g. "front face with the pilot").
+- **Projection is used only when the reference face is the sketch plane.** When the plate is offset from the motor face, the agent types coordinates again. Projecting onto a parallel plane already works; the guide could show it.
+- **Mechanical refinements are rare at effort low.** No bearing shoulder, no fillets unless asked. A review pass at higher effort is still an open hypothesis.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?

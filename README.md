@@ -124,12 +124,12 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 ## Status
 
 - **Reference parts:** 12 in `examples/`, including a bracket, pillow block, enclosure lid, NEMA 17 mount, battery tray and strap, and hex standoff. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
-- **Tests:** `uv run pytest` runs 315 tests.
+- **Tests:** `uv run pytest` runs 316 tests.
 - **Browser tests:** `scripts/gui_smoke.sh` runs about 245 Playwright checks, covering the main flows, modelling a part by hand from an empty file, the sketch editor, holes, STEP import, the agent panel against a scripted agent, and editing a fillet's edges, per-part conversations, attachments and the rebuild indicator.
 
 ## Measuring the agent
 
-`uv run vibecad-bench --only battery_mount --variant lean` runs design tasks headlessly (`bench/tasks.json`) under setup variants (`bench/variants.json`), checks the resulting parts, and records time to first output, thinking time, tool time, tool calls, rejected batches, tokens and cost. Findings so far: [docs/agent-efficiency.md](docs/agent-efficiency.md). Test plan: [docs/testing-plan.md](docs/testing-plan.md). Runs use your Claude login's usage.
+`uv run vibecad-bench --only battery_mount --variant lean` runs design tasks headlessly (`bench/tasks.json`; realistic multi-step workflows around STEP parts in `bench/workflows*.json`: `--tasks bench/workflows.json`) under setup variants (`bench/variants.json`), checks the resulting parts, and records time to first output, thinking time, tool time, tool calls, rejected batches, tokens and cost. Findings so far: [docs/agent-efficiency.md](docs/agent-efficiency.md). Test plan: [docs/testing-plan.md](docs/testing-plan.md). Runs use your Claude login's usage.
 
 ## Screenshots and GIFs
 
