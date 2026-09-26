@@ -175,6 +175,8 @@ class App:
         for f, fr in zip(s.doc.features, r.features):
             d = {"id": f.id, "type": f.type, "name": f.name, "intent": f.intent, "status": fr.status,
                  "message": fr.message, "warnings": fr.warnings, "cached": fr.cached, **per.get(f.id, {})}
+            if getattr(f, "profile", None) is not None:
+                d["sketch"] = f.profile.sketch  # extrude / revolve: the sketch it consumes
             if f.type == "sketch":
                 d["dof"] = fr.info.get("dof")
                 d["plane"] = f.plane.model_dump(exclude_none=True)

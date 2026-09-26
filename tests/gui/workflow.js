@@ -37,6 +37,19 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR
   await page.goto(BASE);
   await page.waitForSelector("#conn.live", { timeout: 15000 });
   await open("l_bracket.vcad.json");
+  check("3D Extrude is off when every sketch is already used", await page.isDisabled("#extrude3dBtn"));
+  await page.evaluate(() => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops: [{ op: "add_feature", feature: { id: "loose_sk", type: "sketch", plane: { datum: "XY", offset: 60 } } },
+      { op: "add_rectangle", sketch: "loose_sk", id: "r", width: 10, height: 10, center: [0, 0] }], message: "loose sketch" }) }));
+  await page.waitForFunction(() => document.querySelector('#tree li.feat[data-id="loose_sk"]'), null, { timeout: 10000 });
+  await page.waitForTimeout(500);
+  check("3D Extrude offers the unused sketch", !(await page.isDisabled("#extrude3dBtn")) && (await page.getAttribute("#extrude3dBtn", "title")).includes("loose_sk"));
+  await page.click("#extrude3dBtn");
+  await page.waitForSelector("#featMenu:not([hidden])", { timeout: 10000 });
+  check("it opens the sketch and the extrude form", (await page.textContent("#featMenu .ttl")).includes("loose_sk") && await page.isVisible("#sketchBar"));
+  await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
+  await page.evaluate(() => fetch("/api/undo", { method: "POST" }));
+  await page.waitForTimeout(800);
   await page.route("**/api/ops", async (route) => { await new Promise((r) => setTimeout(r, 1200)); await route.continue(); });
   const inp = page.locator('#params tr[data-param="base_t"] input');
   await inp.fill("6 mm");
@@ -84,8 +97,8 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR
   check("the fillet now has two edge refs", f.edges?.length === 2, JSON.stringify(f.edges).slice(0, 200));
   check("the part is shown whole again", !(await page.textContent("#partStatus")).includes("rolled back"));
   check("the second fillet removed material", (await exactVol()) < v0 - 1e-6, `${v0} -> ${await exactVol()}`);
-  // cancel leaves it alone
-  await page.click('#details [data-a="edges"]');
+  // cancel leaves it alone (double-clicking the fillet in the tree starts the same edge picking)
+  await page.dblclick('#tree li.feat[data-id="corner_fillet"] .fid');
   await page.waitForSelector("#edgeEdit:not([hidden])", { timeout: 10000 });
   await page.keyboard.press("Escape");
   await page.waitForSelector("#edgeEdit", { state: "hidden" });

@@ -109,6 +109,7 @@ function setState(state, { fit = false, flash = false } = {}) {
   rb.hidden = S.rollback == null;
   if (S.rollback != null) rb.textContent = `Showing the part up to ${S.features[S.rollback - 1]?.id ?? "the start"} (${S.rollback} of ${S.features.length} features). Drag the bar to the bottom to see all.`;
   renderTree(flash ? before : null);
+  modelToolsUpdate();
   renderParams();
   renderDetails();
   lastMesh = loadMesh(fit);
@@ -177,7 +178,11 @@ function renderTree(before) {
     if (before && before.get(f.id) !== f.status + (f.warnings || []).join()) li.classList.add("flash");
     li.dataset.index = i;
     li.dataset.id = f.id;
-    li.onclick = () => select(f.id === selected ? null : f.id);
+    li.onclick = (ev) => { if (ev.detail > 1) return; select(f.id === selected ? null : f.id); };
+    if (f.type === "fillet" || f.type === "chamfer") {  // double-click: change which edges it rounds
+      li.title = "Double-click to change which edges it acts on";
+      li.ondblclick = () => { if (!selected || selected !== f.id) select(f.id); if (i < rollIndex() || S.rollback == null) startEdgeEdit(f.id); };
+    }
     const caret = li.querySelector(".caret");
     if (rows.length) caret.onclick = (ev) => {
       ev.stopPropagation();
@@ -339,6 +344,7 @@ async function renderDetails() {
 
 function select(id) {
   selected = id;
+  modelToolsUpdate();
   const f = id && S.features.find((x) => x.id === id);
   if (f && f.type === "sketch" && S.features.indexOf(f) < rollIndex()) enterSketch(id);
   else exitSketch();
@@ -1022,6 +1028,33 @@ $("#filletBtn").onclick = () => edgeForm("fillet");
 $("#chamferBtn").onclick = () => edgeForm("chamfer");
 pickUpdate();
 $("#revolveBtn").onclick = () => featureForm("revolve");
+// Extrude / Revolve in the 3D tool column act on a sketch without opening it first: the selected sketch, else
+// the newest sketch above the rollback bar that no extrude or revolve uses yet. They open it and the form.
+function profileSketch() {
+  const upto = S ? S.features.slice(0, rollIndex()) : [];
+  const sel = upto.find((f) => f.id === selected && f.type === "sketch");
+  if (sel) return sel.id;
+  const used = new Set(upto.map((f) => f.sketch).filter(Boolean));
+  return [...upto].reverse().find((f) => f.type === "sketch" && !used.has(f.id) && f.status !== "error")?.id || null;
+}
+function modelToolsUpdate() {
+  const sid = profileSketch();
+  for (const [b, kind] of [[$("#extrude3dBtn"), "Extrude"], [$("#revolve3dBtn"), "Revolve"]]) {
+    b.disabled = !sid;
+    b.title = sid ? `${kind} ${sid} (select another sketch in the tree to ${kind.toLowerCase()} that one)`
+      : `${kind}: draw a sketch first (+ Sketch), or select one in the tree`;
+  }
+}
+for (const [id, kind] of [["#extrude3dBtn", "extrude"], ["#revolve3dBtn", "revolve"]]) {
+  $(id).onclick = async () => {
+    const sid = profileSketch();
+    if (!sid) return;
+    selected = sid;
+    await enterSketch(sid);
+    renderTree(null); renderDetails();
+    featureForm(kind);
+  };
+}
 window.vibecadView = {  // for browser tests and the devtools console
   toScreen: (x, y, z) => {
     const p = new THREE.Vector3(x, y, z).project(camera), r = renderer.domElement.getBoundingClientRect();
