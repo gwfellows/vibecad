@@ -18,6 +18,7 @@ cp examples/*.vcad.json "$WORK/root/"
 
 uv run vibecad-app --root "$WORK/root" --port "$PORT" >"$WORK/server.log" 2>&1 &
 S1=$!
+[[ ",${ONLY:-}," == *",readme_gifs,"* ]] && export VIBECAD_DEMO=1  # plain replies for the recordings
 uv run python tests/gui/fake_agent_app.py --root "$WORK/agent_root" --port $((PORT + 1)) >"$WORK/agent_server.log" 2>&1 &
 S2=$!
 trap 'kill $S1 $S2 2>/dev/null; rm -rf "$WORK/root" "$WORK/agent_root"' EXIT
@@ -46,6 +47,9 @@ if [[ -z "${ONLY:-}" || ",$ONLY," == *",workflow,"* ]]; then  # uses both server
 fi
 if [[ ",${ONLY:-}," == *",readme_shots,"* ]]; then  # README screenshots: ONLY=readme_shots scripts/gui_smoke.sh docs/img
   node "$REPO/tests/gui/readme_shots.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
+fi
+if [[ ",${ONLY:-}," == *",readme_gifs,"* ]]; then  # README GIFs: ONLY=readme_gifs scripts/gui_smoke.sh docs/img (needs ffmpeg)
+  node "$REPO/tests/gui/readme_gifs.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
 fi
 echo "screenshots: $SHOTS   server logs: $WORK/*.log"
 exit $status

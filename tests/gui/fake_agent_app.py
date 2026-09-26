@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
@@ -42,6 +43,13 @@ TURNS = [
      ("apply_ops", {"ops": HOLE, "message": "center hole"})],
     [("apply_ops", {"ops": [{"op": "update_feature", "id": "hole", "set": {"intent": "x"}}], "message": "out of scope"}),
      ("apply_ops", {"ops": [{"op": "update_feature", "id": "plate", "set": {"distance": 6}}], "message": "thicker"})],
+]
+
+
+DEMO_REPLIES = [
+    "Made `fake_plate`: a 60 × 40 mm plate, 4 mm thick, with the width as parameter `w`.",
+    "Added a 10 mm hole through the middle (my first param edit had a typo and was rejected; fixed).",
+    "Made the plate 6 mm thick.",
 ]
 
 
@@ -81,7 +89,10 @@ class ScriptedAgent:
             pub({"type": "tool_result", "id": tid, "is_error": False, "text": text, "t": time.time()})
         context = [ln for ln in prompt.splitlines() if ln.startswith("[")]
         att = f"\nAttachment blocks: {', '.join(b['type'] for b in attachments)}" if attachments else ""
-        pub({"type": "agent_text", "text": "Context: " + (" ".join(context) or "none") + att + "\nDone.", "t": time.time()})
+        if os.environ.get("VIBECAD_DEMO") and turn:  # README recordings: a plain reply instead of the context echo
+            pub({"type": "agent_text", "text": DEMO_REPLIES[self.n % len(DEMO_REPLIES)], "t": time.time()})
+        else:
+            pub({"type": "agent_text", "text": "Context: " + (" ".join(context) or "none") + att + "\nDone.", "t": time.time()})
         self.n += bool(turn)
         m.wall_s, m.turns, m.output_tokens = time.perf_counter() - t0, 3, 123
         pub({"type": "run_done", "metrics": m.summary()})
