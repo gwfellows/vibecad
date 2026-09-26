@@ -161,6 +161,19 @@ class Workspace:
     def to_sketch(self, sketch_id: str, x: float, y: float, z: float) -> list[float]:
         return [round(c, 6) for c in self._frame(sketch_id).to_local((x, y, z))]
 
+    def describe_import(self, feature_id: str) -> str:
+        """Imported reference geometry: its flat and round faces with positions, and how it sits against the part."""
+        from .features import describe_reference
+
+        r = self.session().result
+        if feature_id not in r.refs:
+            kinds = {f.id: f.type for f in self.session().doc.features}
+            if kinds.get(feature_id) == "import":
+                raise ToolError(f"{feature_id!r} is merged into the part (mode add/cut/new) or failed to build; "
+                                "only reference imports are described here")
+            raise ToolError(f"no reference import {feature_id!r}; imports: {sorted(r.refs)}")
+        return json.dumps(describe_reference(r.refs[feature_id], r.body.shape), indent=1)
+
     def measure(self) -> str:
         s = self.session().result.summary()
         s.pop("features", None)
@@ -179,7 +192,7 @@ class Workspace:
             key = str(self._path(p))
             if key not in self.sessions and not Path(key).exists():
                 raise ToolError(f"no part file {p!r} (paths are relative to {self.root})")
-            other = self.sessions[key].result.part if key in self.sessions else Regenerator().run(load(key)).part
+            other = self.sessions[key].result.part if key in self.sessions else Regenerator(Path(key).parent).run(load(key)).part
             if other is None:
                 out[p] = "no solid"
                 continue
@@ -195,7 +208,7 @@ class Workspace:
         from .render import VIEWS, render_view
 
         s = self.session()
-        if s.result.body.shape is None:
+        if s.result.body.shape is None and not s.result.refs:
             raise ToolError("no solid yet")
         views = views or DEFAULT_VIEWS
         bad = [v for v in views if v not in VIEWS]
@@ -205,7 +218,8 @@ class Workspace:
         with self.lock, tempfile.TemporaryDirectory() as td:  # meshing is not thread-safe (see App.mesh)
             for v in views:
                 p = Path(td) / f"{v}.png"
-                render_view(s.result.body, p, v, f"{s.doc.name}  {v}", highlight=set(highlight or []), size_px=size)
+                render_view(s.result.body, p, v, f"{s.doc.name}  {v}", highlight=set(highlight or []), size_px=size,
+                            refs=list(s.result.refs.values()))
                 tiles.append(PILImage.open(p).convert("RGB"))
         return tile(tiles)
 
@@ -282,6 +296,8 @@ TOOLS: list[dict] = [
     {"name": "to_sketch", "desc": "World point -> sketch [u, v, w]; w is distance along the sketch normal.",
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
+    {"name": "describe_import", "desc": "Imported reference geometry (an `import` feature, e.g. a motor from a STEP file): its bounding box, largest flat faces and round faces (shafts, bores, screw holes) with axes and positions, as face ids you can sketch on or project, and its overlap / gap with the part.",
+     "props": {"feature_id": S_STR}, "req": ["feature_id"]},
     {"name": "measure", "desc": "Volume, bounding box, face count, validity and params of the active part.", "props": {}, "req": []},
     {"name": "check_fit", "desc": "Overlap volume and minimum gap between the active part and other part files that share its world coordinates. Use for multi-part designs.",
      "props": {"other_paths": {"type": "array", "items": S_STR}}, "req": ["other_paths"]},

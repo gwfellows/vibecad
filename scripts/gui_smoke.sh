@@ -4,6 +4,7 @@
 #   tests/gui/agent_panel.js  the agent panel, driven by a scripted agent (tests/gui/fake_agent_app.py; no model)
 #   tests/gui/sketch_editor.js  drawing, constraining, dragging and dimensioning in a sketch (same server)
 #   tests/gui/holes.js        holes from a picked face and from sketch points, sized from the fastener table
+#   tests/gui/imports.js      a STEP imported as reference geometry: shown, sketched on, its edges projected
 #   tests/gui/workflow.js     rebuild indicator, editing a fillet's edges, per-part conversations, attachments
 #   tests/gui/modeling.js     a part modelled by hand from an empty file: sketch, extrude, sketch on face, cut, revolve
 #   scripts/gui_smoke.sh [screenshot_dir]      (ONLY=modeling,smoke to run a subset)
@@ -15,7 +16,7 @@ WORK=$(mktemp -d)
 SHOTS=${1:-$WORK/shots}
 PORT=${PORT:-8791}
 mkdir -p "$WORK/root" "$WORK/agent_root" "$SHOTS"
-cp examples/*.vcad.json "$WORK/root/"
+cp examples/*.vcad.json "$WORK/root/" && cp -r examples/imports "$WORK/root/"
 
 uv run vibecad-app --root "$WORK/root" --port "$PORT" >"$WORK/server.log" 2>&1 &
 S1=$!
@@ -42,6 +43,7 @@ run() {  # ONLY=modeling,sketch_editor runs a subset
 run smoke "$PORT"
 run modeling "$PORT"
 run holes "$PORT"
+run imports "$PORT"
 run agent_panel $((PORT + 1))
 run sketch_editor $((PORT + 1))
 if [[ -z "${ONLY:-}" || ",$ONLY," == *",workflow,"* ]]; then  # uses both servers

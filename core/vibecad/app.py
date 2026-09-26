@@ -207,9 +207,11 @@ class App:
         from OCP.TopoDS import TopoDS
 
         from .topo import list_edges, list_faces
-        body = self.view_result().body
-        out = {"faces": [], "edges": [], "rev": rev}
+        vr = self.view_result()
+        body = vr.body
+        out = {"faces": [], "edges": [], "rev": rev, "refs": self._mesh_refs(vr)}
         if body.shape is None:
+            self.mesh_cache = {key: out}
             return out
         diag = bd.Shape.cast(body.shape).bounding_box().diagonal or 1.0
         for f in list_faces(body.shape):
@@ -233,6 +235,30 @@ class App:
             pts = edge.positions([i / (k - 1) for i in range(k)])
             out["edges"].append([round(c, 4) for q in pts for c in (q.X, q.Y, q.Z)])
         self.mesh_cache = {key: out}
+        return out
+
+    @staticmethod
+    def _mesh_refs(vr) -> list[dict]:
+        """Imported reference bodies (a motor to design around), drawn translucent: faces pickable (to sketch on or
+        reference), edges for drawing only (edge indices belong to the part)."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from .topo import list_edges, list_faces
+        out = []
+        for rid, rb in vr.refs.items():
+            diag = bd.Shape.cast(rb.shape).bounding_box().diagonal or 1.0
+            faces, edges = [], []
+            for f in list_faces(rb.shape):
+                verts, tris = bd.Face(TopoDS.Face(f)).tessellate(diag / 300, 0.3)
+                if tris:
+                    faces.append({"p": [round(c, 4) for v in verts for c in (v.X, v.Y, v.Z)], "i": [k for t in tris for k in t],
+                                  "features": [rid], "labels": sorted({str(l) for l in rb.labels_of(f)})})
+            for e in list_edges(rb.shape):
+                edge = bd.Edge(TopoDS.Edge(e))
+                k = 2 if edge.geom_type == bd.GeomType.LINE else 24
+                edges.append([round(c, 4) for q in edge.positions([i / (k - 1) for i in range(k)]) for c in (q.X, q.Y, q.Z)])
+            out.append({"id": rid, "faces": faces, "edges": edges})
         return out
 
     def sketch_geometry(self, sid: str) -> dict:
@@ -340,7 +366,8 @@ class App:
         if not isinstance(feat.plane, S.FacePlane):
             raise ToolError("only a sketch on a face can project that face's outline")
         i = s.doc.features.index(feat)
-        body = s.regen.run(s.doc.model_copy(update={"features": s.doc.features[:i]})).body  # the part as the sketch sees it
+        before = s.regen.run(s.doc.model_copy(update={"features": s.doc.features[:i]}))  # the part as the sketch sees it
+        body = before.refs.get(feat.plane.face.feature, before.body)  # or the imported reference it sits on
         plane_ref = feat.plane.face.model_dump(exclude_none=True, exclude={"note"})
         if plane_ref.get("pick") == "all":
             plane_ref.pop("pick")
@@ -503,7 +530,8 @@ class App:
             return
         from . import uploads
         try:
-            att_ctx, att_blocks = uploads.blocks(self.ws.root, attachments or [])
+            att_ctx, att_blocks = uploads.blocks(self.ws.root, attachments or [],
+                                                 Path(self.ws.active).parent if self.ws.active else self.ws.root)
         except (ValueError, OSError) as e:
             self.publish({"type": "error", "message": f"attachment: {e}"})
             return
@@ -815,6 +843,27 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
         from . import uploads
         data = await request.body()
         return await asyncio.to_thread(guard, uploads.save, A.ws.root, name, data)
+
+    @api.post("/api/import_file")
+    async def import_file(request: Request, name: str):
+        """A STEP/.brep file for an `import` feature: saved in the active part's folder under imports/."""
+        from . import uploads
+        if uploads.kind_of(name) != "cad":
+            raise HTTPException(400, f"{name}: import STEP (.step/.stp) or .brep files; mesh files carry no exact geometry")
+        if not A.ws.active:
+            raise HTTPException(400, "open or create a part first")
+        data = await request.body()
+        if not data or len(data) > uploads.MAX_BYTES:
+            raise HTTPException(400, f"{name}: empty, or larger than {uploads.MAX_BYTES // 1024 // 1024} MB")
+        part_dir = Path(A.ws.active).parent
+        d = part_dir / "imports"
+        d.mkdir(exist_ok=True)
+        stem = "".join(c if c.isalnum() or c in "._-" else "_" for c in Path(name).stem) or "part"
+        dst, n = d / f"{stem}{Path(name).suffix.lower()}", 1
+        while dst.exists() and dst.read_bytes() != data:  # same name, different file: don't overwrite
+            dst, n = d / f"{stem}_{n}{Path(name).suffix.lower()}", n + 1
+        dst.write_bytes(data)
+        return {"file": str(dst.relative_to(part_dir)), "name": dst.name}
 
     @api.get("/api/upload/{fid:path}")
     def upload_file(fid: str):

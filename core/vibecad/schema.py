@@ -200,6 +200,17 @@ class Revolve(_Feature):
     mode: Mode = "add"
 
 
+class Import(_Feature):
+    """Geometry from a STEP (or .brep) file: a bought part to design around (`reference`, the default: shown,
+    measurable, sketchable on and projectable, never part of the solid), or merged into the part (add / cut / new).
+    Placed by rotating about the world X, then Y, then Z axes (degrees) and then translating by `at`."""
+    type: Literal["import"] = "import"
+    file: str                          # relative to the part file's folder, or absolute
+    mode: Literal["reference", "add", "cut", "new"] = "reference"
+    at: tuple[Num, Num, Num] = (0.0, 0.0, 0.0)
+    rotate: tuple[Num, Num, Num] = (0.0, 0.0, 0.0)
+
+
 class Hole(_Feature):
     """Holes drilled at the points of a sketch, into its plane: clearance, counterbored, countersunk or tapped,
     sized from a fastener `size` ("M3", "#4-40", "1/4-20") or an explicit `diameter`."""
@@ -272,7 +283,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Extrude, Revolve, Hole, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror],
+    Union[Sketch, Import, Extrude, Revolve, Hole, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror],
     Field(discriminator="type"),
 ]
 

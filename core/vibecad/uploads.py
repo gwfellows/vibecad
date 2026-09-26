@@ -10,7 +10,8 @@ from pathlib import Path
 
 MAX_BYTES = 30 * 1024 * 1024
 IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
-TEXT_EXT = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".step", ".stp", ".dxf", ".svg", ".py", ".scad",
+CAD_EXT = {".step", ".stp", ".brep"}
+TEXT_EXT = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".dxf", ".svg", ".py", ".scad",
             ".kcl", ".ini", ".toml", ".log", ".html", ".obj"}
 TEXT_LIMIT = 100_000     # characters of a text file given to the model
 IMAGE_MAX_SIDE = 1568    # the API downsamples beyond this anyway
@@ -23,6 +24,8 @@ def kind_of(name: str) -> str:
         return "image"
     if ext == ".pdf":
         return "pdf"
+    if ext in CAD_EXT:
+        return "cad"
     if ext in TEXT_EXT:
         return "text"
     return "other"
@@ -72,8 +75,10 @@ def _image_block(p: Path) -> dict:
     return {"type": "image", "source": {"type": "base64", "media_type": media, "data": base64.b64encode(data).decode()}}
 
 
-def blocks(root: Path, ids: list[str]) -> tuple[str, list[dict]]:
-    """(a context line for the prompt, content blocks) for the attached files."""
+def blocks(root: Path, ids: list[str], part_dir: Path | None = None) -> tuple[str, list[dict]]:
+    """(a context line for the prompt, content blocks) for the attached files. `part_dir`: the active part's
+    folder, so a STEP file can be named the way an `import` feature needs it (relative to the part)."""
+    import os
     lines, out = [], []
     for fid in ids:
         p = resolve(root, fid)
@@ -82,6 +87,10 @@ def blocks(root: Path, ids: list[str]) -> tuple[str, list[dict]]:
         if k == "image":
             out.append(_image_block(p))
             lines.append(f"{name} (image, below)")
+        elif k == "cad":
+            rel = os.path.relpath(p, part_dir) if part_dir else fid
+            lines.append(f"{name} (CAD geometry, {p.stat().st_size:,} bytes; to design around it add "
+                         f"{{\"type\": \"import\", \"file\": \"{rel}\"}}, then describe_import)")
         elif k == "pdf":
             out.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
                                                         "data": base64.b64encode(p.read_bytes()).decode()}, "title": name})

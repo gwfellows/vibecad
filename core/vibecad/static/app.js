@@ -28,6 +28,7 @@ const ICONS = {
   circular_pattern: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="4.5" r="1.6"/><circle cx="18.5" cy="15.8" r="1.6"/><circle cx="5.5" cy="15.8" r="1.6"/>',
   mirror: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7l-6 5 6 5z"/><path d="M15 7l6 5-6 5z"/>',
   hole: '<path d="M4 9h5v3h6V9h5v11H4z"/><path d="M9 12v8M15 12v8" stroke-dasharray="1.5 1.5"/>',
+  import: '<path d="M12 3v11M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
 };
 const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy="12" r="6"/>'}</svg>`;
 
@@ -453,7 +454,7 @@ const partGroup = new THREE.Group();
 scene.add(partGroup);
 const axes = new THREE.AxesHelper(10);
 scene.add(axes);
-const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
+const REFC = new THREE.Color(0xa7c48a), BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
 let pickedFaces = [];  // faces clicked in the 3D view, shift-click adds: {mesh, labels, point}
 const lastPicked = () => pickedFaces.at(-1) || null;
 let faceMeshes = [], edgeObjs = [], meshRev = null, hovered = null, hoveredEdge = null;
@@ -527,6 +528,25 @@ async function loadMesh(fit) {
     partGroup.add(mesh);
     faceMeshes.push(mesh);
   }
+  for (const r of m.refs || []) {  // imported reference geometry: translucent green, faces pickable, never part of the solid
+    for (const f of r.faces) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
+      g.setIndex(f.i);
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: REFC.clone(), metalness: 0.05, roughness: 0.7, side: THREE.DoubleSide,
+        transparent: true, opacity: 0.55, depthWrite: false }));
+      mesh.userData = { features: f.features, labels: f.labels, ref: r.id };
+      mesh.renderOrder = 2;
+      partGroup.add(mesh);
+      faceMeshes.push(mesh);
+    }
+    const pts = [];
+    for (const e of r.edges) for (let i = 0; i + 5 < e.length; i += 3) pts.push(e[i], e[i + 1], e[i + 2], e[i + 3], e[i + 4], e[i + 5]);
+    const eg = new THREE.BufferGeometry();
+    eg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    partGroup.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x4d7c0f, transparent: true, opacity: 0.6 })));
+  }
   edgeObjs = [];
   m.edges.forEach((e, i) => {  // one pickable line per edge; the index is the server's edge index
     if (m.edge_seam?.[i]) return;
@@ -578,7 +598,7 @@ function colorEdges() {
 function colorFaces() {
   colorEdges();
   for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : pickedFaces.some((p) => p.mesh === m) ? PICKED
-    : selected && m.userData.features.includes(selected) ? HI : BASE);
+    : selected && m.userData.features.includes(selected) ? HI : m.userData.ref ? REFC : BASE);
 }
 
 function frame(center, radius, dir, up) {
@@ -752,7 +772,7 @@ function exitSketch() {
 }
 $("#exitSketch").onclick = () => { selected = null; exitSketch(); renderTree(null); renderDetails(); colorFaces(); };
 function ghostPart(on) {
-  for (const m of faceMeshes) { m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
+  for (const m of faceMeshes) { if (m.userData.ref) { m.material.opacity = on ? 0.18 : 0.55; continue; } m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
   for (const o of edgeObjs) o.material.opacity = on ? 0.45 : 1;
   edgeMarks.visible = !on;
 }
@@ -921,6 +941,7 @@ $("#extrudeBtn").onclick = () => featureForm("extrude");
 // fillet / chamfer from picks: picked edges (each exactly), plus picked faces. Faces alone: two faces -> the edge
 // between them; one face -> its edges
 function edgeTargets() {  // [{ref, what}] or null when the picks don't make an edge set
+  if (pickedFaces.some((p) => p.mesh?.userData.ref)) return null;  // reference geometry can't be filleted
   const nf = pickedFaces.length, ne = pickedEdges.length;
   if (ne) {
     const faces = pickedFaces.map((p) => ({ of: faceRef(p.labels[0], p.point), note: `edges of ${p.labels[0]}, picked in the GUI` }));
@@ -937,7 +958,7 @@ function edgeTargets() {  // [{ref, what}] or null when the picks don't make an 
 }
 function pickUpdate() {
   const pf = lastPicked();
-  $("#holeBtn").disabled = !pf || pickedEdges.length > 0;
+  $("#holeBtn").disabled = !pf || pickedEdges.length > 0 || !!pf.mesh?.userData.ref;
   $("#holeBtn").title = pf ? `Hole in ${pf.labels[0]} where you clicked (then dimension it in its sketch)` : "Hole: click a flat face where the hole goes, then this";
   const t = edgeTargets();
   for (const b of [$("#filletBtn"), $("#chamferBtn")]) {
@@ -1093,6 +1114,42 @@ $("#holeSkBtn").onclick = () => {
     }
   });
 };
+// ── import a STEP: upload into the part's imports/ folder, then place it ──
+$("#importBtn").onclick = () => { if (!S) return note("Open or create a part first.", "err"); $("#importInput").click(); };
+$("#importInput").onchange = async (ev) => {
+  const file = ev.target.files[0];
+  ev.target.value = "";
+  if (!file) return;
+  let up;
+  try {
+    up = await busyDo(`Uploading ${file.name}`, async () => {
+      const r = await fetch(`/api/import_file?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || r.statusText);
+      return j;
+    });
+  } catch (e) { return note(`Import: ${e.message}`, "err"); }
+  const m = $("#featMenu"), v3 = (id, vals) => vals.map((v, k) => `<input id="${id}${k}" value="${v}" style="width:4.2em;flex:0 0 auto">`).join("");
+  m.innerHTML = `<div class="ttl">Import ${esc(up.name)}</div>
+    <div class="row"><label>as</label><select id="imMode"><option value="reference">reference (design around it)</option>
+      <option value="new">a separate solid</option><option value="add">added to the part</option><option value="cut">cut from the part</option></select></div>
+    <div class="row"><label>rotate °</label>${v3("imR", [0, 0, 0])}</div>
+    <div class="row"><label>move to</label>${v3("imT", [0, 0, 0])}</div>
+    <div class="muted small">Rotations about world X, then Y, then Z; then the move. Positions accept parameters.</div>
+    <button class="go" id="imGo">Import</button>`;
+  popup(m, $("#importBtn"));
+  $("#imGo").onclick = async () => {
+    const id = nextId(up.name.replace(/\.[^.]+$/, "").replace(/\W+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "import");
+    const f = { id, type: "import", file: up.file, mode: $("#imMode").value,
+                intent: $("#imMode").value === "reference" ? `${up.name}: reference geometry to design around` : `geometry from ${up.name}` };
+    const rot = [0, 1, 2].map((k) => numOrExpr($(`#imR${k}`).value || "0")), at = [0, 1, 2].map((k) => numOrExpr($(`#imT${k}`).value || "0"));
+    if (rot.some((x) => x !== 0)) f.rotate = rot;
+    if (at.some((x) => x !== 0)) f.at = at;
+    m.hidden = true;
+    if (await addFeature(f, `import ${up.name}`)) { select(id); pendingFit = true; lastMesh = loadMesh(true); }
+  };
+};
+
 // several ops that add features, placed at the rollback bar like addFeature (consecutive adds keep their order)
 async function addFeatures(ops, message) {
   const rb = S.rollback;

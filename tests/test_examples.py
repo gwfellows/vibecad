@@ -83,6 +83,10 @@ def expected_volume(name, p):
         zc = 3.35 - 1.7                                                          # 90° c'sink 6.7 to 3.4 clearance
         csink = pi * zc / 3 * (3.35**2 + 3.35 * 1.7 + 1.7**2) + pi * 1.7**2 * (t - zc)
         return p["w"] * p["d"] * t - 4 * cbore - 2 * tap - round(p["cs_n"]) * csink
+    if name == "motor_plate":  # plate on an imported NEMA 17 (reference only): M3 counterbores + pilot bore
+        t = p["plate_t"]
+        cbore = pi * 3.25**2 * 3.3 + pi * 1.7**2 * (t - 3.3)
+        return p["plate_w"] * p["plate_h"] * t - 4 * cbore - pi * (p["pilot_clear"] / 2) ** 2 * t
     if name == "edge_holes_plate":
         return p["w"] * p["d"] * p["t"] - 2 * pi * (p["hole_d"] / 2) ** 2 * p["t"]
     raise KeyError(name)
@@ -104,7 +108,7 @@ def check(res, name):
 @pytest.mark.parametrize("name", PARTS)
 def test_part_builds(name):
     doc = load(EX / f"{name}.vcad.json")
-    check(Regenerator().run(doc), name)
+    check(Regenerator(EX).run(doc), name)
 
 
 def _sweep_cases():
@@ -118,12 +122,12 @@ def _sweep_cases():
 @pytest.mark.parametrize("name,param,scale", list(_sweep_cases()))
 def test_param_change(name, param, scale):
     doc = load(EX / f"{name}.vcad.json")
-    base = Regenerator().run(doc).env
+    base = Regenerator(EX).run(doc).env
     if param in ("bolt_n", "vent_n", "cs_n"):  # integer counts: step by one instead
         val = base[param] + (1 if scale > 1 else -1)
     else:
         val = base[param] * scale
-    check(Regenerator().run(doc, {param: val}), name)
+    check(Regenerator(EX).run(doc, {param: val}), name)
 
 
 def test_cache_reuses_upstream():
@@ -150,3 +154,16 @@ def test_hole_faces_are_labelled_per_point():
         assert k in labs, sorted(labs)
     info = {f.id: f.info for f in res.features}
     assert info["mount_holes"]["cbore"] == [8.0, 4.4] and info["sensor_taps"]["thread"] == "M3, 5 deep"
+
+
+def test_imported_reference_is_not_part_of_the_solid_and_holes_follow_it():
+    doc = load(EX / "motor_plate.vcad.json")
+    res = Regenerator(EX).run(doc)
+    assert "motor" in res.refs and res.part.bounding_box().max.Z == pytest.approx(5)  # the motor adds no volume
+    pts = lambda r: sorted(tuple(round(c, 6) for c in r.sketches["screw_pts"][0].entities[f"s{i}"].p1) for i in range(1, 5))
+    assert pts(res) == [(-15.5, -15.5), (-15.5, 15.5), (15.5, -15.5), (15.5, 15.5)]
+    moved = doc.model_copy(update={"features": [f.model_copy(update={"at": (3.0, -2.0, 0.0)}) if f.id == "motor" else f
+                                                for f in doc.features]})
+    res2 = Regenerator(EX).run(moved)
+    assert all(f.status == "ok" for f in res2.features), [(f.id, f.message) for f in res2.features]
+    assert pts(res2) == [(-12.5, -17.5), (-12.5, 13.5), (18.5, -17.5), (18.5, 13.5)]  # the screw holes followed the motor

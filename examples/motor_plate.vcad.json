@@ -1,0 +1,401 @@
+{
+  "vibecad": "0.1",
+  "name": "motor_plate",
+  "material": "6061-T6 aluminum",
+  "process": "CNC milled",
+  "design_notes": "Mounting plate designed around an imported NEMA 17 stepper (imports/nema17.step, reference only). The plate sits on the motor's front face; its screw holes are placed on the motor's own threaded holes (projected from the STEP), so moving the motor moves them.",
+  "params": {
+    "plate_w": "60 mm",
+    "plate_h": "56 mm",
+    "plate_t": "5 mm",
+    "pilot_clear": "23 mm"
+  },
+  "features": [
+    {
+      "id": "motor",
+      "type": "import",
+      "intent": "The stepper this plate carries (reference geometry, not machined)",
+      "file": "imports/nema17.step"
+    },
+    {
+      "id": "plate_sk",
+      "type": "sketch",
+      "intent": "Plate outline on the motor's front face, centred on the shaft",
+      "plane": {
+        "face": {
+          "feature": "motor",
+          "role": "face",
+          "entity": "f4",
+          "note": "motor front face (flange)"
+        }
+      },
+      "entities": [
+        {
+          "id": "plate_bottom",
+          "p1": [
+            -30.0,
+            -28.0
+          ],
+          "p2": [
+            30.0,
+            -28.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_right",
+          "p1": [
+            30.0,
+            -28.0
+          ],
+          "p2": [
+            30.0,
+            28.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_top",
+          "p1": [
+            30.0,
+            28.0
+          ],
+          "p2": [
+            -30.0,
+            28.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_left",
+          "p1": [
+            -30.0,
+            28.0
+          ],
+          "p2": [
+            -30.0,
+            -28.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plate_bottom.p2",
+            "plate_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_right.p2",
+            "plate_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_top.p2",
+            "plate_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_left.p2",
+            "plate_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_bottom"
+          ],
+          "value": "plate_w",
+          "name": "plate_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_right"
+          ],
+          "value": "plate_h",
+          "name": "plate_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "(0) - ((plate_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "(0) - ((plate_h) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "plate",
+      "type": "extrude",
+      "intent": "The plate, against the motor flange",
+      "profile": {
+        "sketch": "plate_sk"
+      },
+      "distance": "plate_t",
+      "mode": "new"
+    },
+    {
+      "id": "screw_pts",
+      "type": "sketch",
+      "intent": "Screw centres on the motor's threaded holes, projected from the STEP",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "plate face away from the motor"
+        }
+      },
+      "entities": [
+        {
+          "id": "mh1",
+          "edge": {
+            "between": [
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f4",
+                "note": "motor front face (flange)"
+              },
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f13"
+              }
+            ],
+            "note": "rim of motor screw hole 1"
+          },
+          "type": "external"
+        },
+        {
+          "id": "s1",
+          "at": [
+            -15.5,
+            -15.5
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mh2",
+          "edge": {
+            "between": [
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f4",
+                "note": "motor front face (flange)"
+              },
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f14"
+              }
+            ],
+            "note": "rim of motor screw hole 2"
+          },
+          "type": "external"
+        },
+        {
+          "id": "s2",
+          "at": [
+            15.5,
+            -15.5
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mh3",
+          "edge": {
+            "between": [
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f4",
+                "note": "motor front face (flange)"
+              },
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f15"
+              }
+            ],
+            "note": "rim of motor screw hole 3"
+          },
+          "type": "external"
+        },
+        {
+          "id": "s3",
+          "at": [
+            -15.5,
+            15.5
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mh4",
+          "edge": {
+            "between": [
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f4",
+                "note": "motor front face (flange)"
+              },
+              {
+                "feature": "motor",
+                "role": "face",
+                "entity": "f16"
+              }
+            ],
+            "note": "rim of motor screw hole 4"
+          },
+          "type": "external"
+        },
+        {
+          "id": "s4",
+          "at": [
+            15.5,
+            15.5
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "s1",
+            "mh1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "s2",
+            "mh2.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "s3",
+            "mh3.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "s4",
+            "mh4.center"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "screw_holes",
+      "type": "hole",
+      "intent": "M3 socket heads into the motor, flush",
+      "sketch": "screw_pts",
+      "points": [
+        "s1",
+        "s2",
+        "s3",
+        "s4"
+      ],
+      "kind": "counterbore",
+      "size": "M3"
+    },
+    {
+      "id": "pilot_sk",
+      "type": "sketch",
+      "intent": "Clearance for the motor's pilot boss and shaft",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "plate face away from the motor"
+        }
+      },
+      "entities": [
+        {
+          "id": "pilot",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 11.5,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "pilot"
+          ],
+          "value": "pilot_clear",
+          "name": "pilot_diameter"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pilot.center",
+            "origin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pilot_bore",
+      "type": "extrude",
+      "intent": "Pilot boss locates the motor",
+      "profile": {
+        "sketch": "pilot_sk"
+      },
+      "direction": "reverse",
+      "extent": "through_all",
+      "mode": "cut"
+    }
+  ]
+}

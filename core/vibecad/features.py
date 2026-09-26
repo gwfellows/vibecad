@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import build123d as bd
 from OCP.BRep import BRep_Builder
@@ -43,6 +44,8 @@ class Ctx:
     sketches: dict[str, tuple[SolvedSketch, Frame]] = field(default_factory=dict)
     tools: dict[str, Tool] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    refs: dict[str, Body] = field(default_factory=dict)  # imported reference geometry (import mode "reference")
+    base_dir: Path | None = None                          # the part file's folder: relative import paths
 
     def num(self, v) -> float:
         return evaluate(v, self.env)
@@ -69,9 +72,10 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
     if isinstance(f.plane, S.DatumPlane):
         frame = datum_frame(f.plane.datum, ctx.num(f.plane.offset))
     else:
-        if ctx.body.shape is None:
+        src_body = ctx.refs.get(f.plane.face.feature, ctx.body)  # a face of imported reference geometry, or the part
+        if src_body.shape is None:
             raise FeatureError("sketch on a face needs an existing body")
-        faces = resolve_faces(ctx.body, f.plane.face)
+        faces = resolve_faces(src_body, f.plane.face)
         frames = [face_frame(bd.Face(TopoDS.Face(x)), ctx.num(f.plane.offset)) for x in faces]
         frame = frames[0]
         for fr in frames[1:]:  # several faces are fine if they lie in one plane (e.g. a top face split by a boss)
@@ -103,15 +107,17 @@ def _resolve_externals(ctx: Ctx, f: S.Sketch, frame: Frame) -> S.Sketch:
     constraints go after the user's, so constraint indices don't change."""
     if not any(isinstance(e, S.External) for e in f.entities):
         return f
-    if ctx.body.shape is None:
-        raise FeatureError("external geometry needs an existing body to project")
     ents, cons = [], []
     fix = lambda ref, uv: cons.append(S.Constraint(type="fix", on=[ref], at=(uv[0], uv[1])))
     for e in f.entities:
         if not isinstance(e, S.External):
             ents.append(e)
             continue
-        edges = resolve_edges(ctx.body, e.edge)
+        owners = {r.feature for r in ([*e.edge.between] if e.edge.between else [e.edge.of])}
+        src_body = next((ctx.refs[o] for o in owners if o in ctx.refs), ctx.body)  # project reference edges too
+        if src_body.shape is None:
+            raise FeatureError("external geometry needs an existing body to project")
+        edges = resolve_edges(src_body, e.edge)
         if len(edges) != 1:
             raise FeatureError(f"external {e.id!r}: its edge ref matched {len(edges)} edges; it must name one "
                                "(use `between` two faces, or a `filter`)")
@@ -329,6 +335,109 @@ def do_revolve(ctx: Ctx, f: S.Revolve) -> dict:
     ctx.tools[f.id] = Tool(tool, labels, f.mode)
     _combine(ctx, f.id, tool, labels, f.mode)
     return {"angle": ang}
+
+
+# ── Import ────────────────────────────────────────────────────────
+_CAD_CACHE: dict[tuple, TopoDS_Shape] = {}
+
+
+def import_path(ctx: Ctx, file: str) -> Path:
+    p = Path(file).expanduser()
+    if not p.is_absolute():
+        p = (ctx.base_dir or Path.cwd()) / p
+    return p
+
+
+def _read_cad(p: Path) -> TopoDS_Shape:
+    st = p.stat()
+    key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    if key not in _CAD_CACHE:
+        ext = p.suffix.lower()
+        if ext in (".step", ".stp"):
+            shape = bd.import_step(str(p))
+        elif ext == ".brep":
+            shape = bd.import_brep(str(p))
+        else:
+            raise FeatureError(f"can't import {p.name}: STEP (.step/.stp) or .brep files carry exact geometry; "
+                               "mesh files (STL, OBJ, 3MF) don't, so they can't be referenced or cut")
+        wrapped = shape.wrapped if hasattr(shape, "wrapped") else shape
+        if wrapped is None or not list_faces(wrapped):
+            raise FeatureError(f"{p.name} has no faces to import")
+        if len(_CAD_CACHE) > 16:
+            _CAD_CACHE.clear()
+        _CAD_CACHE[key] = wrapped
+    return _CAD_CACHE[key]
+
+
+def do_import(ctx: Ctx, f: S.Import) -> dict:
+    p = import_path(ctx, f.file)
+    if not p.is_file():
+        raise FeatureError(f"import file {f.file!r} not found (looked at {p})")
+    try:
+        src = _read_cad(p)
+    except FeatureError:
+        raise
+    except Exception as e:
+        raise FeatureError(f"could not read {p.name}: {type(e).__name__}: {e}")
+    t = gp_Trsf()
+    for ax, ang in zip(((1, 0, 0), (0, 1, 0), (0, 0, 1)), f.rotate):
+        a = ctx.num(ang)
+        if a:
+            r = gp_Trsf()
+            r.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(*ax)), math.radians(a))
+            t = r.Multiplied(t)
+    at = [ctx.num(v) for v in f.at]
+    if any(at):
+        m = gp_Trsf()
+        m.SetTranslation(gp_Vec(*at))
+        t = m.Multiplied(t)
+    shape = BRepBuilderAPI_Transform(src, t, True).Shape()
+    # faces are numbered in file order: the file doesn't change under the feature, so the numbers are stable
+    labels = [(fc, Label(f.id, "face", f"f{i}")) for i, fc in enumerate(list_faces(shape))]
+    bb = bd.Shape.cast(shape).bounding_box()
+    info = {"file": p.name, "faces": len(labels), "solids": len(bd.Shape.cast(shape).solids()),
+            "bbox": {"min": [round(v, 3) for v in (bb.min.X, bb.min.Y, bb.min.Z)], "max": [round(v, 3) for v in (bb.max.X, bb.max.Y, bb.max.Z)]}}
+    if f.mode == "reference":
+        ctx.refs[f.id] = Body(shape, labels)
+        return info
+    ctx.tools[f.id] = Tool(shape, labels, f.mode)
+    _combine(ctx, f.id, shape, labels, f.mode)
+    return info
+
+
+def describe_reference(body: Body, part: TopoDS_Shape | None = None, limit: int = 60) -> dict:
+    """What an agent needs to design around imported geometry: its big flat faces (mounting faces) and its
+    round faces (shafts, bores, bolt holes) with axes and positions, plus how it sits against the part."""
+    r3 = lambda v: [round(v.X, 3) + 0.0, round(v.Y, 3) + 0.0, round(v.Z, 3) + 0.0]
+    planes, cyls = [], []
+    for fc, lab in body.labels:
+        F = bd.Face(TopoDS.Face(fc))
+        gt = F.geom_type
+        if gt == bd.GeomType.PLANE:
+            planes.append({"face": lab.entity, "normal": r3(F.normal_at()), "center": r3(F.center()), "area": round(F.area, 2)})
+        elif gt == bd.GeomType.CYLINDER:
+            from OCP.BRepAdaptor import BRepAdaptor_Surface
+            cy = BRepAdaptor_Surface(TopoDS.Face(fc)).Cylinder()
+            ax, loc = cy.Axis().Direction(), cy.Axis().Location()
+            d = bd.Vector(ax.X(), ax.Y(), ax.Z())
+            c = F.center()
+            p0 = bd.Vector(loc.X(), loc.Y(), loc.Z())
+            foot = p0 + d * (c - p0).dot(d)  # axis point level with the face's middle
+            cyls.append({"face": lab.entity, "d": round(2 * cy.Radius(), 3), "axis": r3(d), "at": r3(foot), "area": round(F.area, 2)})
+    planes.sort(key=lambda x: -x["area"])
+    cyls.sort(key=lambda x: (x["d"], x["at"]))
+    bb = bd.Shape.cast(body.shape).bounding_box()
+    out = {"faces": len(body.labels), "bbox": {"min": r3(bb.min), "max": r3(bb.max), "size": r3(bb.size)},
+           "largest_flat_faces": planes[: limit // 3], "round_faces": cyls[:limit],
+           "note": "Reference faces as {\"feature\": <import id>, \"role\": \"face\", \"entity\": \"f<n>\"}: sketch on them, "
+                   "or project their edges into a sketch with an `external` entity."}
+    if part is not None:
+        P, R = bd.Shape.cast(part), bd.Shape.cast(body.shape)
+        try:
+            out["against_part"] = {"overlap_mm3": round((P & R).volume, 3), "min_gap_mm": round(P.distance_to(R), 4)}
+        except Exception:
+            pass
+    return out
 
 
 # ── Holes ─────────────────────────────────────────────────────────
@@ -630,7 +739,7 @@ def do_mirror(ctx: Ctx, f: S.Mirror) -> dict:
 
 
 BUILDERS = {
-    "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "hole": do_hole, "fillet": do_fillet,
+    "sketch": do_sketch, "import": do_import, "extrude": do_extrude, "revolve": do_revolve, "hole": do_hole, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
     "circular_pattern": do_circular_pattern, "mirror": do_mirror,
 }

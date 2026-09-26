@@ -55,7 +55,7 @@ class Session:
             self.path.write_text(dump_doc(self.doc))
         else:
             self.doc = S.Document.model_validate_json(self.path.read_text())
-        self.regen = Regenerator()
+        self.regen = Regenerator(self.path.parent)  # imports resolve relative to the part file
         self.undo_stack: list[tuple[S.Document, str]] = []
         self.redo_stack: list[tuple[S.Document, str]] = []
         self.scope: set[str] | None = None

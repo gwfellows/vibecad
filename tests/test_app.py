@@ -299,3 +299,53 @@ def test_mesh_and_render_a_part_with_drill_points(tmp_path):
     m = a.mesh()
     assert m["faces"] and all(len(e) >= 6 for e in m["edges"])
     assert a.ws.render(["iso"], [], 200)[:4] == b"\x89PNG"
+
+
+# ── STEP import ──
+def _motor_part(tmp_path, mode="reference"):
+    import json
+    (tmp_path / "imports").mkdir()
+    shutil.copy(EX / "imports" / "nema17.step", tmp_path / "imports" / "nema17.step")
+    a = App(tmp_path, "sonnet")
+    a.ws.new_part("m.vcad.json", "m")
+    rep = json.loads(a.ws.apply_ops([{"op": "add_feature", "feature": {"id": "motor", "type": "import", "file": "imports/nema17.step",
+                                                                      "mode": mode, "at": [0, 0, 10]}}], "import", "user"))
+    assert rep["applied"], rep
+    return a
+
+
+def test_reference_import_is_described_rendered_and_meshed(tmp_path):
+    import json
+    a = _motor_part(tmp_path)
+    r = a.ws.session().result
+    assert r.body.shape is None and "motor" in r.refs  # reference only: no solid yet
+    d = json.loads(a.ws.describe_import("motor"))
+    assert d["bbox"]["max"][2] == pytest.approx(34) and d["bbox"]["min"][2] == pytest.approx(-30)  # moved up 10
+    holes = [c for c in d["round_faces"] if c["d"] == 2.5]
+    assert sorted(tuple(c["at"][:2]) for c in holes) == [(-15.5, -15.5), (-15.5, 15.5), (15.5, -15.5), (15.5, 15.5)]
+    assert a.ws.render(["iso"], [], 200)[:4] == b"\x89PNG"  # renders with no part solid, just the reference
+    m = a.mesh()
+    assert m["faces"] == [] and m["refs"][0]["id"] == "motor" and len(m["refs"][0]["faces"]) == 22
+    assert all(f["labels"][0].startswith("motor.face[f") for f in m["refs"][0]["faces"])
+
+
+def test_import_merged_into_the_part_and_errors(tmp_path):
+    import json
+    a = _motor_part(tmp_path, mode="new")
+    r = a.ws.session().result
+    assert not r.refs and r.part.volume == pytest.approx(72126.096, rel=1e-6)
+    with pytest.raises(Exception):
+        a.ws.describe_import("motor")  # merged: nothing to describe as a reference
+    (tmp_path / "mesh.stl").write_text("solid x\nendsolid x\n")
+    for f, msg in [("nope.step", "not found"), ("mesh.stl", "mesh files")]:
+        rep = json.loads(a.ws.apply_ops([{"op": "add_feature", "feature": {"id": "x", "type": "import", "file": f}}], "bad", "user"))
+        assert msg in json.dumps(rep), rep
+        a.ws.undo()
+
+
+def test_step_attachment_tells_the_agent_how_to_import_it(tmp_path):
+    from vibecad import uploads
+    up = uploads.save(tmp_path, "NEMA 17.step", (EX / "imports" / "nema17.step").read_bytes())
+    (tmp_path / "parts").mkdir()
+    ctx, blocks = uploads.blocks(tmp_path, [up["id"]], tmp_path / "parts")
+    assert blocks == [] and '"type": "import", "file": "../uploads/' in ctx and "describe_import" in ctx

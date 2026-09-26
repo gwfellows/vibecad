@@ -55,6 +55,7 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 |---|---|
 | extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind or through_all`, `mode: add / cut / intersect / new` |
 | revolve | `profile`, `axis` (a sketch line id, `x_axis` or `y_axis`), `angle` |
+| import | `file` (STEP / .brep, relative to the part file), `mode: reference / add / cut / new` (default reference), `rotate: [rx, ry, rz]` degrees about world X, then Y, then Z, then `at: [x, y, z]` |
 | hole | `sketch` (holes at its point entities), `points` (optional subset), `kind: simple / counterbore / countersink / tapped`, `size` ("M3", "#4-40", "1/4-20"), `fit: close / normal / loose`, `diameter` (overrides the size), `depth` (omit: through all), `direction` (default `reverse`: into a face sketch's solid), `cbore_diameter`, `cbore_depth`, `csink_diameter`, `csink_angle`, `thread_depth` |
 | fillet / chamfer | `edges: [EdgeRef]`, `radius` / `distance` |
 | shell | `remove_faces: [FaceRef]`, `thickness` (inward) |
@@ -63,6 +64,19 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 | mirror | `features`, `plane: {datum, offset}` |
 
 All features take `id`, optional `name`, `intent` (one line: why it exists), `suppressed`.
+
+### Imported geometry (design around a bought part)
+
+An `import` in `reference` mode brings a STEP file in as geometry you design around (a motor, a PCB, a tube): it is drawn and rendered in pale green, measured by `describe_import`, but is never part of the solid, so it adds no volume and exports nothing. Its faces are labelled in file order, `{"feature": "motor", "role": "face", "entity": "f4"}`: sketch on them (`plane: {"face": ...}`), and project their edges into a sketch with `external` entities so your geometry follows the part when the import moves.
+
+```json
+{"op": "add_feature", "feature": {"id": "motor", "type": "import", "file": "imports/nema17.step", "intent": "the stepper this plate carries"}},
+{"op": "add_feature", "feature": {"id": "plate_sk", "type": "sketch", "plane": {"face": {"feature": "motor", "role": "face", "entity": "f4"}}}},
+{"op": "add_entity", "sketch": "screw_pts", "entity": {"id": "mh1", "type": "external",
+  "edge": {"between": [{"feature": "motor", "role": "face", "entity": "f4"}, {"feature": "motor", "role": "face", "entity": "f13"}]}}}
+```
+
+`describe_import` lists the largest flat faces (normal, centre, area) and every round face (diameter, axis, position), so the motor's pilot and screw holes can be found without guessing. Modes `add` / `cut` / `new` merge the file into the part instead (to modify a vendor part). Example: `examples/motor_plate.vcad.json`.
 
 ### Holes
 

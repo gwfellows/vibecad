@@ -112,7 +112,7 @@ def _show(res: RegenResult) -> None:
 
 def cmd_build(a) -> int:
     doc = _load(a.file)
-    res = Regenerator().run(doc, _parse_sets(a.set))
+    res = Regenerator(Path(a.file).parent).run(doc, _parse_sets(a.set))
     print(tree_text(res))
     out = Path(a.out) if a.out else Path("out") / doc.name
     written = _outputs(res, out, render=not a.no_render)
@@ -126,13 +126,13 @@ def cmd_build(a) -> int:
 
 
 def cmd_tree(a) -> int:
-    res = Regenerator().run(_load(a.file), _parse_sets(a.set))
+    res = Regenerator(Path(a.file).parent).run(_load(a.file), _parse_sets(a.set))
     print(tree_text(res))
     return 0 if res.ok else 1
 
 
 def cmd_watch(a) -> int:
-    path, regen, last = Path(a.file), Regenerator(), 0.0
+    path, regen, last = Path(a.file), Regenerator(Path(a.file).parent), 0.0
     print(f"watching {path} (Ctrl-C to stop); run `python -m ocp_viewer` to see the part")
     while True:
         m = path.stat().st_mtime

@@ -31,6 +31,7 @@ VIEWS = {  # name: (camera direction from target, world up)
     "right": ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
 }
 BASE = np.array([0.62, 0.70, 0.80])
+REF = np.array([0.74, 0.80, 0.66])  # imported reference geometry (a motor to design around): pale green
 HILITE = np.array([0.95, 0.55, 0.15])
 
 
@@ -44,18 +45,28 @@ def _basis(view):
 
 
 def render_view(body: Body, path: Path, view: str = "iso", title: str = "", highlight: set[str] | None = None,
-                size_px: int = 900) -> None:
+                size_px: int = 900, refs: list[Body] | None = None) -> None:
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Compound
+
     b, right, up2 = _basis(view)
     light = b + 0.4 * up2 + 0.25 * right
     light /= np.linalg.norm(light)
     polys, colors, depths = [], [], []
-    part = bd.Shape.cast(body.shape)
-    diag = part.bounding_box().diagonal or 1.0
+    shapes = [x for x in [body.shape, *[r.shape for r in refs or []]] if x is not None]
+    scene = TopoDS_Compound()
+    bb_ = BRep_Builder()
+    bb_.MakeCompound(scene)
+    for x in shapes:
+        bb_.Add(scene, x)
+    diag = bd.Shape.cast(scene).bounding_box().diagonal or 1.0
     tol = diag / 400
 
-    for f in list_faces(body.shape):
+    todo = [(f, body, BASE) for f in (list_faces(body.shape) if body.shape is not None else [])]
+    todo += [(f, r, REF) for r in refs or [] for f in list_faces(r.shape)]
+    for f, owner, base in todo:
         face = bd.Face(TopoDS.Face(f))
-        hl = bool(highlight) and any(l.feature in highlight for l in body.labels_of(f))
+        hl = bool(highlight) and any(l.feature in highlight for l in owner.labels_of(f))
         verts, tris = face.tessellate(tol, 0.2)
         if not tris:
             continue
@@ -75,13 +86,13 @@ def render_view(body: Body, path: Path, view: str = "iso", title: str = "", high
             if n @ b < -1e-6:  # back-facing: hidden on a closed solid
                 continue
             shade = 0.45 + 0.55 * max(0.0, float(n @ light))
-            col = (*((HILITE if hl else BASE) * shade), 1.0)
+            col = (*((HILITE if hl else base) * shade), 1.0)
             for p in _subdivide(p0, diag / 25):
                 polys.append(np.c_[p @ right, p @ up2])
                 colors.append(col)
                 depths.append(float((p @ b).mean()))
 
-    segs = _visible_edges(body.shape, b, diag)
+    segs = _visible_edges(scene, b, diag)
     order = np.argsort(depths)
     fig, ax = plt.subplots(figsize=(size_px / 100, size_px / 100), dpi=100)
     ax.add_collection(PolyCollection([polys[i] for i in order], facecolors=[colors[i] for i in order],

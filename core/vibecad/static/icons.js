@@ -38,6 +38,7 @@ export const ICON = {
   extrude: S('<path d="M4 16l8 4 8-4-8-4z"/><path d="M12 12V3"/><path d="M9 6l3-3 3 3"/>'),
   revolve: S('<ellipse cx="12" cy="14" rx="8" ry="3.5"/><path d="M12 3v18"/><path d="M17 8.5l2.5.5-.5 2.5"/>'),
   hole: S('<path d="M4 9h5v3h6V9h5v11H4z"/><path d="M9 12v8M15 12v8" stroke-dasharray="1.5 1.5"/>'),
+  import: S('<path d="M12 3v11M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>'),
   fillet: S('<path d="M5 20v-8a7 7 0 0 1 7-7h7"/>'),
   chamfer: S('<path d="M5 20v-9l6-6h8"/>'),
   finish: S('<path d="M5 12.5l4.5 4.5L19 7"/>'),
