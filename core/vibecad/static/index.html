@@ -42,6 +42,9 @@
   <section id="center">
     <div id="viewer"></div>
     <div id="refHint" hidden>Click a face or edge to reference it · Esc cancels</div>
+    <div id="rebuild" class="rebuild" hidden><span class="spin"></span><span id="rebuildText">Rebuilding…</span></div>
+    <div id="edgeEdit" class="edgeedit" hidden><span id="edgeEditText"></span>
+      <button id="edgeEditDone" class="go">Done</button><button id="edgeEditCancel">Cancel</button></div>
     <div class="vtools left">
       <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
       <button data-view="top">Top</button><button data-view="right">Right</button>
@@ -86,10 +89,13 @@
     <div id="metrics" class="metrics"></div>
     <div id="log"></div>
     <form id="promptForm">
+      <div id="attachList" class="attachlist" hidden></div>
       <div id="prompt" contenteditable="true" role="textbox" aria-multiline="true"
         data-placeholder="Describe a part, or a change to the open part. Enter to send, Shift+Enter for a new line. Reference puts a face, edge or sketch entity into the message."></div>
       <div class="row">
         <button type="button" id="refBtn" class="refbtn" data-icon="reference" title="Reference: click this, then click a face or edge in the view (or a sketch entity) to put it into your message"> Reference</button>
+        <button type="button" id="attachBtn" class="refbtn" title="Attach images, PDFs or other files for the agent (or drop or paste them into the message)">📎</button>
+        <input type="file" id="attachInput" multiple hidden>
         <label class="small"><input type="checkbox" id="scope"> Limit edits to the selected feature</label>
         <span class="grow"></span>
         <button type="button" id="stopBtn" disabled>Stop</button>

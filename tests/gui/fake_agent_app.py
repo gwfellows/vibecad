@@ -58,7 +58,7 @@ class ScriptedAgent:
     async def set_model(self, model):
         pass
 
-    async def run(self, prompt: str) -> RunMetrics:
+    async def run(self, prompt: str, attachments: list[dict] | None = None) -> RunMetrics:
         pub = self.app.publish
         m = RunMetrics(prompt=prompt, model="scripted")
         t0 = time.perf_counter()
@@ -80,7 +80,8 @@ class ScriptedAgent:
                 tc.ok = bool(json.loads(text).get("applied"))
             pub({"type": "tool_result", "id": tid, "is_error": False, "text": text, "t": time.time()})
         context = [ln for ln in prompt.splitlines() if ln.startswith("[")]
-        pub({"type": "agent_text", "text": "Context: " + (" ".join(context) or "none") + "\nDone.", "t": time.time()})
+        att = f"\nAttachment blocks: {', '.join(b['type'] for b in attachments)}" if attachments else ""
+        pub({"type": "agent_text", "text": "Context: " + (" ".join(context) or "none") + att + "\nDone.", "t": time.time()})
         self.n += bool(turn)
         m.wall_s, m.turns, m.output_tokens = time.perf_counter() - t0, 3, 123
         pub({"type": "run_done", "metrics": m.summary()})

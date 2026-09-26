@@ -190,3 +190,104 @@ def test_param_usage_puts_single_feature_params_under_that_feature(tmp_path):
     dims = {d["name"]: d for d in feats["base_sketch"]["dims"]}
     assert dims["width"]["expr"] == "width" and dims["width"]["value"] == 60
     assert feats["base"]["fields"][0]["key"] == "distance"
+
+
+# ── per-part conversations, attachments, fillet edge lookup, regen progress ──
+def test_feature_edges_resolve_to_edges_before_the_fillet(tmp_path):
+    a = _app(tmp_path)
+    ids = [f.id for f in a.ws.session().doc.features]
+    k = ids.index("corner_fillet")
+    a.rollback = k
+    r = a.feature_edges("corner_fillet")
+    assert r["index"] == k and r["type"] == "fillet"
+    assert len(r["items"]) == 1 and len(r["items"][0]["idx"]) == 1 and r["items"][0]["error"] is None
+    # the index is the mesh's edge index, and naming that edge again resolves to the same edge
+    i = r["items"][0]["idx"][0]
+    assert a.edge_ref(i)["ref"]["between"]
+    with pytest.raises(Exception):
+        a.feature_edges("base")  # an extrude has no edges to pick
+
+
+def test_conversations_are_per_part_and_saved(tmp_path):
+    import asyncio
+    import json
+
+    shutil.copy(EX / "spacer_plate.vcad.json", tmp_path / "spacer_plate.vcad.json")
+    a = _app(tmp_path)
+    a.loop = asyncio.new_event_loop()
+    a.queue = asyncio.Queue()
+    pa = a.ws.active
+
+    async def go():
+        await a.switch_conversation(pa)
+        a.transcript.append({"type": "user_prompt", "text": "on the bracket"})
+        a.session_id = "sess-a"
+        a.ws.open_part("spacer_plate.vcad.json")
+        await a.switch_conversation(a.ws.active)
+        assert a.transcript == [] and a.session_id is None  # the other part: its own, empty conversation
+        a.transcript.append({"type": "user_prompt", "text": "on the spacer"})
+        a.transcript.append({"type": "tool_image", "png_b64": "x" * 100})
+        a.ws.open_part("l_bracket.vcad.json")
+        await a.switch_conversation(a.ws.active)
+        assert [e["text"] for e in a.transcript] == ["on the bracket"] and a.session_id == "sess-a"
+
+    a.loop.run_until_complete(go())
+    saved = json.loads((tmp_path / "spacer_plate.chat.json").read_text())
+    assert [e["type"] for e in saved["transcript"]] == ["user_prompt"]  # renders are not written to disk
+    # a fresh app (server restart) picks the saved conversation up again
+    b = App(tmp_path, "sonnet")
+    assert b.load_conv(str(tmp_path / "spacer_plate.vcad.json"))["transcript"][0]["text"] == "on the spacer"
+
+
+def test_a_part_the_agent_creates_keeps_its_conversation(tmp_path):
+    a = _app(tmp_path)
+    a.conv_part = a.ws.active
+    a.convs[a.ws.active] = a.conv
+    a.transcript.append({"type": "user_prompt", "text": "make a second part"})
+    a.ws.new_part("parts/second.vcad.json", "second")  # what the agent's new_part tool does
+    a.adopt_parts()
+    assert a.conv_part == a.ws.active
+    assert a.convs[a.ws.active] is a.convs[str(tmp_path / "l_bracket.vcad.json")]
+    assert (tmp_path / "parts" / "second.chat.json").exists()
+
+
+def test_attachments_become_content_blocks(tmp_path):
+    import base64
+    import io
+
+    from PIL import Image
+
+    from vibecad import uploads
+
+    buf = io.BytesIO()
+    Image.new("RGB", (3000, 1000), "red").save(buf, "PNG")
+    img = uploads.save(tmp_path, "big photo.png", buf.getvalue())
+    txt = uploads.save(tmp_path, "dims.csv", b"a,b\n1,2\n")
+    pdf = uploads.save(tmp_path, "spec.pdf", b"%PDF-1.4 fake")
+    binf = uploads.save(tmp_path, "part.3mf", bytes(range(256)))
+    assert img["id"].startswith("uploads/") and img["kind"] == "image" and img["name"] == "big photo.png"
+    ctx, blocks = uploads.blocks(tmp_path, [img["id"], txt["id"], pdf["id"], binf["id"]])
+    assert [b["type"] for b in blocks] == ["image", "text", "document"]
+    shrunk = Image.open(io.BytesIO(base64.b64decode(blocks[0]["source"]["data"])))
+    assert max(shrunk.size) <= uploads.IMAGE_MAX_SIDE  # big images are scaled down before sending
+    assert "a,b" in blocks[1]["text"]
+    assert "attached 4 file(s)" in ctx and "part.3mf" in ctx and "can't read" in ctx
+    with pytest.raises(ValueError):
+        uploads.resolve(tmp_path, "../l_bracket.vcad.json")  # only files in uploads/
+    with pytest.raises(ValueError):
+        uploads.save(tmp_path, "empty.txt", b"")
+
+
+def test_regen_reports_progress_only_for_rebuilt_features(tmp_path):
+    from vibecad import regen
+
+    a = _app(tmp_path)
+    seen = []
+    regen.PROGRESS.append(lambda *x: seen.append(x))
+    try:
+        a.ws.apply_ops([{"op": "set_param", "name": "corner_r", "value": "3 mm"}], "t", "user")
+    finally:
+        regen.PROGRESS.clear()
+    rebuilt = [x[3] for x in seen if x[3]]
+    assert rebuilt == ["corner_fillet"]  # only the feature that uses corner_r; the rest come from the cache
+    assert seen[-1][3] is None and seen[-1][1] == seen[-1][2]

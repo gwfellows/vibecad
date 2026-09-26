@@ -2,20 +2,22 @@
 
   vibecad-app [--root DIR] [--port 8765] [--model sonnet]   then open http://127.0.0.1:8765
 
-One process holds the Workspace (open parts) and one agent conversation. Every agent step and every part
-change is pushed to the browser over a WebSocket, so you can watch the agent work: its messages and tool
-calls, the feature tree changing, the 3D view and renders updating.
+One process holds the Workspace (open parts) and one agent conversation per part (saved next to it as
+`<part>.chat.json`, resumed when the part is opened again). Every agent step and every part change is pushed
+to the browser over a WebSocket, so you can watch the agent work: its messages and tool calls, the feature
+tree changing, the 3D view and renders updating.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -35,18 +37,99 @@ class App:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.runner = None
         self.run_task: asyncio.Task | None = None
-        self.transcript: list[dict] = []  # replayed to browsers that connect mid-run
+        # the agent conversation for the part being worked on: its transcript (replayed to browsers that connect,
+        # and when the part is opened again) and the SDK session id (kept across model/effort changes).
+        # One per part: opening another part switches to that part's conversation.
+        self.conv: dict = {"transcript": [], "session_id": None}
+        self.conv_part: str | None = None
+        self.convs: dict[str, dict] = {}  # part path -> conversation (a part the agent created shares its creator's)
         self.rollback: int | None = None  # show the part as of features[:rollback]; None = end
-        self.session_id: str | None = None  # agent conversation, kept across model/effort changes
         self.mesh_cache: dict[str, Any] = {}
+        self._view_cache: tuple | None = None
         self.ws.listeners.append(self.publish)
+
+    @property
+    def transcript(self) -> list[dict]:
+        return self.conv["transcript"]
+
+    @transcript.setter
+    def transcript(self, v: list[dict]) -> None:
+        self.conv["transcript"] = v
+
+    @property
+    def session_id(self) -> str | None:
+        return self.conv["session_id"]
+
+    @session_id.setter
+    def session_id(self, v: str | None) -> None:
+        self.conv["session_id"] = v
+
+    @property
+    def busy(self) -> bool:
+        return bool(self.run_task and not self.run_task.done())
+
+    # ── conversations, one per part ────────────────────────────────
+    @staticmethod
+    def chat_path(part: str) -> Path | None:
+        return Path(part[: -len(".vcad.json")] + ".chat.json") if part.endswith(".vcad.json") else None
+
+    def load_conv(self, part: str) -> dict:
+        if part not in self.convs:
+            c = {"transcript": [], "session_id": None}
+            p = self.chat_path(part)
+            try:
+                if p and p.exists():
+                    d = json.loads(p.read_text())
+                    c.update(transcript=d.get("transcript") or [], session_id=d.get("session_id"))
+            except Exception:
+                pass  # a damaged chat file starts a fresh conversation
+            self.convs[part] = c
+        return self.convs[part]
+
+    def save_conv(self) -> None:
+        """Write the current conversation next to every part it belongs to (renders are left out: large)."""
+        data = {"session_id": self.session_id, "transcript": [e for e in self.transcript if e.get("type") != "tool_image"]}
+        for part, c in list(self.convs.items()):
+            if c is self.conv and (p := self.chat_path(part)) is not None and p.parent.exists():
+                try:
+                    if data["transcript"] or data["session_id"]:
+                        p.write_text(json.dumps(data, default=str) + "\n")
+                    elif p.exists():
+                        p.unlink()
+                except OSError:
+                    pass
+
+    async def switch_conversation(self, part: str | None) -> None:
+        """Show (and continue) `part`'s own conversation instead of the current one."""
+        if part is None or part == self.conv_part:
+            return
+        if self.conv_part is not None:
+            self.convs[self.conv_part] = self.conv
+            self.save_conv()
+        await self.close_runner()
+        self.conv, self.conv_part = self.load_conv(part), part
+        self.publish({"type": "conversation", "part": _rel(part, self.ws.root), "transcript": self.transcript})
+
+    def adopt_parts(self) -> None:
+        """After an agent turn: parts it created or opened continue this conversation."""
+        a = self.ws.active
+        if a is None:
+            return
+        if self.conv_part is None or a != self.conv_part:
+            self.convs[a] = self.conv
+            self.conv_part = a
+        self.convs.setdefault(a, self.conv)
+        self.save_conv()
+
+    def on_regen(self, name: str, i: int, n: int, fid: str | None) -> None:
+        self.publish({"type": "regen", "part": name, "i": i, "n": n, "feature": fid})
 
     # events can come from worker threads (tools) or the loop (agent stream)
     def publish(self, event: dict) -> None:
         if self.loop is None:
             return
         event = {**event, "t": event.get("t", time.time())}
-        if event["type"] != "part_changed":
+        if event["type"] not in ("part_changed", "conversation", "regen"):
             self.transcript.append(event)
             self.transcript = self.transcript[-600:]
         self.loop.call_soon_threadsafe(self.queue.put_nowait, event)
@@ -69,8 +152,13 @@ class App:
         s = self.ws.session()
         if self.rollback is None or self.rollback >= len(s.doc.features):
             return s.result
+        key = (self.ws.active, _rev(s), self.rollback)
+        if self._view_cache and self._view_cache[0] == key:
+            return self._view_cache[1]
         doc = s.doc.model_copy(update={"features": s.doc.features[: self.rollback]})
-        return s.regen.run(doc)
+        r = s.regen.run(doc)
+        self._view_cache = (key, r)
+        return r
 
     def state(self) -> dict | None:
         if self.ws.active is None:
@@ -327,6 +415,34 @@ class App:
         return (f"[The user drew {len(lines)} freehand mark(s) on sketch `{sid}` to show what they mean (sketch coordinates, mm; "
                 f"not part of the model): " + " | ".join(lines) + "]\n")
 
+    def feature_edges(self, fid: str) -> dict:
+        """The edges a fillet/chamfer's refs resolve to, as edge indices of the body just before it (the body
+        the GUI shows when the rollback bar sits above the feature), so the GUI can show and change them."""
+        from .topo import list_edges, resolve_edges
+
+        s = self.ws.session()
+        ids = [f.id for f in s.doc.features]
+        if fid not in ids:
+            raise ToolError(f"no feature {fid!r}")
+        k = ids.index(fid)
+        f = s.doc.features[k]
+        if f.type not in ("fillet", "chamfer"):
+            raise ToolError(f"{fid} is a {f.type}; only fillet and chamfer edges can be picked")
+        if self.rollback == k:
+            body = self.view_result().body
+        else:
+            body = s.regen.run(s.doc.model_copy(update={"features": s.doc.features[:k]})).body
+        edges = list_edges(body.shape) if body.shape is not None else []
+        items = []
+        for ref in f.edges:
+            try:
+                hits = resolve_edges(body, ref)
+                idx, err = [i for i, e in enumerate(edges) if any(e.IsSame(h) for h in hits)], None
+            except Exception as e:
+                idx, err = [], str(e)
+            items.append({"ref": ref.model_dump(mode="json", exclude_none=True, exclude_defaults=True), "idx": idx, "error": err})
+        return {"feature": fid, "index": k, "type": f.type, "items": items, "rollback": self.rollback}
+
     # ── agent ──────────────────────────────────────────────────────
     async def ensure_runner(self):
         if self.runner is None:
@@ -348,13 +464,24 @@ class App:
         await self.close_runner()
         self.session_id = None
         self.transcript = []
+        self.save_conv()
         self.publish({"type": "conversation_reset"})
 
     async def prompt(self, text: str, selection: str | None, scope: bool, entities: list[str] | None = None,
-                     face: dict | None = None, marks: list | None = None, refs: list | None = None) -> None:
-        if self.run_task and not self.run_task.done():
+                     face: dict | None = None, marks: list | None = None, refs: list | None = None,
+                     attachments: list[str] | None = None) -> None:
+        if self.busy:
             self.publish({"type": "error", "message": "the agent is still working; stop it or wait"})
             return
+        from . import uploads
+        try:
+            att_ctx, att_blocks = uploads.blocks(self.ws.root, attachments or [])
+        except (ValueError, OSError) as e:
+            self.publish({"type": "error", "message": f"attachment: {e}"})
+            return
+        if self.conv_part is None and self.ws.active:
+            self.conv_part = self.ws.active
+            self.convs.setdefault(self.ws.active, self.conv)
         prefix = ""
         if self.ws.active:
             prefix = f"[Active part: {_rel(self.ws.active, self.ws.root)}]\n"
@@ -378,20 +505,24 @@ class App:
             prefix += face_context(face)
         if refs and self.ws.active:
             prefix += refs_context(refs, self.ws.session().doc)
+        prefix += att_ctx
         self.publish({"type": "user_prompt", "text": text, "selection": selection, "scope": scope,
                       "entities": entities or None, "face": (face or {}).get("labels", [None])[0],
-                      "marks": len(marks) if marks else None})
+                      "marks": len(marks) if marks else None,
+                      "attachments": [{"id": a, "name": a.split("/")[-1].split("-", 2)[-1]} for a in attachments] if attachments else None})
 
         async def go():
             try:
                 r = await self.ensure_runner()
-                m = await r.run(prefix + text if prefix else text)
+                p = prefix + text if prefix else text
+                m = await (r.run(p, att_blocks) if att_blocks else r.run(p))
                 self.session_id = m.session_id or self.session_id
             except Exception as e:
                 self.publish({"type": "error", "message": f"{type(e).__name__}: {e}"})
                 await self.reset_runner()
             finally:
                 self.ws.scope = None
+                self.adopt_parts()
 
         self.run_task = asyncio.create_task(go())
 
@@ -597,7 +728,11 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
         A.queue = asyncio.Queue()
         task = asyncio.create_task(A.broadcaster())
         A.loop.run_in_executor(None, lambda: __import__("vibecad.session"))  # warm the CAD imports
+        from . import regen
+        regen.PROGRESS.append(A.on_regen)
         yield
+        regen.PROGRESS.remove(A.on_regen)
+        A.save_conv()
         task.cancel()
         await A.reset_runner()
 
@@ -619,24 +754,48 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     @api.get("/api/parts")
     def parts():
         out = []
-        for p in sorted(A.ws.root.rglob("*.vcad.json")):
-            if not SKIP_DIRS & set(p.relative_to(A.ws.root).parts):
-                out.append(str(p.relative_to(A.ws.root)))
+        for d, dirs, files in os.walk(A.ws.root):  # prune .venv etc. instead of walking them (rglob took ~0.5 s)
+            dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS and not x.startswith("."))
+            out += [str((Path(d) / f).relative_to(A.ws.root)) for f in files if f.endswith(".vcad.json")]
+        out.sort()
         return {"parts": out, "active": _rel(A.ws.active, A.ws.root) if A.ws.active else None}
 
     @api.get("/api/state")
     def state():
         return {"state": A.state(), "busy": bool(A.run_task and not A.run_task.done()), "model": A.model}
 
+    def not_busy():
+        if A.busy:
+            raise HTTPException(409, "the agent is working on this part: stop it (or wait) before switching parts")
+
     @api.post("/api/open")
     async def open_(body: dict = Body(...)):
+        not_busy()
         await asyncio.to_thread(guard, A.ws.open_part, body["path"])
+        await A.switch_conversation(A.ws.active)
         return {"state": A.state()}
 
     @api.post("/api/new")
     async def new(body: dict = Body(...)):
+        not_busy()
         await asyncio.to_thread(guard, A.ws.new_part, body["path"], body.get("name") or Path(body["path"]).stem)
+        await A.switch_conversation(A.ws.active)
         return {"state": A.state()}
+
+    @api.post("/api/upload")
+    async def upload(request: Request, name: str):
+        from . import uploads
+        data = await request.body()
+        return await asyncio.to_thread(guard, uploads.save, A.ws.root, name, data)
+
+    @api.get("/api/upload/{fid:path}")
+    def upload_file(fid: str):
+        from . import uploads
+        return FileResponse(guard(uploads.resolve, A.ws.root, fid))
+
+    @api.get("/api/feature/{fid}/edges")
+    async def feature_edges(fid: str):
+        return await asyncio.to_thread(guard, A.feature_edges, fid)
 
     @api.post("/api/ops")
     async def ops(body: dict = Body(...)):
@@ -706,14 +865,14 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
         await sock.accept()
         A.clients.add(sock)
         await sock.send_text(json.dumps({"type": "hello", "state": A.state(), "transcript": A.transcript,
-                                         "busy": bool(A.run_task and not A.run_task.done()), "model": A.model,
+                                         "busy": A.busy, "model": A.model,
                                          "effort": A.effort}, default=str))
         try:
             while True:
                 msg = json.loads(await sock.receive_text())
                 if msg["type"] == "prompt":
                     await A.prompt(msg["text"], msg.get("selection"), bool(msg.get("scope")), msg.get("entities"),
-                                   msg.get("face"), msg.get("marks"), msg.get("refs"))
+                                   msg.get("face"), msg.get("marks"), msg.get("refs"), msg.get("attachments"))
                 elif msg["type"] == "stop" and A.runner:
                     await A.runner.interrupt()
                 elif msg["type"] == "reset":

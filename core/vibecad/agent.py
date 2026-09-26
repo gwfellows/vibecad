@@ -184,14 +184,22 @@ class AgentRunner:
         if self._client:
             await self._client.set_model(model)
 
-    async def run(self, prompt: str) -> RunMetrics:
+    async def run(self, prompt: str, attachments: list[dict] | None = None) -> RunMetrics:
+        """One user turn. `attachments` are extra content blocks sent after the text (images, PDF documents,
+        text), e.g. files the user attached in the GUI."""
         if self._client is None:
             raise RuntimeError("use `async with AgentRunner(...) as r:`")
         m = self.metrics = RunMetrics(prompt=prompt, model=self.model)
         t0 = self._t0 = time.perf_counter()
         self._phase, self._phase_t, self._phase_chars, self._last_emit = None, t0, 0, 0.0
         self.on_event({"type": "run_start", "prompt": prompt, "t": time.time()})
-        await self._client.query(prompt)
+        if attachments:
+            async def message():
+                yield {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": prompt}, *attachments]},
+                       "parent_tool_use_id": None}
+            await self._client.query(message())
+        else:
+            await self._client.query(prompt)
         try:
             async for msg in self._client.receive_response():
                 self._handle(msg, m)

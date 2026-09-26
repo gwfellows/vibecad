@@ -39,13 +39,19 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 
 Click an edge in the 3D view to pick it; shift-click to add more. Clicking a face picks all of its edges, and two faces pick the edge between them. Fillet and Chamfer act on what you picked.
 
+To change an existing fillet or chamfer's edges, select it in the tree and click **Edit edges…**. The view rolls back to just before it, with its current edges highlighted. Click edges to add or remove them, then Done (or Esc to cancel).
+
 A picked edge is saved as a *semantic* reference, never an index: "the edge between `wall.start` and `wall.side[wall_top]`". The server checks that the reference resolves to exactly that edge before using it, so the fillet stays on the right edge when sizes change upstream.
 
 ### Talk to the agent, pointing at geometry
 
 ![A message with an edge and a face referenced as chips](docs/img/agent.png)
 
-Type a request in the right panel. **@ Reference** then a click on a face, an edge or a sketch entity puts it in your message as a chip. The agent receives the exact FaceRef/EdgeRef (or the sketch constraints) behind each chip, so "round this edge" is never ambiguous. Freehand marks drawn in a sketch go along with the next message too.
+Type a request in the right panel. **@ Reference** then a click on a face, an edge or a sketch entity puts it in your message as a chip. The agent receives the exact FaceRef/EdgeRef (or the sketch constraints) behind each chip, so "round this edge" is never ambiguous. Freehand marks drawn in a sketch go along with the next message too. **📎** (or dropping or pasting files into the panel) attaches files: the agent sees images and PDFs directly, and text files (CSV, JSON, STEP, …) inline. Uploads are kept in `uploads/`.
+
+Each part has its own conversation. Opening another part shows that part's conversation, and the agent picks it up where it left off; a part the agent creates keeps the conversation that made it. Conversations are saved next to the part as `<part>.chat.json`.
+
+Edits on a big part take a few seconds. While one is applied, a status pill in the view says what is happening ("Rebuilding stud_grid (12 of 27)… 1.4 s", then "Updating the 3D view"), and the feature being rebuilt is highlighted in the tree.
 
 Every tool call the agent makes appears as it happens, with its result (volume change, errors, warnings) and the renders the agent looks at. Timing, token and cost numbers show when it finishes. Tick "Limit edits to the selected feature" to fence the agent in.
 

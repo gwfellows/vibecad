@@ -55,7 +55,7 @@ function onEvent(e) {
   switch (e.type) {
     case "hello":
       $("#model").value = e.model; if (e.effort) $("#effort").value = e.effort;
-      $("#log").innerHTML = "";
+      resetLog();
       e.transcript.forEach(onEvent);
       setBusy(e.busy);
       if (e.state) setState(e.state, { fit: true });
@@ -68,7 +68,7 @@ function onEvent(e) {
       if (fresh) loadParts();
       break;
     }
-    case "user_prompt": addUser(e.text, e.selection, e.scope, e.entities, e.face, e.marks); break;
+    case "user_prompt": addUser(e.text, e.selection, e.scope, e.entities, e.face, e.marks, e.attachments); break;
     case "run_start": setBusy(true, e.t); break;
     case "agent_text": addAgent(e.text); break;
     case "agent_thinking": addThinking(e.text); break;
@@ -79,7 +79,14 @@ function onEvent(e) {
     case "run_done": phase = null; setBusy(false); showMetrics(e.metrics); break;
     case "note": note(e.text, "note"); break;
     case "error": note(e.message, "err"); setBusy(false); break;
-    case "conversation_reset": $("#log").innerHTML = ""; $("#metrics").innerHTML = ""; break;
+    case "conversation_reset": resetLog(); break;
+    case "conversation":  // another part was opened: show its own conversation
+      resetLog();
+      e.transcript.forEach(onEvent);
+      setBusy(false);
+      if (e.transcript.length) note(`conversation for ${e.part}`, "note");
+      break;
+    case "regen": onRegen(e); break;
   }
 }
 
@@ -104,7 +111,7 @@ function setState(state, { fit = false, flash = false } = {}) {
   renderTree(flash ? before : null);
   renderParams();
   renderDetails();
-  loadMesh(fit);
+  lastMesh = loadMesh(fit);
   if (inSketch()) SK.refresh();
 }
 
@@ -270,6 +277,9 @@ async function renderDetails() {
       <button data-a="down" title="Move down the tree" ${i === S.features.length - 1 ? "disabled" : ""}>↓</button>
       <span class="grow"></span><button data-a="delete" class="danger" title="Delete this feature (undo brings it back)">Delete</button></div>
     <div class="intent small" title="Click to edit: one line on why this feature exists">${esc(f.intent || "No intent written. Click to add one.")}</div>
+    ${f.type === "fillet" || f.type === "chamfer" ? `<div class="edgelist"><div class="row"><b>Edges</b><span class="grow"></span>
+      <button data-a="edges" title="Show the part just before this ${f.type} and click edges to add or remove them">Edit edges…</button></div>
+      ${(json.edges || []).map((r) => `<span class="e" title="${esc(JSON.stringify(r))}">${esc(refText(r))}</span>`).join("")}</div>` : ""}
     <textarea spellcheck="false"></textarea>
     <div class="row"><button id="applyFeat">Apply edit</button><span class="grow"></span>
     <button id="askAbout" title="Ask the agent about this feature">Ask agent</button></div>`;
@@ -296,8 +306,9 @@ async function renderDetails() {
     delete: async () => {
       if (await edit([{ op: "remove_feature", id: f.id }], `delete ${f.id}`)) select(null);
     },
+    edges: () => startEdgeEdit(f.id),
   };
-  d.querySelectorAll(".factions [data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
+  d.querySelectorAll(".factions [data-a], .edgelist [data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
   const intent = d.querySelector(".intent");
   intent.onclick = () => {
     const inp = Object.assign(document.createElement("input"), { value: f.intent || "", placeholder: "why this feature exists", className: "intent-edit" });
@@ -336,14 +347,73 @@ function select(id) {
   colorFaces();
 }
 
+// ── rebuild indicator: an edit on a big part takes seconds (regenerate, then re-mesh); say what is happening ──
+let lastMesh = Promise.resolve();
+let editsInFlight = 0, rebuildT0 = 0, rebuildDelay = null, rebuildTick = null, rebuildPhase = "", regenInfo = null, agentRegen = false;
+function rebuildShow() {
+  if (rebuildTick) return;
+  document.body.classList.add("rebuilding");
+  $("#rebuild").hidden = false;
+  rebuildTick = setInterval(rebuildText, 100);
+  rebuildText();
+}
+function rebuildHide() {
+  clearTimeout(rebuildDelay); clearInterval(rebuildTick);
+  rebuildDelay = rebuildTick = null;
+  document.body.classList.remove("rebuilding");
+  $("#rebuild").hidden = true;
+  document.querySelectorAll("#tree li.building").forEach((li) => li.classList.remove("building"));
+}
+function rebuildText() {
+  const t = ((performance.now() - rebuildT0) / 1000).toFixed(1);
+  const what = regenInfo?.feature ? `${agentRegen && !editsInFlight ? "Agent edit: rebuilding" : "Rebuilding"} ${regenInfo.feature} (${regenInfo.i + 1} of ${regenInfo.n})`
+    : rebuildPhase || "Rebuilding";
+  $("#rebuildText").textContent = `${what}… ${t} s`;
+}
+function rebuildStart(phase = "Applying edit") {
+  rebuildPhase = phase;
+  if (editsInFlight++ === 0) {
+    regenInfo = null;
+    if (!rebuildTick) { rebuildT0 = performance.now(); rebuildDelay = setTimeout(rebuildShow, 150); }  // quick edits never flash it
+  }
+  if (rebuildTick) rebuildText();
+}
+function rebuildEnd() {
+  if (--editsInFlight > 0) return;
+  editsInFlight = 0;
+  if (!agentRegen) rebuildHide();
+}
+function onRegen(e) {  // the server rebuilds features one by one (for the GUI's edits and the agent's)
+  if (S && e.part !== S.name) return;
+  if (e.feature == null) {  // that regeneration finished; the view still has to be re-meshed
+    regenInfo = null;
+    if (agentRegen && !editsInFlight) { agentRegen = false; rebuildHide(); }
+    else rebuildPhase = "Updating the 3D view";
+    return;
+  }
+  regenInfo = e;
+  if (!editsInFlight && !rebuildTick) { agentRegen = true; rebuildT0 = performance.now(); clearTimeout(rebuildDelay); rebuildDelay = setTimeout(rebuildShow, 300); }
+  document.querySelectorAll("#tree li.building").forEach((li) => li.classList.remove("building"));
+  document.querySelector(`#tree li.feat[data-id="${CSS.escape(e.feature)}"]`)?.classList.add("building");
+  if (rebuildTick) rebuildText();
+}
+async function busyDo(phase, fn) {  // run fn with the indicator up until its result is on screen
+  rebuildStart(phase);
+  try { return await fn(); }
+  finally { await lastMesh.catch(() => {}); rebuildEnd(); }
+}
+
 async function edit(ops, message) {  // true if the batch was applied
-  let r;
-  try { r = await api("/api/ops", { ops, message }); } catch { return false; }
-  const rep = r.report;
-  if (r.state) setState(r.state);
-  if (!rep.applied) note(rep.error || "edit rejected", "err");
-  else if (rep.errors || rep.warnings) note([...(rep.errors || []), ...(rep.warnings || [])].join("\n"), "err");
-  return !!rep.applied;
+  return busyDo("Applying edit", async () => {
+    let r;
+    try { r = await api("/api/ops", { ops, message }); } catch { return false; }
+    const rep = r.report;
+    rebuildPhase = "Updating the 3D view";
+    if (r.state) setState(r.state);
+    if (!rep.applied) note(rep.error || "edit rejected", "err");
+    else if (rep.errors || rep.warnings) note([...(rep.errors || []), ...(rep.warnings || [])].join("\n"), "err");
+    return !!rep.applied;
+  });
 }
 
 async function loadParts() {
@@ -420,11 +490,21 @@ $("#projBtn").onclick = () => {
 };
 
 let pendingFit = false;  // a new part is empty when first shown: fit once its first solid arrives
+let meshReq = null;  // the mesh request in flight: a second request for the same revision waits for it
 async function loadMesh(fit) {
   if (!S) return;
   if (!fit && meshRev === S.rev) return;
   fit = fit || pendingFit;
-  const m = await api("/api/mesh");
+  if (meshReq && meshReq.rev === S.rev) {
+    await meshReq.p.catch(() => {});
+    if (fit) pendingFit = !fitView("iso");
+    return;
+  }
+  const req = { rev: S.rev, p: api("/api/mesh") };
+  meshReq = req;
+  let m;
+  try { m = await req.p; } finally { if (meshReq === req) meshReq = null; }
+  if (S && m.rev !== S.rev && meshReq) return;  // an older revision arrived while a newer one is loading
   meshRev = m.rev;
   partGroup.clear();
   faceMeshes = [];
@@ -476,7 +556,7 @@ function colorEdges() {
   edgeMarks.clear();
   const r = (viewRadius || 10) * 0.006;
   for (const o of edgeObjs) {
-    const picked = pickedEdges.some((p) => p.i === o.userData.i);
+    const picked = EE ? eeIdx().has(o.userData.i) : pickedEdges.some((p) => p.i === o.userData.i);
     o.material.color.copy(picked ? EDGE_PICKED : o === hoveredEdge ? EDGE_HOVER : EDGE);
     if (!picked && o !== hoveredEdge) continue;
     const a = o.geometry.attributes.position, pts = [];
@@ -557,6 +637,7 @@ renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.client
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
   if (refPick) return void refFromView(ev);
+  if (EE) { const h = edgeHit(ev); if (h) eeToggle(h.object.userData.i); return; }
   const eh = edgeHit(ev);
   if (eh) return pickEdge(eh.object.userData.i, ev.shiftKey);
   if (!ev.shiftKey) pickedEdges = [];
@@ -874,6 +955,69 @@ function edgeForm(kind) {
     }
   };
 }
+// ── changing an existing fillet / chamfer's edges: roll back to just before it, then click edges on and off ──
+let EE = null;  // {fid, kind, prev (rollback to restore), items: [{ref, idx: [edge indices], label}]}
+const faceTxt = (f) => (f ? `${f.feature}.${f.role}${f.entity ? `[${f.entity}]` : ""}${f.instance ? `@${f.instance}` : ""}` : "?");
+function refText(r) {
+  if (r.note) return r.note.replace(/, picked in the GUI$/, "");
+  const flt = r.filter?.type ? ` (${r.filter.type === "line" ? "straight" : "round"} only)` : "";
+  return (r.between ? `between ${faceTxt(r.between[0])} and ${faceTxt(r.between[1])}` : `edges of ${faceTxt(r.of)}`) + flt;
+}
+const eeIdx = () => new Set(EE ? EE.items.flatMap((x) => x.idx) : []);
+async function startEdgeEdit(fid) {
+  if (EE) return;
+  if (inSketch()) exitSketch();
+  const k = S.features.findIndex((f) => f.id === fid), prev = S.rollback;
+  let r;
+  try {
+    r = await busyDo("Rolling back to before " + fid, async () => {
+      setState((await api("/api/rollback", { index: k })).state);
+      await lastMesh;
+      return api(`/api/feature/${encodeURIComponent(fid)}/edges`);
+    });
+  } catch { setState((await api("/api/rollback", { index: prev ?? null })).state); return; }
+  EE = { fid, kind: r.type, prev, items: r.items.map((it) => ({ ref: it.ref, idx: it.idx, label: refText(it.ref), error: it.error })) };
+  const bad = EE.items.filter((x) => !x.idx.length);
+  if (bad.length) note(`${bad.length} of ${fid}'s edge references match no edge now; they are dropped when you click Done`, "err");
+  pickedEdges = []; pickedFaces = []; pickUpdate();
+  $("#edgeEdit").hidden = false;
+  eeUpdate();
+  colorFaces();
+}
+function eeUpdate() {
+  const n = eeIdx().size;
+  $("#edgeEditText").textContent = `${EE.kind} ${EE.fid}: ${n} edge${n === 1 ? "" : "s"} · click edges to add or remove · Esc cancels`;
+  $("#edgeEditDone").disabled = !n;
+}
+async function eeToggle(i) {
+  const hit = EE.items.find((x) => x.idx.includes(i));
+  const one = async (j) => { const r = await api(`/api/edge/${j}`); return { ref: r.ref, idx: [j], label: r.label }; };
+  if (hit) {  // a reference covering several edges (all edges of a face) is split into one per edge, minus this one
+    EE.items = EE.items.filter((x) => x !== hit);
+    for (const j of hit.idx) if (j !== i) { try { EE.items.push(await one(j)); } catch { /* shown by api() */ } }
+  } else {
+    try { EE.items.push(await one(i)); } catch { return; }
+  }
+  eeUpdate();
+  colorFaces();
+}
+async function endEdgeEdit(save) {
+  const ee = EE;
+  if (!ee) return;
+  EE = null;
+  $("#edgeEdit").hidden = true;
+  const edges = ee.items.filter((x) => x.idx.length).map((x) => x.ref);
+  await busyDo("Rebuilding", async () => {
+    if (save && edges.length) await edit([{ op: "update_feature", id: ee.fid, set: { edges } }], `edges of ${ee.fid}, picked in the GUI`);
+    setState((await api("/api/rollback", { index: ee.prev ?? null })).state);
+  });
+  colorFaces();
+  if (S.features.some((f) => f.id === ee.fid)) select(ee.fid);
+}
+$("#edgeEditDone").onclick = () => endEdgeEdit(true);
+$("#edgeEditCancel").onclick = () => endEdgeEdit(false);
+document.addEventListener("keydown", (ev) => { if (EE && ev.key === "Escape") { ev.stopPropagation(); endEdgeEdit(false); } }, true);
+
 $("#filletBtn").onclick = () => edgeForm("fillet");
 $("#chamferBtn").onclick = () => edgeForm("chamfer");
 pickUpdate();
@@ -886,6 +1030,16 @@ window.vibecadView = {  // for browser tests and the devtools console
   pickedFace: () => lastPicked() && { labels: lastPicked().labels, point: lastPicked().point },
   pickedFaces: () => pickedFaces.map((p) => p.labels[0]),
   pickedEdges: () => pickedEdges.map((p) => ({ i: p.i, label: p.label, ref: p.ref })),
+  edgeEdit: () => EE && { fid: EE.fid, edges: [...eeIdx()], refs: EE.items.map((x) => x.ref) },
+  edgeScreen: (i) => {  // screen point of the middle of edge i's polyline, and whether a face hides it there
+    const o = edgeObjs.find((x) => x.userData.i === i);
+    if (!o) return null;
+    const a = o.geometry.attributes.position, k = Math.floor((a.count - 1) / 2);
+    const p = new THREE.Vector3().fromBufferAttribute(a, k).lerp(new THREE.Vector3().fromBufferAttribute(a, k + 1), 0.5);
+    const q = p.clone().project(camera), r = renderer.domElement.getBoundingClientRect();
+    return [r.left + ((q.x + 1) / 2) * r.width, r.top + ((1 - q.y) / 2) * r.height];
+  },
+  edgeIds: () => edgeObjs.map((o) => o.userData.i),
 };
 
 // ── dialogs ───────────────────────────────────────────────────────
@@ -905,16 +1059,25 @@ $("#historyBtn").onclick = async () => {
 
 // ── agent log ─────────────────────────────────────────────────────
 const log = $("#log");
+function resetLog() {
+  log.innerHTML = ""; $("#metrics").innerHTML = "";
+  for (const k of Object.keys(toolRows)) delete toolRows[k];
+  for (const k of Object.keys(lastToolByName)) delete lastToolByName[k];
+}
 function scrollDown() { if (log.scrollHeight - log.scrollTop - log.clientHeight < 200) log.scrollTop = log.scrollHeight; }
 function add(el) { log.appendChild(el); scrollDown(); return el; }
 function md(t) { return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>"); }
-function addUser(text, sel, scope, entities, face, marks) {
+function addUser(text, sel, scope, entities, face, marks, atts) {
   const d = document.createElement("div");
   d.className = "msg user";
   const what = (sel ? esc(sel) + (entities?.length ? `: ${esc(entities.join(", "))}` : "") : "")
     + (face ? `${sel ? " · " : ""}face ${esc(face)}` : "") + (marks ? ` · ${marks} mark${marks > 1 ? "s" : ""}` : "");
   const chips = esc(text).replace(/@(face|edge|sketch):(\S+)/g, (_, k, v) => `<span class="ref ${k}" title="@${k}:${v}">${k === "edge" ? v.replace("|", " | ") : v}</span>`);
-  d.innerHTML = chips + (what ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "");
+  d.innerHTML = chips + (what ? `<span class="sel">selected: ${what}${scope ? " (edits limited to it)" : ""}</span>` : "")
+    + (atts?.length ? `<div class="atts">${atts.map((a) => /\.(png|jpe?g|gif|webp)$/i.test(a.name)
+      ? `<img src="/api/upload/${a.id.split("/").map(encodeURIComponent).join("/")}" alt="${esc(a.name)}" title="${esc(a.name)}">`
+      : `<span class="att"><span class="fi">${esc((a.name.split(".").pop() || "file").slice(0, 4).toUpperCase())}</span><span class="nm">${esc(a.name)}</span></span>`).join("")}</div>` : "");
+  d.querySelectorAll(".atts img").forEach((img) => (img.onclick = () => { $("#imgBig").src = img.src; $("#imgDialog").showModal(); }));
   add(d);
 }
 function addAgent(text) { const d = document.createElement("div"); d.className = "msg agent"; d.innerHTML = md(text); add(d); }
@@ -998,20 +1161,69 @@ function showMetrics(m) {
 // ── inputs ────────────────────────────────────────────────────────
 $("#promptForm").onsubmit = (ev) => {
   ev.preventDefault();
-  const { text, refs } = promptContent();
-  if (!text || busy) return;
+  let { text, refs } = promptContent();
+  if (busy || (!text && !attachments.length)) return;
+  if (attachments.some((a) => !a.id)) return note("Wait for the attachments to finish uploading.", "err");
+  if (!text) text = "(see the attached files)";
   const entities = inSketch() && SK.selection().length ? SK.selection() : null;
   const marks = inSketch() && SK.marks().length ? SK.marks() : null;
   const face = !inSketch() && lastPicked() ? { labels: lastPicked().labels, point: lastPicked().point } : null;
-  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities, marks, face, refs: refs.length ? refs : null });
+  send({ type: "prompt", text, selection: selected, scope: $("#scope").checked, entities, marks, face, refs: refs.length ? refs : null,
+         attachments: attachments.length ? attachments.map((a) => a.id) : null });
   if (marks) SK.clearMarks();
+  attachments.forEach((a) => a.url && URL.revokeObjectURL(a.url));
+  attachments = [];
+  renderAttach();
   $("#prompt").innerHTML = "";
 };
 $("#prompt").onkeydown = (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("#promptForm").requestSubmit(); } };
-$("#prompt").onpaste = (ev) => {  // plain text only: pasted markup would become part of the message
+$("#prompt").onpaste = (ev) => {  // plain text only: pasted markup would become part of the message; pasted files attach
   ev.preventDefault();
+  if (ev.clipboardData.files?.length) return void addFiles(ev.clipboardData.files);
   document.execCommand("insertText", false, ev.clipboardData.getData("text/plain"));
 };
+
+// ── attachments: files for the agent (images and PDFs it reads directly, text files inline) ──
+let attachments = [];  // {id (once uploaded), name, url (image preview)}
+function renderAttach() {
+  const box = $("#attachList");
+  box.hidden = !attachments.length;
+  box.innerHTML = "";
+  attachments.forEach((a) => {
+    const el = Object.assign(document.createElement("span"), { className: "att" + (a.id ? "" : " up"), title: a.id ? a.name : `uploading ${a.name}…` });
+    el.innerHTML = (a.url ? `<img src="${a.url}" alt="">` : `<span class="fi">${esc((a.name.split(".").pop() || "file").slice(0, 4).toUpperCase())}</span>`)
+      + `<span class="nm">${esc(a.name)}</span><button type="button" class="x" title="Remove">×</button>`;
+    el.querySelector(".x").onclick = () => { attachments = attachments.filter((x) => x !== a); if (a.url) URL.revokeObjectURL(a.url); renderAttach(); };
+    box.appendChild(el);
+  });
+}
+async function addFiles(files) {
+  await Promise.all([...files].map(async (f) => {
+    const name = f.name && f.name !== "image.png" ? f.name : `pasted-${Date.now()}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`;
+    const a = { name, url: f.type.startsWith("image/") ? URL.createObjectURL(f) : null };
+    attachments.push(a);
+    renderAttach();
+    try {
+      const r = await fetch(`/api/upload?name=${encodeURIComponent(name)}`, { method: "POST", body: f });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || r.statusText);
+      a.id = j.id;
+    } catch (e) {
+      note(`Couldn't attach ${name}: ${e.message}`, "err");
+      attachments = attachments.filter((x) => x !== a);
+    }
+    renderAttach();
+  }));
+}
+$("#attachBtn").onclick = () => $("#attachInput").click();
+$("#attachInput").onchange = (ev) => { addFiles(ev.target.files); ev.target.value = ""; };
+{
+  const right = $("#right");
+  const has = (ev) => [...(ev.dataTransfer?.types || [])].includes("Files");
+  right.addEventListener("dragover", (ev) => { if (has(ev)) { ev.preventDefault(); right.classList.add("drop"); } });
+  right.addEventListener("dragleave", (ev) => { if (!right.contains(ev.relatedTarget)) right.classList.remove("drop"); });
+  right.addEventListener("drop", (ev) => { if (!has(ev)) return; ev.preventDefault(); right.classList.remove("drop"); addFiles(ev.dataTransfer.files); });
+}
 
 // ── references in the message: ⌖ Reference, then click a face / edge (or sketch entity) → a chip in the text ──
 const refData = new Map();  // chip id -> {token, kind, label, ref, point, sketch, key}
@@ -1108,18 +1320,30 @@ $("#stopBtn").onclick = () => send({ type: "stop" });
 $("#resetBtn").onclick = () => send({ type: "reset" });
 $("#model").onchange = (ev) => send({ type: "config", model: ev.target.value });
 $("#effort").onchange = (ev) => send({ type: "config", effort: ev.target.value });
-$("#undoBtn").onclick = () => api("/api/undo", {});
-$("#redoBtn").onclick = () => api("/api/redo", {});
+const undoRedo = (which) => busyDo(which === "undo" ? "Undoing" : "Redoing", async () => {
+  rebuildPhase = which === "undo" ? "Undoing" : "Redoing";
+  const r = await api(`/api/${which}`, {}).catch(() => null);
+  if (r?.state) setState(r.state);
+});
+$("#undoBtn").onclick = () => undoRedo("undo");
+$("#redoBtn").onclick = () => undoRedo("redo");
 $("#partSelect").onchange = async (ev) => {
   if (!ev.target.value) return;
+  if (busy) { note("The agent is working on this part: stop it (or wait) before switching parts.", "err"); return loadParts(); }
+  if (EE) await endEdgeEdit(false);
   exitSketch(); selected = null;
   await api("/api/rollback", { index: null }).catch(() => {});
-  const r = await api("/api/open", { path: ev.target.value });
+  const r = await busyDo("Opening " + ev.target.value, () => api("/api/open", { path: ev.target.value })).catch(() => null);
+  if (!r) return loadParts();
   setState(r.state, { fit: true });
 };
 $("#newBtn").onclick = async () => {
+  if (busy) return note("The agent is working on this part: stop it (or wait) before starting another.", "err");
   const name = prompt("New part name (letters, digits, underscores):", "new_part");
   if (!name) return;
+  if (EE) await endEdgeEdit(false);
+  exitSketch(); selected = null;
+  await api("/api/rollback", { index: null }).catch(() => {});
   const r = await api("/api/new", { path: `parts/${name}.vcad.json`, name });
   setState(r.state, { fit: true });
   loadParts();
@@ -1128,7 +1352,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.target.matches("input, textarea, [contenteditable=true]")) return;
   if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }
   if (ev.key === "Escape" && inSketch()) { $("#exitSketch").click(); return; }
-  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); api(ev.shiftKey ? "/api/redo" : "/api/undo", {}); }
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); undoRedo(ev.shiftKey ? "redo" : "undo"); }
 });
 
 connect();

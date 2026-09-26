@@ -20,6 +20,19 @@ from .topo import Body, RefError
 
 EXPECTED = (FeatureError, RefError, SketchError, ExprError, ValueError)
 
+# Called as fn(doc_name, index, total, feature_id) before each feature that is actually rebuilt (not served from
+# the cache), and fn(doc_name, total, total, None) when such a run finishes. The GUI uses it to show what is
+# rebuilding during a slow regeneration.
+PROGRESS: list = []
+
+
+def _progress(*a) -> None:
+    for fn in list(PROGRESS):
+        try:
+            fn(*a)
+        except Exception:
+            pass
+
 
 @dataclass
 class FeatureResult:
@@ -41,6 +54,7 @@ class RegenResult:
     features: list[FeatureResult]
     sketches: dict[str, tuple[SolvedSketch, Frame]]
     seconds: float
+    _summary: dict | None = field(default=None, repr=False, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -51,6 +65,13 @@ class RegenResult:
         return bd.Shape.cast(self.body.shape) if self.body.shape is not None else None
 
     def summary(self) -> dict:
+        """Volume, bbox, validity and per-feature results. Cached: the optimal bounding box alone takes
+        ~0.1 s on a part with a few hundred faces, and the GUI asks for the summary several times per edit."""
+        if self._summary is None:
+            self._summary = self._make_summary()
+        return copy.deepcopy(self._summary)
+
+    def _make_summary(self) -> dict:
         out = {"name": self.doc.name, "ok": self.ok, "seconds": round(self.seconds, 3), "params": self.env}
         p = self.part
         if p is not None:
@@ -88,7 +109,8 @@ class Regenerator:
         results: list[FeatureResult] = []
         debug_sketches: dict[str, tuple[SolvedSketch, Frame]] = {}
         key = hashlib.sha256(b"vibecad-0.1").hexdigest()
-        for feat in doc.features:
+        rebuilt = False
+        for i, feat in enumerate(doc.features):
             if feat.suppressed:
                 results.append(FeatureResult(feat.id, feat.type, "suppressed"))
                 continue
@@ -106,6 +128,9 @@ class Regenerator:
                 debug_sketches.update(sketches)
                 continue
             before = (ctx.body, dict(ctx.sketches), dict(ctx.tools))
+            if PROGRESS:
+                _progress(doc.name, i, len(doc.features), feat.id)
+                rebuilt = True
             t1 = time.perf_counter()
             ctx.warnings = []
             try:
@@ -127,6 +152,8 @@ class Regenerator:
             else:
                 self._cache[key] = (ctx.body, dict(ctx.sketches), dict(ctx.tools), res)
             results.append(res)
+        if rebuilt:
+            _progress(doc.name, len(doc.features), len(doc.features), None)
         return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0)
 
 
