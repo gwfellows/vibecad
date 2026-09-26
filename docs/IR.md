@@ -55,6 +55,7 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 |---|---|
 | extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind or through_all`, `mode: add / cut / intersect / new` |
 | revolve | `profile`, `axis` (a sketch line id, `x_axis` or `y_axis`), `angle` |
+| hole | `sketch` (holes at its point entities), `points` (optional subset), `kind: simple / counterbore / countersink / tapped`, `size` ("M3", "#4-40", "1/4-20"), `fit: close / normal / loose`, `diameter` (overrides the size), `depth` (omit: through all), `direction` (default `reverse`: into a face sketch's solid), `cbore_diameter`, `cbore_depth`, `csink_diameter`, `csink_angle`, `thread_depth` |
 | fillet / chamfer | `edges: [EdgeRef]`, `radius` / `distance` |
 | shell | `remove_faces: [FaceRef]`, `thickness` (inward) |
 | linear_pattern | `features: [extrude/revolve ids]`, `direction: X, Y, Z or [x,y,z]`, `spacing`, `count` |
@@ -62,6 +63,39 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 | mirror | `features`, `plane: {datum, offset}` |
 
 All features take `id`, optional `name`, `intent` (one line: why it exists), `suppressed`.
+
+### Holes
+
+Use a `hole` for every fastener hole, not a circle cut: it sizes the hole from the fastener, and says what it is for. Put the centres in a sketch on the face the holes go into (`add_points`), then one `hole` feature per hole type:
+
+```json
+{"op": "add_feature", "feature": {"id": "mount_pts", "type": "sketch", "plane": {"face": {"feature": "plate", "role": "end"}}}},
+{"op": "add_points", "sketch": "mount_pts", "id": "m", "points": [["-hole_spacing / 2", 0], ["hole_spacing / 2", 0]]},
+{"op": "add_feature", "feature": {"id": "mount_holes", "type": "hole", "sketch": "mount_pts", "kind": "counterbore", "size": "M4",
+  "intent": "M4 socket heads sit flush"}}
+```
+
+- `simple` is a clearance hole for `size` (`fit` picks close / normal / loose, ISO 273), `tapped` is the tap drill (the thread is recorded, not modelled), `counterbore` fits a socket head cap screw flush, `countersink` a flat head (90° metric, 82° inch).
+- Without `depth` the hole goes through; with it, it ends in a 118° drill point.
+- Faces: `hole.side[wall]`, `[cbore_wall]`, `[cbore_floor]`, `[csink]`, `[tip]`, each with `instance` = the point id (`{"feature": "mount_holes", "role": "side", "entity": "wall", "instance": "m_1"}`).
+- Holes can be patterned and mirrored like extrudes. Inch sizes: #2-56 to 1/2-13 (UNC, plus #10-32 and 1/4-28).
+
+Metric sizes (mm):
+
+| size | clearance (normal) | tap drill | c'bore ⌀ × depth | c'sink ⌀ (90°) |
+|---|---|---|---|---|
+| M1.6 | 1.8 | 1.25 | 3.3 × 1.8 | 3.2 |
+| M2 | 2.4 | 1.6 | 4.4 × 2.3 | 4.4 |
+| M2.5 | 2.9 | 2.05 | 5.5 × 2.8 | 5.5 |
+| M3 | 3.4 | 2.5 | 6.5 × 3.3 | 6.7 |
+| M4 | 4.5 | 3.3 | 8 × 4.4 | 9 |
+| M5 | 5.5 | 4.2 | 10 × 5.4 | 11.2 |
+| M6 | 6.6 | 5 | 11 × 6.5 | 13.4 |
+| M8 | 9 | 6.8 | 15 × 8.6 | 17.9 |
+| M10 | 11 | 8.5 | 18 × 10.8 | 22.4 |
+| M12 | 13.5 | 10.2 | 20 × 13 | 26.9 |
+| M16 | 17.5 | 14 | 26 × 17.5 | 33.6 |
+| M20 | 22 | 17.5 | 33 × 21.5 | 40.3 |
 
 ## References to faces and edges
 
@@ -119,6 +153,8 @@ Sketch shortcuts (expand into fully constrained primitives, stored as ordinary e
  "across": "flats", "center": [0, 0], "angle": 0}
       across: "corners" (default, circumscribed diameter) or "flats" (wrench size); angle rotates the
       first vertex from sketch +x -> one line per side, every vertex fixed by expression (center + R*cos/sin)
+{"op": "add_points", "sketch": "<id>", "id": "m", "points": [[x, y], ...], "names": [...]}
+      hole centres: points m (one) or m_1, m_2, ... each fixed by dims m_1_x, m_1_y from the origin
 ```
 
 Positions are measured from the sketch origin and accept expressions. Omit `center`/`corner` to leave the shape free to position with your own constraints.

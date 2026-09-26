@@ -200,6 +200,36 @@ class Revolve(_Feature):
     mode: Mode = "add"
 
 
+class Hole(_Feature):
+    """Holes drilled at the points of a sketch, into its plane: clearance, counterbored, countersunk or tapped,
+    sized from a fastener `size` ("M3", "#4-40", "1/4-20") or an explicit `diameter`."""
+    type: Literal["hole"] = "hole"
+    sketch: str                       # hole centres: its point entities (else its circles' centres)
+    points: list[str] | None = None   # only these entity ids
+    kind: Literal["simple", "counterbore", "countersink", "tapped"] = "simple"
+    size: str | None = None           # fastener size from the table (fasteners.py)
+    fit: Literal["close", "normal", "loose"] = "normal"  # clearance series, for simple / counterbore / countersink
+    diameter: Num | None = None       # overrides the size's clearance or tap drill
+    depth: Num | None = None          # None = through all
+    direction: Literal["reverse", "normal"] = "reverse"  # reverse = into a face sketch's solid (its normal points out)
+    cbore_diameter: Num | None = None
+    cbore_depth: Num | None = None
+    csink_diameter: Num | None = None
+    csink_angle: Num | None = None
+    thread_depth: Num | None = None   # tapped: recorded for drawings and the report; the model shows the tap drill
+
+    @model_validator(mode="after")
+    def _sized(self):
+        if self.size is None and self.diameter is None:
+            raise ValueError("a hole needs a fastener `size` (e.g. \"M3\") or a `diameter`")
+        if self.kind in ("counterbore", "countersink") and self.size is None and (
+                (self.kind == "counterbore" and (self.cbore_diameter is None or self.cbore_depth is None))
+                or (self.kind == "countersink" and self.csink_diameter is None)):
+            raise ValueError(f"a {self.kind} hole without a fastener `size` needs its "
+                             + ("cbore_diameter and cbore_depth" if self.kind == "counterbore" else "csink_diameter"))
+        return self
+
+
 class Fillet(_Feature):
     type: Literal["fillet"] = "fillet"
     edges: list[EdgeRef]
@@ -242,7 +272,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror],
+    Union[Sketch, Extrude, Revolve, Hole, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror],
     Field(discriminator="type"),
 ]
 

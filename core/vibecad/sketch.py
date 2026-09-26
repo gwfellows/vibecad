@@ -68,6 +68,7 @@ class SolvedSketch:
     entities: dict[str, SolvedEntity]
     report: SolveReport
     source: S.Sketch | None = None  # the sketch as solved: external geometry resolved into fixed entities
+    externals: frozenset = frozenset()  # ids of entities projected from the part (`external`), not drawn
 
     def entity_at(self, p: tuple[float, float], tol: float = 1e-3) -> str | None:
         best, best_d = None, tol

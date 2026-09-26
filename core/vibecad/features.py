@@ -81,6 +81,7 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
     src = _resolve_externals(ctx, f, frame)
     solved = solve_sketch(src, ctx.env)
     solved.source = src
+    solved.externals = frozenset(e.id for e in f.entities if isinstance(e, S.External))
     ctx.sketches[f.id] = (solved, frame)
     rep = solved.report
     info = {"dof": rep.dof, "solve": rep.status, "frame": frame.describe()}
@@ -330,6 +331,175 @@ def do_revolve(ctx: Ctx, f: S.Revolve) -> dict:
     return {"angle": ang}
 
 
+# ── Holes ─────────────────────────────────────────────────────────
+def _hole_locations(ctx: Ctx, f: S.Hole):
+    if f.sketch not in ctx.sketches:
+        raise FeatureError(f"hole sketch {f.sketch!r} is missing, later in the tree, or failed to build")
+    solved, frame = ctx.sketches[f.sketch]
+    ents = {k: e for k, e in solved.entities.items() if k not in solved.externals}
+    if f.points:
+        missing = [p for p in f.points if p not in ents]
+        if missing:
+            raise FeatureError(f"hole points {missing} are not entities of sketch {f.sketch!r}")
+        pick = [ents[p] for p in f.points]
+    else:
+        pick = [e for e in ents.values() if e.type == "point"] or [e for e in ents.values() if e.type == "circle"]
+    locs = []
+    for e in pick:
+        if e.type == "point":
+            locs.append((e.id, e.p1))
+        elif e.type in ("circle", "arc"):
+            locs.append((e.id, e.center))
+        else:
+            raise FeatureError(f"hole point {e.id!r} is a {e.type}; use point entities (or circles, for their centres)")
+    if not locs:
+        raise FeatureError(f"sketch {f.sketch!r} has no points for holes: add point entities (op add_point) at the hole centres")
+    return solved, frame, locs
+
+
+def _hole_dims(ctx: Ctx, f: S.Hole) -> dict:
+    from .fasteners import FITS, lookup
+
+    size = None
+    if f.size is not None:
+        try:
+            size = lookup(f.size)
+        except KeyError as e:
+            raise FeatureError(str(e.args[0]))
+    if f.diameter is not None:
+        d = ctx.num(f.diameter)
+    else:
+        d = size.tap if f.kind == "tapped" else size.clearance[FITS.index(f.fit)]
+    if d <= 0:
+        raise FeatureError(f"hole diameter must be > 0, got {d:g}")
+    depth = None if f.depth is None else ctx.num(f.depth)
+    if depth is not None and depth <= 0:
+        raise FeatureError(f"hole depth must be > 0, got {depth:g}")
+    out = {"d": d, "depth": depth}
+    if f.kind == "counterbore":
+        D = ctx.num(f.cbore_diameter) if f.cbore_diameter is not None else size.cbore[0]
+        h = ctx.num(f.cbore_depth) if f.cbore_depth is not None else size.cbore[1]
+        if D <= d or h <= 0:
+            raise FeatureError(f"counterbore must be wider than the hole ({D:g} vs {d:g}) and deeper than 0 ({h:g})")
+        if depth is not None and h >= depth:
+            raise FeatureError(f"counterbore depth {h:g} must be less than the hole depth {depth:g}")
+        out["cbore"] = (D, h)
+    if f.kind == "countersink":
+        D = ctx.num(f.csink_diameter) if f.csink_diameter is not None else size.csink
+        a = ctx.num(f.csink_angle) if f.csink_angle is not None else (size.csink_angle if size else 90.0)
+        if D <= d or not 0 < a < 180:
+            raise FeatureError(f"countersink must be wider than the hole ({D:g} vs {d:g}) with an angle in (0, 180), got {a:g}")
+        zc = (D - d) / 2 / math.tan(math.radians(a / 2))
+        if depth is not None and zc >= depth:
+            raise FeatureError(f"countersink ({D:g} at {a:g}°) is deeper ({zc:.3g}) than the hole ({depth:g})")
+        out["csink"] = (D, a)
+    if f.kind == "tapped":
+        out["thread"] = (size.name if size else f"⌀{d:g} tap drill") + (f", {ctx.num(f.thread_depth):g} deep" if f.thread_depth is not None else "")
+    return out
+
+
+def _hole_tool(p: bd.Vector, drill: bd.Vector, dims: dict, through: float, fid: str, inst: str):
+    """One hole as a solid of revolution about the drill axis, and a label for each of its faces."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon
+
+    r, depth = dims["d"] / 2, dims["depth"]
+    R = max(r, dims.get("cbore", (0, 0))[0] / 2, dims.get("csink", (0, 0))[0] / 2)
+    e = max(0.5, 0.2 * R)  # start above the surface so the tool never shares a face with the part
+    prof: list[tuple[float, float]] = [(0.0, -e)]
+    names: list[str | None] = ["entry"]
+    if "cbore" in dims:
+        D, h = dims["cbore"]
+        prof += [(D / 2, -e), (D / 2, h), (r, h)]
+        names += ["cbore_wall", "cbore_floor", "wall"]
+    elif "csink" in dims:
+        D, a = dims["csink"]
+        t = math.tan(math.radians(a / 2))
+        prof += [(D / 2 + e * t, -e), (r, (D / 2 - r) / t)]
+        names += ["csink", "wall"]
+    else:
+        prof += [(r, -e)]
+        names += ["wall"]
+    if depth is None:
+        prof += [(r, through), (0.0, through)]
+        names += ["exit", None]
+    else:
+        prof += [(r, depth), (0.0, depth + r / math.tan(math.radians(59)))]  # 118° drill point
+        names += ["tip", None]
+    u = drill.cross(bd.Vector(1, 0, 0) if abs(drill.X) < 0.9 else bd.Vector(0, 1, 0)).normalized()
+    poly = BRepBuilderAPI_MakePolygon()
+    for rr, zz in prof:
+        q = p + u * rr + drill * zz
+        poly.Add(gp_Pnt(q.X, q.Y, q.Z))
+    poly.Close()
+    face = BRepBuilderAPI_MakeFace(poly.Wire(), True).Face()
+    rev = BRepPrimAPI_MakeRevol(face, gp_Ax1(gp_Pnt(p.X, p.Y, p.Z), gp_Dir(drill.X, drill.Y, drill.Z)), 2 * math.pi)
+    rev.Build()
+    if not rev.IsDone():
+        raise FeatureError("building the hole failed")
+    labels, mids = [], []
+    for edge, name in zip(list_edges(face), names):
+        if name is None:
+            continue
+        mids.append((bd.Edge(TopoDS.Edge(edge)).position_at(0.5), name))
+        for g in rev.Generated(edge):
+            labels.append((g, Label(fid, "side", name, inst)))
+    tool = rev.Shape()
+    # OCCT's revolve reports no history for profile edges perpendicular to the axis (the counterbore floor):
+    # a swept face contains its generating edge, so label those by the edge midpoint lying on them
+    for tf in list_faces(tool):
+        if any(tf.IsSame(x) for x, _ in labels):
+            continue
+        F = bd.Face(TopoDS.Face(tf))
+        for mid, name in mids:
+            if F.distance_to(mid) < 1e-6:
+                labels.append((tf, Label(fid, "side", name, inst)))
+                break
+    return tool, labels
+
+
+def do_hole(ctx: Ctx, f: S.Hole) -> dict:
+    if ctx.body.shape is None:
+        raise FeatureError("a hole needs an existing body")
+    solved, frame, locs = _hole_locations(ctx, f)
+    dims = _hole_dims(ctx, f)
+    drill = frame.n * (-1.0 if f.direction == "reverse" else 1.0)
+    through = _through_all_length(ctx, [])
+
+    def build(dr):
+        tools, labels = [], []
+        for pid, (u, v) in locs:
+            t, lab = _hole_tool(frame.to_world(u, v), dr, dims, through, f.id, pid)
+            tools.append(t)
+            labels += lab
+        return _compound(tools), labels
+
+    tool, labels = build(drill)
+    # a hole should start on the part's surface: say which ones don't (a point off the part, or a sketch
+    # plane that isn't on the face)
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+    from OCP.BRepExtrema import BRepExtrema_DistShapeShape
+    off = []
+    for pid, (u, v) in locs:
+        q = frame.to_world(u, v)
+        dist = BRepExtrema_DistShapeShape(BRepBuilderAPI_MakeVertex(gp_Pnt(q.X, q.Y, q.Z)).Vertex(), ctx.body.shape)
+        if dist.IsDone() and dist.Value() > 1e-4 * max(1.0, through):
+            off.append(f"{pid} ({dist.Value():.3g} mm away)")
+    if off:
+        ctx.warnings.append(f"hole centre(s) not on the part's surface: {', '.join(off)}. Holes are drilled from the "
+                            "sketch plane, so sketch hole points on the face they go into.")
+    ctx.tools[f.id] = Tool(tool, labels, "cut")
+    _combine(ctx, f.id, tool, labels, "cut", lambda: build(drill * -1.0)[0])
+    info = {"holes": len(locs), "diameter": round(dims["d"], 4), "depth": "through" if dims["depth"] is None else round(dims["depth"], 4)}
+    if f.size:
+        info["size"] = f.size
+    for k in ("cbore", "csink"):
+        if k in dims:
+            info[k] = [round(x, 4) for x in dims[k]]
+    if "thread" in dims:
+        info["thread"] = dims["thread"]
+    return info
+
+
 # ── Dress-up features ──────────────────────────────────────────────
 def _edges(ctx: Ctx, refs: list[S.EdgeRef]):
     if ctx.body.shape is None:
@@ -460,7 +630,7 @@ def do_mirror(ctx: Ctx, f: S.Mirror) -> dict:
 
 
 BUILDERS = {
-    "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "fillet": do_fillet,
+    "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "hole": do_hole, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
     "circular_pattern": do_circular_pattern, "mirror": do_mirror,
 }

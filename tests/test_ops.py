@@ -170,3 +170,73 @@ def test_rename_entity_updates_constraints_and_face_refs(lb):
 def test_bad_renames_rejected(lb, op, msg):
     r = lb.apply([op], "bad rename")
     assert not r["ok"] and msg in r["error"], r
+
+
+# ── holes ──
+def _plate_with_points(tmp_path):
+    from vibecad.workspace import Workspace
+    ws = Workspace(tmp_path)
+    ws.new_part("p.vcad.json", "p")
+    ws.apply_ops([{"op": "set_param", "name": "t", "value": "6 mm"},
+                  {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+                  {"op": "add_rectangle", "sketch": "sk", "id": "r", "width": 40, "height": 30, "center": [0, 0]},
+                  {"op": "add_feature", "feature": {"id": "plate", "type": "extrude", "profile": {"sketch": "sk"}, "distance": "t"}},
+                  {"op": "add_feature", "feature": {"id": "pts", "type": "sketch", "plane": {"face": {"feature": "plate", "role": "end"}}}},
+                  {"op": "add_points", "sketch": "pts", "id": "h", "points": [[-10, 0], [10, 0]]}], "plate", "user")
+    return ws
+
+
+def test_add_points_is_fully_constrained_with_named_dims(tmp_path):
+    ws = _plate_with_points(tmp_path)
+    s = ws.session()
+    solved, _ = s.result.sketches["pts"]
+    assert solved.report.dof == 0 and set(solved.entities) == {"h_1", "h_2"}
+    names = {c.name for c in s.doc.feature("pts").constraints}
+    assert {"h_1_x", "h_1_y", "h_2_x", "h_2_y"} <= names
+
+
+def test_hole_sizes_from_the_table_and_rename_keeps_refs(tmp_path):
+    import json
+    from math import pi
+    ws = _plate_with_points(tmp_path)
+    v0 = ws.session().result.part.volume
+    rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "holes", "type": "hole", "sketch": "pts", "size": "M5", "fit": "close"}},
+                                   {"op": "add_feature", "feature": {"id": "rim", "type": "chamfer", "distance": 0.5, "edges": [
+                                       {"between": [{"feature": "plate", "role": "end"}, {"feature": "holes", "role": "side", "entity": "wall", "instance": "h_1"}]}]}}],
+                                  "holes", "user"))
+    assert rep["applied"] and not rep.get("errors"), rep
+    r = ws.session().result
+    assert {f.id: f.info for f in r.features}["holes"]["diameter"] == 5.3  # M5 close fit (ISO 273 fine)
+    assert r.part.volume == pytest.approx(v0 - 2 * pi * 2.65**2 * 6 - 2 * pi * (2.65 + 0.5 / 3) * 0.5**2 / 2, rel=1e-5)
+    # renaming the point and the sketch keeps the chamfer on the same hole
+    rep = json.loads(ws.apply_ops([{"op": "rename_entity", "sketch": "pts", "id": "h_1", "to": "left"},
+                                   {"op": "rename_feature", "id": "pts", "to": "mount_pts"}], "rename", "user"))
+    assert rep["applied"] and not rep.get("errors") and not rep.get("warnings"), rep
+    doc = ws.session().doc
+    assert doc.feature("holes").sketch == "mount_pts"
+    assert doc.feature("rim").edges[0].between[1].instance == "left"
+
+
+@pytest.mark.parametrize("feature,msg", [
+    ({"size": "M7"}, "unknown fastener size"),
+    ({}, "needs a fastener `size`"),
+    ({"diameter": 3, "kind": "counterbore"}, "needs its cbore_diameter"),
+    ({"size": "M4", "kind": "counterbore", "depth": 3}, "must be less than the hole depth"),
+    ({"size": "M4", "points": ["nope"]}, "not entities of sketch"),
+])
+def test_hole_errors_say_what_is_wrong(tmp_path, feature, msg):
+    import json
+    ws = _plate_with_points(tmp_path)
+    rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "holes", "type": "hole", "sketch": "pts", **feature}}], "h", "user"))
+    text = json.dumps(rep)
+    assert msg in text, text
+
+
+def test_hole_off_the_surface_warns(tmp_path):
+    import json
+    ws = _plate_with_points(tmp_path)
+    ws.apply_ops([{"op": "add_feature", "feature": {"id": "hi", "type": "sketch", "plane": {"datum": "XY", "offset": 20}}},
+                  {"op": "add_points", "sketch": "hi", "id": "q", "points": [[0, 0]]}], "high sketch", "user")
+    rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "h", "type": "hole", "sketch": "hi", "size": "M3", "direction": "reverse"}}], "h", "user"))
+    w = " ".join(rep.get("warnings") or [])
+    assert "not on the part's surface" in w and "q (14 mm away)" in w, rep

@@ -417,6 +417,32 @@ class App:
         return (f"[The user drew {len(lines)} freehand mark(s) on sketch `{sid}` to show what they mean (sketch coordinates, mm; "
                 f"not part of the model): " + " | ".join(lines) + "]\n")
 
+    def hole_ops(self, face: dict, point: list[float], sketch_id: str, prefix: str) -> dict:
+        """Ops for a hole sketch on a clicked face with one point where it was clicked (in that sketch's
+        coordinates, rounded to 0.01 mm): what the GUI's Hole button adds before the hole feature itself."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from . import schema as S
+        from .frames import face_frame
+        from .topo import resolve_faces
+
+        body = self.view_result().body
+        if body.shape is None:
+            raise ToolError("holes need a part to drill into")
+        ref = S.FaceRef.model_validate(face)
+        faces = resolve_faces(body, ref)
+        if not faces:
+            raise ToolError("that face can't be found at this point in the tree")
+        fr = face_frame(bd.Face(TopoDS.Face(faces[0])), 0.0)  # ValueError (-> 400) on a curved face
+        u, v, w = fr.to_local(bd.Vector(*point))
+        if abs(w) > 1e-3 * max(1.0, abs(u) + abs(v)):
+            raise ToolError("the clicked point is not on that face's plane")
+        return {"ops": [{"op": "add_feature", "feature": {"id": sketch_id, "type": "sketch", "plane": {"face": face},
+                                                          "intent": "hole centres"}},
+                        {"op": "add_points", "sketch": sketch_id, "id": prefix, "points": [[round(u, 2), round(v, 2)]]}],
+                "at": [round(u, 2), round(v, 2)]}
+
     def feature_edges(self, fid: str) -> dict:
         """The edges a fillet/chamfer's refs resolve to, as edge indices of the body just before it (the body
         the GUI shows when the rollback bar sits above the feature), so the GUI can show and change them."""
@@ -605,7 +631,7 @@ def face_context(face: dict) -> str:
 
 _TEXT_KEYS = {"intent", "note", "name", "id", "type", "feature", "role", "entity", "sketch", "instance", "on", "features",
               "regions", "axis", "mode", "direction", "extent", "pick", "datum", "construction", "filter"}
-_FIELDS = {"extrude": ["distance"], "revolve": ["angle"], "fillet": ["radius"], "chamfer": ["distance"], "shell": ["thickness"],
+_FIELDS = {"extrude": ["distance"], "revolve": ["angle"], "hole": ["diameter", "depth", "cbore_diameter", "cbore_depth", "csink_diameter"], "fillet": ["radius"], "chamfer": ["distance"], "shell": ["thickness"],
            "linear_pattern": ["spacing", "count"], "circular_pattern": ["count", "angle"]}
 
 
@@ -794,6 +820,16 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     def upload_file(fid: str):
         from . import uploads
         return FileResponse(guard(uploads.resolve, A.ws.root, fid))
+
+    @api.get("/api/fasteners")
+    def fasteners():
+        from .fasteners import SIZES
+        return {"sizes": [{"name": z.name, "clearance": z.clearance, "tap": z.tap, "cbore": z.cbore, "csink": z.csink,
+                           "csink_angle": z.csink_angle} for z in SIZES.values()]}
+
+    @api.post("/api/hole_ops")
+    async def hole_ops(body: dict = Body(...)):
+        return await asyncio.to_thread(guard, A.hole_ops, body["face"], body["point"], body["sketch"], body.get("prefix", "h"))
 
     @api.get("/api/feature/{fid}/edges")
     async def feature_edges(fid: str):

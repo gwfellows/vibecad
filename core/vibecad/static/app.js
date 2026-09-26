@@ -27,6 +27,7 @@ const ICONS = {
   linear_pattern: '<rect x="2.5" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="16.5" y="9" width="5" height="6"/>',
   circular_pattern: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="4.5" r="1.6"/><circle cx="18.5" cy="15.8" r="1.6"/><circle cx="5.5" cy="15.8" r="1.6"/>',
   mirror: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7l-6 5 6 5z"/><path d="M15 7l6 5-6 5z"/>',
+  hole: '<path d="M4 9h5v3h6V9h5v11H4z"/><path d="M9 12v8M15 12v8" stroke-dasharray="1.5 1.5"/>',
 };
 const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy="12" r="6"/>'}</svg>`;
 
@@ -788,6 +789,7 @@ const HINTS = {
   rect: (n) => (n ? "Click the opposite corner" : "Click the first corner"),
   circle: (n) => (n ? "Click a point on the rim" : "Click the centre"),
   arc: (n) => ["Click the centre", "Click the start point", "Click the end point (counterclockwise)"][n] || "",
+  point: () => "Click to place a point (a hole centre, say); it snaps to points and curves · Esc to stop",
   mark: () => `Draw on the sketch to show the agent what you mean (${SK.marks().length} mark(s)); they go with your next prompt and are never saved to the part`,
 };
 function sketchBarUpdate() {
@@ -810,6 +812,9 @@ function sketchBarUpdate() {
   $("#sketchTools [data-act=clearmarks]").disabled = !SK.marks().length;
   $("#sketchTools [data-act=project]").disabled = !d.on_face;
   $("#sketchTools [data-act=param]").disabled = !SK.canParam();
+  const npts = d.entities.filter((e) => e.type === "point" && !e.external).length;
+  $("#holeSkBtn").disabled = !npts;
+  $("#holeSkBtn").title = npts ? `Holes at this sketch's ${npts} point${npts > 1 ? "s" : ""}` : "Holes: place points first (Point tool, P), one per hole centre";
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;
 }
@@ -931,6 +936,9 @@ function edgeTargets() {  // [{ref, what}] or null when the picks don't make an 
   return null;
 }
 function pickUpdate() {
+  const pf = lastPicked();
+  $("#holeBtn").disabled = !pf || pickedEdges.length > 0;
+  $("#holeBtn").title = pf ? `Hole in ${pf.labels[0]} where you clicked (then dimension it in its sketch)` : "Hole: click a flat face where the hole goes, then this";
   const t = edgeTargets();
   for (const b of [$("#filletBtn"), $("#chamferBtn")]) {
     b.disabled = !t;
@@ -1023,6 +1031,78 @@ async function endEdgeEdit(save) {
 $("#edgeEditDone").onclick = () => endEdgeEdit(true);
 $("#edgeEditCancel").onclick = () => endEdgeEdit(false);
 document.addEventListener("keydown", (ev) => { if (EE && ev.key === "Escape") { ev.stopPropagation(); endEdgeEdit(false); } }, true);
+
+// ── holes: at a clicked point on a face, or at the points of the open sketch ──
+let FASTENERS = null;
+async function holeForm(anchor, where, make) {
+  FASTENERS ||= (await api("/api/fasteners")).sizes;
+  const m = $("#featMenu");
+  const opt = (v, t = v, sel = false) => `<option value="${esc(v)}" ${sel ? "selected" : ""}>${esc(t)}</option>`;
+  m.innerHTML = `<div class="ttl">Hole ${esc(where)}</div>
+    <div class="row"><label>type</label><select id="hoKind">${[["simple", "clearance"], ["counterbore", "counterbore"], ["countersink", "countersink"], ["tapped", "tapped"]].map(([v, t]) => opt(v, t)).join("")}</select></div>
+    <div class="row"><label>size</label><select id="hoSize">${FASTENERS.map((z) => opt(z.name, z.name, z.name === "M4")).join("")}${opt("", "custom ⌀")}</select></div>
+    <div class="row" id="hoFitRow"><label>fit</label><select id="hoFit">${opt("close")}${opt("normal", "normal", true)}${opt("loose")}</select></div>
+    <div class="row" id="hoDiaRow" hidden><label>diameter</label><input id="hoDia" value="5"></div>
+    <div class="row"><label>depth</label><input id="hoDepth" placeholder="through all"></div>
+    <div class="muted small" id="hoInfo"></div>
+    <button class="go" id="hoGo">Add hole</button>`;
+  popup(m, anchor);
+  const info = () => {
+    const kind = $("#hoKind").value, z = FASTENERS.find((x) => x.name === $("#hoSize").value);
+    $("#hoDiaRow").hidden = !!z;
+    $("#hoFitRow").hidden = !z || kind === "tapped";
+    if (!z) { $("#hoInfo").textContent = ""; return; }
+    const d = kind === "tapped" ? z.tap : z.clearance[["close", "normal", "loose"].indexOf($("#hoFit").value)];
+    $("#hoInfo").textContent = `⌀${fmt(d, 2)}` + (kind === "tapped" ? " tap drill" : " clearance")
+      + (kind === "counterbore" ? `, c'bore ⌀${fmt(z.cbore[0], 2)} × ${fmt(z.cbore[1], 2)}` : "")
+      + (kind === "countersink" ? `, c'sink ⌀${fmt(z.csink, 2)} at ${z.csink_angle}°` : "");
+  };
+  ["#hoKind", "#hoSize", "#hoFit"].forEach((q) => ($(q).onchange = info));
+  info();
+  $("#hoGo").onclick = async () => {
+    const kind = $("#hoKind").value, size = $("#hoSize").value, depth = $("#hoDepth").value.trim();
+    const h = { type: "hole", kind };
+    if (size) { h.size = size; if (kind !== "tapped" && $("#hoFit").value !== "normal") h.fit = $("#hoFit").value; }
+    else h.diameter = numOrExpr($("#hoDia").value);
+    if (depth) h.depth = numOrExpr(depth);
+    h.intent = `${size || "⌀" + $("#hoDia").value} ${kind === "simple" ? "clearance" : kind} hole${depth ? `, ${depth} deep` : ""}`;
+    m.hidden = true;
+    await make(h);
+  };
+}
+$("#holeBtn").onclick = () => {
+  const pf = lastPicked();
+  if (!pf) return;
+  const ref = faceRef(pf.labels[0], pf.point);
+  if (!ref) return note(`can't make a face reference from ${pf.labels[0]}`, "err");
+  holeForm($("#holeBtn"), `on ${pf.labels[0]}`, async (h) => {
+    const sk = nextId("hole_sk"), id = nextId("hole");
+    let r;
+    try { r = await api("/api/hole_ops", { face: ref, point: pf.point, sketch: sk, prefix: `${id}_p` }); } catch { return; }
+    const ok = await addFeatures([...r.ops, { op: "add_feature", feature: { ...h, id, sketch: sk } }], `${h.intent} at a picked point`);
+    if (ok) { pickedFaces = []; pickUpdate(); select(id); note("Hole added. Open its sketch to dimension the centre from edges, or add more points (P).", "note"); }
+  });
+};
+$("#holeSkBtn").onclick = () => {
+  const sid = SK.active();
+  if (!sid) return;
+  holeForm($("#holeSkBtn"), `at the points of ${sid}`, async (h) => {
+    const id = nextId("hole");
+    if (await addFeatures([{ op: "add_feature", after: sid, feature: { ...h, id, sketch: sid } }], `${h.intent} at ${sid}'s points`)) {
+      selected = null; exitSketch(); select(id);
+    }
+  });
+};
+// several ops that add features, placed at the rollback bar like addFeature (consecutive adds keep their order)
+async function addFeatures(ops, message) {
+  const rb = S.rollback;
+  const idx = (id) => S.features.findIndex((f) => f.id === id);
+  const adds = ops.filter((o) => o.op === "add_feature" && (!(o.after || o.before) || (o.after ? idx(o.after) + 1 : idx(o.before)) <= (rb ?? Infinity))).length;
+  const anchor = rb != null && rb > 0 ? { after: S.features[rb - 1].id } : rb === 0 ? { before: S.features[0].id } : {};
+  const ok = await edit(ops.map((o) => (o.op === "add_feature" && !o.after && !o.before ? { ...o, ...anchor } : o)), message);
+  if (ok && rb != null) setState((await api("/api/rollback", { index: rb + adds })).state);
+  return ok;
+}
 
 $("#filletBtn").onclick = () => edgeForm("fillet");
 $("#chamferBtn").onclick = () => edgeForm("chamfer");

@@ -9,6 +9,7 @@ export const ICON = {
   rect: S('<rect x="4" y="6" width="16" height="12" rx=".5"/>'),
   circle: S('<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
   arc: S('<path d="M4 17a8.5 8.5 0 0 1 16 0"/><circle cx="12" cy="17" r="1" fill="currentColor"/>'),
+  point: S('<circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4" stroke-width="1.3"/>'),
   mark: S('<path d="M3 18c2.5-5 4.5 1.5 7-3s4.5 1 7-5l2-3"/>'),
   // constraints
   coincident: S('<path d="M4 20l7-7M20 4l-7 7"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>'),
@@ -36,6 +37,7 @@ export const ICON = {
   sketch: S('<path d="M3 20h18"/><path d="M14.5 4.5l5 5L10 19H5v-5z"/>'),
   extrude: S('<path d="M4 16l8 4 8-4-8-4z"/><path d="M12 12V3"/><path d="M9 6l3-3 3 3"/>'),
   revolve: S('<ellipse cx="12" cy="14" rx="8" ry="3.5"/><path d="M12 3v18"/><path d="M17 8.5l2.5.5-.5 2.5"/>'),
+  hole: S('<path d="M4 9h5v3h6V9h5v11H4z"/><path d="M9 12v8M15 12v8" stroke-dasharray="1.5 1.5"/>'),
   fillet: S('<path d="M5 20v-8a7 7 0 0 1 7-7h7"/>'),
   chamfer: S('<path d="M5 20v-9l6-6h8"/>'),
   finish: S('<path d="M5 12.5l4.5 4.5L19 7"/>'),

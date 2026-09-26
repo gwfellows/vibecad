@@ -291,3 +291,11 @@ def test_regen_reports_progress_only_for_rebuilt_features(tmp_path):
     rebuilt = [x[3] for x in seen if x[3]]
     assert rebuilt == ["corner_fillet"]  # only the feature that uses corner_r; the rest come from the cache
     assert seen[-1][3] is None and seen[-1][1] == seen[-1][2]
+
+
+def test_mesh_and_render_a_part_with_drill_points(tmp_path):
+    # a blind hole ends in a cone whose apex is a degenerated edge: meshing and rendering used to raise on it
+    a = _app(tmp_path, "hole_plate.vcad.json")
+    m = a.mesh()
+    assert m["faces"] and all(len(e) >= 6 for e in m["edges"])
+    assert a.ws.render(["iso"], [], 200)[:4] == b"\x89PNG"

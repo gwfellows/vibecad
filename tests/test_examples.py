@@ -76,6 +76,13 @@ def expected_volume(name, p):
         a, rb, c, L = p["af"] / 2, p["bore_d"] / 2, p["chamfer"], p["length"]
         hex_area = 6 * a * a * tan(pi / 6)
         return (hex_area - pi * rb**2) * L - 2 * 2 * pi * (rb + c / 3) * c * c / 2
+    if name == "hole_plate":  # every hole type, sized from the fastener table (M4 counterbore, M3 tapped, M3 countersink)
+        t = p["t"]
+        cbore = pi * 4**2 * 4.4 + pi * 2.25**2 * (t - 4.4)                    # M4: 8 x 4.4 c'bore, 4.5 clearance
+        tap = pi * 1.25**2 * p["tap_depth"] + pi / 3 * 1.25**2 * (1.25 / tan(59 * pi / 180))  # M3 tap drill 2.5, 118° point
+        zc = 3.35 - 1.7                                                          # 90° c'sink 6.7 to 3.4 clearance
+        csink = pi * zc / 3 * (3.35**2 + 3.35 * 1.7 + 1.7**2) + pi * 1.7**2 * (t - zc)
+        return p["w"] * p["d"] * t - 4 * cbore - 2 * tap - round(p["cs_n"]) * csink
     if name == "edge_holes_plate":
         return p["w"] * p["d"] * p["t"] - 2 * pi * (p["hole_d"] / 2) ** 2 * p["t"]
     raise KeyError(name)
@@ -112,7 +119,7 @@ def _sweep_cases():
 def test_param_change(name, param, scale):
     doc = load(EX / f"{name}.vcad.json")
     base = Regenerator().run(doc).env
-    if param in ("bolt_n", "vent_n"):  # integer counts: step by one instead
+    if param in ("bolt_n", "vent_n", "cs_n"):  # integer counts: step by one instead
         val = base[param] + (1 if scale > 1 else -1)
     else:
         val = base[param] * scale
@@ -133,3 +140,13 @@ def test_edge_holes_keep_their_inset_when_the_plate_grows():
     res = Regenerator().run(doc, {"w": 90, "d": 40})
     c = res.sketches["hole_sk"][0].entities["hole"].center
     assert c == pytest.approx((-45 + 8, -20 + 8))
+
+
+def test_hole_faces_are_labelled_per_point():
+    res = Regenerator().run(load(EX / "hole_plate.vcad.json"))
+    labs = res.summary()["face_labels"]
+    for k in ("mount_holes.side[cbore_floor]@m_1", "mount_holes.side[cbore_wall]@m_4", "mount_holes.side[wall]@m_2",
+              "sensor_taps.side[tip]@s_1", "cover_hole.side[csink]@c", "cover_hole.side[csink]@cover_row#2"):
+        assert k in labs, sorted(labs)
+    info = {f.id: f.info for f in res.features}
+    assert info["mount_holes"]["cbore"] == [8.0, 4.4] and info["sensor_taps"]["thread"] == "M3, 5 deep"

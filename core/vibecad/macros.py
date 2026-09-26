@@ -154,6 +154,17 @@ def expand(op: dict, raw: dict) -> tuple[list[dict], list[dict]]:
         for i, (x, y) in enumerate(pts):  # fix every vertex: fully constrained, no redundancy
             ref = f"{names[i]}.p1" if i < n_edges else f"{names[-1]}.p2"
             at(ref, [x, y])
+    elif kind == "add_points":  # hole centres etc.: each point fixed by named x/y dimensions from the origin
+        pts = op["points"]
+        if not pts:
+            raise ValueError("add_points needs at least one point")
+        names = op.get("names") or ([pid] if len(pts) == 1 else [f"{pid}_{i + 1}" for i in range(len(pts))])
+        if len(names) != len(pts):
+            raise ValueError(f"add_points: {len(pts)} points but {len(names)} names")
+        for n, (x, y) in zip(names, pts):
+            ents.append({"id": n, "type": "point", "at": [_num(x, env, 0.0), _num(y, env, 0.0)]})
+            cons.append({"type": "distance_x", "on": ["origin", n], "value": x, "name": f"{n}_x"})
+            cons.append({"type": "distance_y", "on": ["origin", n], "value": y, "name": f"{n}_y"})
     elif kind == "add_regular_polygon":
         n = int(round(_num(op.get("sides"), env, 6)))
         if n < 3:
@@ -186,4 +197,4 @@ def expand(op: dict, raw: dict) -> tuple[list[dict], list[dict]]:
     return ents, cons
 
 
-MACROS = {"add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon"}
+MACROS = {"add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon", "add_points"}

@@ -15,6 +15,7 @@ export const TOOLS = [
   { id: "rect", label: "Rect", key: "r", title: "Rectangle: click two opposite corners (R)" },
   { id: "circle", label: "Circle", key: "c", title: "Circle: click centre, click a point on the rim (C)" },
   { id: "arc", label: "Arc", key: "a", title: "Arc: click centre, start, end (counterclockwise) (A)" },
+  { id: "point", label: "Point", key: "p", title: "Point: click to place one, e.g. a hole centre; keeps placing until Esc (P)" },
   { id: "mark", label: "Mark", key: "m", title: "Mark: draw freehand to show the agent what you mean; goes with your next prompt, never into the part (M)" },
 ];
 export const CONSTRAINTS = [
@@ -443,6 +444,11 @@ export function createSketchEditor(ctx) {
       const id = newId("circle");
       pending = [];
       await commit([E({ id, type: "circle", center: r4(ctr.uv), r: +r.toFixed(4) }), ...attach(ctr, `${id}.center`)], `draw ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "point") {
+      const id = newId("point");
+      await commit([E({ id, type: "point", at: r4(s.uv) }), ...attach(s, id)], `place ${id} in ${sid}`);
       return render();
     }
     if (tool === "arc") {

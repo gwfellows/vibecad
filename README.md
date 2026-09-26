@@ -58,6 +58,12 @@ To change an existing fillet or chamfer's edges, double-click it in the tree (or
 
 A picked edge is saved as a *semantic* reference, never an index: "the edge between `wall.start` and `wall.side[wall_top]`". The server checks that the reference resolves to exactly that edge before using it, so the fillet stays on the right edge when sizes change upstream.
 
+### Holes sized from the fastener
+
+Click a flat face where the hole goes, then **Hole** in the tool column: pick clearance, counterbore, countersink or tapped, and a size (M1.6–M20, #2-56 to 1/2-13). The diameters come from a built-in table (ISO 273 clearances, tap drills, socket-head counterbores, flat-head countersinks), and the form shows the numbers before you commit. The hole's centre lands in its own sketch, so you can open it and dimension the centre from edges. Inside a sketch, the **Point** tool (P) places centres and the Hole button in the sketch bar drills them all.
+
+The agent uses the same `hole` feature, so a design says "M4 counterbore" instead of a 4.5 mm circle cut. Faces are labelled `hole.side[wall]`, `[cbore_floor]`, … per point, so fillets and references survive edits. See `examples/hole_plate.vcad.json` and the IR reference.
+
 ### Talk to the agent, pointing at geometry
 
 ![Asking for a part, referencing an edge in the message, attaching an image; the tool calls appear as they run](docs/img/agent.gif)
@@ -107,9 +113,9 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 
 ## Status
 
-- **Reference parts:** 10 in `examples/`, including a bracket, pillow block, enclosure lid, NEMA 17 mount, battery tray and strap, and hex standoff. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
-- **Tests:** `uv run pytest` runs 275 tests.
-- **Browser tests:** `scripts/gui_smoke.sh` runs about 220 Playwright checks, covering the main flows, modelling a part by hand from an empty file, the sketch editor, the agent panel against a scripted agent, and editing a fillet's edges, per-part conversations, attachments and the rebuild indicator.
+- **Reference parts:** 11 in `examples/`, including a bracket, pillow block, enclosure lid, NEMA 17 mount, battery tray and strap, and hex standoff. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
+- **Tests:** `uv run pytest` runs 302 tests.
+- **Browser tests:** `scripts/gui_smoke.sh` runs about 235 Playwright checks, covering the main flows, modelling a part by hand from an empty file, the sketch editor, holes, the agent panel against a scripted agent, and editing a fillet's edges, per-part conversations, attachments and the rebuild indicator.
 
 ## Measuring the agent
 

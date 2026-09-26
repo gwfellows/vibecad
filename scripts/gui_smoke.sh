@@ -3,6 +3,7 @@
 #   tests/gui/smoke.js        main flows (open, edit, undo, sketch mode, rollback, dialogs, new part)
 #   tests/gui/agent_panel.js  the agent panel, driven by a scripted agent (tests/gui/fake_agent_app.py; no model)
 #   tests/gui/sketch_editor.js  drawing, constraining, dragging and dimensioning in a sketch (same server)
+#   tests/gui/holes.js        holes from a picked face and from sketch points, sized from the fastener table
 #   tests/gui/workflow.js     rebuild indicator, editing a fillet's edges, per-part conversations, attachments
 #   tests/gui/modeling.js     a part modelled by hand from an empty file: sketch, extrude, sketch on face, cut, revolve
 #   scripts/gui_smoke.sh [screenshot_dir]      (ONLY=modeling,smoke to run a subset)
@@ -40,6 +41,7 @@ run() {  # ONLY=modeling,sketch_editor runs a subset
 }
 run smoke "$PORT"
 run modeling "$PORT"
+run holes "$PORT"
 run agent_panel $((PORT + 1))
 run sketch_editor $((PORT + 1))
 if [[ -z "${ONLY:-}" || ",$ONLY," == *",workflow,"* ]]; then  # uses both servers

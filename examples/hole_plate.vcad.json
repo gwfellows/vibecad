@@ -1,0 +1,439 @@
+{
+  "vibecad": "0.1",
+  "name": "hole_plate",
+  "material": "6061-T6 aluminum",
+  "process": "CNC milled",
+  "design_notes": "Adapter plate showing every hole type: four counterbored M4 mounting holes at the corners (socket heads flush), two blind tapped M3 holes for a sensor, and a row of countersunk M3 holes for a flat-head cover, patterned along X.",
+  "params": {
+    "w": "80 mm",
+    "d": "50 mm",
+    "t": "8 mm",
+    "inset": "8 mm",
+    "tap_sp": "20 mm",
+    "tap_depth": "6 mm",
+    "cs_pitch": "15 mm",
+    "cs_n": "3"
+  },
+  "features": [
+    {
+      "id": "plate_sk",
+      "type": "sketch",
+      "intent": "Plate outline, centred on the origin",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "plate_bottom",
+          "p1": [
+            -40.0,
+            -25.0
+          ],
+          "p2": [
+            40.0,
+            -25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_right",
+          "p1": [
+            40.0,
+            -25.0
+          ],
+          "p2": [
+            40.0,
+            25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_top",
+          "p1": [
+            40.0,
+            25.0
+          ],
+          "p2": [
+            -40.0,
+            25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_left",
+          "p1": [
+            -40.0,
+            25.0
+          ],
+          "p2": [
+            -40.0,
+            -25.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plate_bottom.p2",
+            "plate_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_right.p2",
+            "plate_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_top.p2",
+            "plate_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_left.p2",
+            "plate_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plate_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plate_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_bottom"
+          ],
+          "value": "w",
+          "name": "plate_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plate_right"
+          ],
+          "value": "d",
+          "name": "plate_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "(0) - ((w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "(0) - ((d) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "plate",
+      "type": "extrude",
+      "intent": "The plate",
+      "profile": {
+        "sketch": "plate_sk"
+      },
+      "distance": "t"
+    },
+    {
+      "id": "mount_pts",
+      "type": "sketch",
+      "intent": "Corner mounting hole centres, inset from the edges",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "top face"
+        }
+      },
+      "entities": [
+        {
+          "id": "m_1",
+          "at": [
+            -32.0,
+            -17.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "m_2",
+          "at": [
+            32.0,
+            -17.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "m_3",
+          "at": [
+            32.0,
+            17.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "m_4",
+          "at": [
+            -32.0,
+            17.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "m_1"
+          ],
+          "value": "-w/2 + inset",
+          "name": "m_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "m_1"
+          ],
+          "value": "-d/2 + inset",
+          "name": "m_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "m_2"
+          ],
+          "value": "w/2 - inset",
+          "name": "m_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "m_2"
+          ],
+          "value": "-d/2 + inset",
+          "name": "m_2_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "m_3"
+          ],
+          "value": "w/2 - inset",
+          "name": "m_3_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "m_3"
+          ],
+          "value": "d/2 - inset",
+          "name": "m_3_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "m_4"
+          ],
+          "value": "-w/2 + inset",
+          "name": "m_4_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "m_4"
+          ],
+          "value": "d/2 - inset",
+          "name": "m_4_y"
+        }
+      ]
+    },
+    {
+      "id": "mount_holes",
+      "type": "hole",
+      "intent": "M4 socket head cap screws, heads flush with the top",
+      "sketch": "mount_pts",
+      "kind": "counterbore",
+      "size": "M4"
+    },
+    {
+      "id": "sensor_pts",
+      "type": "sketch",
+      "intent": "Sensor mounting pattern, centred",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "top face"
+        }
+      },
+      "entities": [
+        {
+          "id": "s_1",
+          "at": [
+            -10.0,
+            0.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "s_2",
+          "at": [
+            10.0,
+            0.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "s_1"
+          ],
+          "value": "-tap_sp/2",
+          "name": "s_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "s_1"
+          ],
+          "value": 0.0,
+          "name": "s_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "s_2"
+          ],
+          "value": "tap_sp/2",
+          "name": "s_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "s_2"
+          ],
+          "value": 0.0,
+          "name": "s_2_y"
+        }
+      ]
+    },
+    {
+      "id": "sensor_taps",
+      "type": "hole",
+      "intent": "M3 threads for the sensor, blind so the bottom stays sealed",
+      "sketch": "sensor_pts",
+      "kind": "tapped",
+      "size": "M3",
+      "depth": "tap_depth",
+      "thread_depth": "tap_depth - 1"
+    },
+    {
+      "id": "cover_pts",
+      "type": "sketch",
+      "intent": "First cover screw, so the row is centred along the top edge; the rest are patterned",
+      "plane": {
+        "face": {
+          "feature": "plate",
+          "role": "end",
+          "note": "top face"
+        }
+      },
+      "entities": [
+        {
+          "id": "c",
+          "at": [
+            -15.0,
+            17.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "c"
+          ],
+          "value": "-cs_pitch * (cs_n - 1) / 2",
+          "name": "c_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "c"
+          ],
+          "value": "d/2 - inset",
+          "name": "c_y"
+        }
+      ]
+    },
+    {
+      "id": "cover_hole",
+      "type": "hole",
+      "intent": "M3 flat head for the cover, flush",
+      "sketch": "cover_pts",
+      "kind": "countersink",
+      "size": "M3"
+    },
+    {
+      "id": "cover_row",
+      "type": "linear_pattern",
+      "intent": "Row of cover screws",
+      "features": [
+        "cover_hole"
+      ],
+      "direction": "X",
+      "spacing": "cs_pitch",
+      "count": "cs_n"
+    }
+  ]
+}

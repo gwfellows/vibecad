@@ -43,7 +43,7 @@ class OpError(ValueError):
 OP_KINDS = {
     "set_param", "remove_param", "set_meta", "add_feature", "update_feature", "remove_feature", "move_feature",
     "add_entity", "update_entity", "remove_entity", "add_constraint", "update_constraint", "remove_constraint",
-    "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon",
+    "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon", "add_points",
     "rename_feature", "rename_entity",
 }
 ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -243,7 +243,7 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
     elif kind == "remove_constraint":
         sk = _sketch(raw, op["sketch"])
         sk["constraints"].pop(_match_constraint(sk, op["match"]))
-    elif kind in ("add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon"):
+    elif kind in ("add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon", "add_points"):
         from .macros import expand
 
         sk = _sketch(raw, op["sketch"])
@@ -305,6 +305,9 @@ def _rename_feature(raw: dict, old: str, new: str) -> int:
         if g.get("profile", {}).get("sketch") == old:
             g["profile"]["sketch"] = new
             n += 1
+        if g.get("type") == "hole" and g.get("sketch") == old:
+            g["sketch"] = new
+            n += 1
         if old in g.get("features", []) and g["type"] in ("linear_pattern", "circular_pattern", "mirror"):
             g["features"] = [new if x == old else x for x in g["features"]]
             n += 1
@@ -343,10 +346,20 @@ def _rename_entity(raw: dict, sid: str, old: str, new: str) -> int:
         if g.get("axis") == old:
             g["axis"] = new
             n += 1
+    holes = set()  # holes drilled at this sketch's points: their faces are labelled with the point as instance
+    for g in raw["features"]:
+        if g.get("type") == "hole" and g.get("sketch") == sid:
+            holes.add(g["id"])
+            if old in (g.get("points") or []):
+                g["points"] = [new if x == old else x for x in g["points"]]
+                n += 1
     for g in raw["features"]:
         for ref in _face_refs(g):
             if ref["feature"] in makers and ref.get("entity") == old:
                 ref["entity"] = new
+                n += 1
+            if ref["feature"] in holes and ref.get("instance") == old:
+                ref["instance"] = new
                 n += 1
     return n
 
