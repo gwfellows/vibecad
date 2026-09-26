@@ -1,0 +1,2584 @@
+{
+  "vibecad": "0.1",
+  "name": "iPhone SE case with LEGO studs",
+  "material": "PETG (or PLA)",
+  "process": "FDM, rigid plastic",
+  "design_notes": "Target: iPhone SE 2nd/3rd gen (2020/2022), 138.4 x 67.3 x 7.3 mm, assumed corner radius ~9 mm. World frame: phone centred on origin, length along Y (+Y = top), phone back rests on z = back_t, screen faces +Z. Case back outer face at z=0; a 4 x stud_ny grid of LEGO studs (d 4.8, h 1.7, pitch 8.0 per LEGO standard), centred on the back, protrudes in -Z so the case presses onto LEGO plates/bricks. The 4 columns are sketched circles; change row count with stud_ny. Rigid-plastic snap fit: the top and bottom end walls and lip are removed between the corners by a U-shaped cut (end_open_w wide, down to the floor with root_r radii built into the profile for crack resistance), so the long side walls act as springs and the corner hooks plus lip_w lip retain the phone. end_open_w is kept 1 mm per side inside the corner tangent lines so the hook end faces sit on the flat end wall (edges on the tangent line cannot be filleted). Outer edges of the end openings and button slots are rounded with open_r (limited to ~0.4 mm by the 0.6 mm of end face left above the 1 mm back chamfer). Insert one long side first, then press the other side in. If it is too stiff, reduce lip_w or widen end_open_w; if it is loose, increase lip_w. Back chamfer excludes the studs. Button/camera positions are approximate; check against your phone before printing. Print orientation: studs on the bed with support under the back plate.",
+  "params": {
+    "phone_l": "138.4 mm",
+    "phone_w": "67.3 mm",
+    "phone_t": "7.3 mm",
+    "phone_r": "9 mm",
+    "clr": "0.3 mm",
+    "wall": "1.6 mm",
+    "back_t": "1.6 mm",
+    "lip_h": "1.0 mm",
+    "lip_w": "1.0 mm",
+    "outer_w": "phone_w + 2*clr + 2*wall",
+    "outer_l": "phone_l + 2*clr + 2*wall",
+    "outer_h": "back_t + phone_t + clr + lip_h",
+    "stud_d": "4.8 mm",
+    "stud_h": "1.7 mm",
+    "stud_pitch": "8 mm",
+    "stud_ny": "8",
+    "cam_from_side": "9.5 mm",
+    "cam_from_top": "15 mm",
+    "cam_w": "12 mm",
+    "cam_len": "12 mm",
+    "side_slot_w": "5 mm",
+    "mid_z": "back_t + (phone_t + clr) / 2",
+    "vol_from_top": "31 mm",
+    "vol_len": "32 mm",
+    "pwr_from_top": "36 mm",
+    "pwr_len": "12 mm",
+    "end_open_w": "phone_w - 2 * phone_r - 2",
+    "open_r": "0.4 mm",
+    "root_r": "1.0 mm",
+    "tip_c": "0.3 mm",
+    "sslot_w": "4 mm",
+    "sslot_pitch": "8 mm",
+    "sslot_count": "4",
+    "sslot_first_y": "-28.5 mm",
+    "sslot_bottom_z": "5 mm",
+    "sslot_top_r": "1.5 mm",
+    "lh_d": "4.5 mm",
+    "lh_pitch": "10 mm",
+    "lh_first_y": "-55 mm"
+  },
+  "features": [
+    {
+      "id": "body_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "outline_bottom",
+          "p1": [
+            -35.55,
+            -71.1
+          ],
+          "p2": [
+            35.55,
+            -71.1
+          ],
+          "type": "line"
+        },
+        {
+          "id": "outline_right",
+          "p1": [
+            35.55,
+            -71.1
+          ],
+          "p2": [
+            35.55,
+            71.1
+          ],
+          "type": "line"
+        },
+        {
+          "id": "outline_top",
+          "p1": [
+            35.55,
+            71.1
+          ],
+          "p2": [
+            -35.55,
+            71.1
+          ],
+          "type": "line"
+        },
+        {
+          "id": "outline_left",
+          "p1": [
+            -35.55,
+            71.1
+          ],
+          "p2": [
+            -35.55,
+            -71.1
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "outline_bottom.p2",
+            "outline_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "outline_right.p2",
+            "outline_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "outline_top.p2",
+            "outline_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "outline_left.p2",
+            "outline_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "outline_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "outline_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "outline_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "outline_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "outline_bottom"
+          ],
+          "value": "outer_w",
+          "name": "outline_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "outline_right"
+          ],
+          "value": "outer_l",
+          "name": "outline_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "outline_bottom.p1"
+          ],
+          "value": "(0) - ((outer_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "outline_bottom.p1"
+          ],
+          "value": "(0) - ((outer_l) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "body",
+      "type": "extrude",
+      "intent": "Solid case envelope: phone plus clearance plus wall, back to lip top",
+      "profile": {
+        "sketch": "body_sketch"
+      },
+      "distance": "outer_h"
+    },
+    {
+      "id": "opening_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "outer_h"
+      },
+      "entities": [
+        {
+          "id": "opening_bottom",
+          "p1": [
+            -32.95,
+            -68.5
+          ],
+          "p2": [
+            32.95,
+            -68.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "opening_right",
+          "p1": [
+            32.95,
+            -68.5
+          ],
+          "p2": [
+            32.95,
+            68.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "opening_top",
+          "p1": [
+            32.95,
+            68.5
+          ],
+          "p2": [
+            -32.95,
+            68.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "opening_left",
+          "p1": [
+            -32.95,
+            68.5
+          ],
+          "p2": [
+            -32.95,
+            -68.5
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "opening_bottom.p2",
+            "opening_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "opening_right.p2",
+            "opening_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "opening_top.p2",
+            "opening_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "opening_left.p2",
+            "opening_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "opening_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "opening_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "opening_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "opening_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "opening_bottom"
+          ],
+          "value": "phone_w + 2*clr - 2*lip_w",
+          "name": "opening_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "opening_right"
+          ],
+          "value": "phone_l + 2*clr - 2*lip_w",
+          "name": "opening_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "opening_bottom.p1"
+          ],
+          "value": "(0) - ((phone_w + 2*clr - 2*lip_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "opening_bottom.p1"
+          ],
+          "value": "(0) - ((phone_l + 2*clr - 2*lip_w) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "screen_opening",
+      "type": "extrude",
+      "intent": "Front opening; leaves a lip_w retaining lip over the screen edge",
+      "profile": {
+        "sketch": "opening_sketch"
+      },
+      "distance": "lip_h",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "opening_corners",
+      "type": "fillet",
+      "intent": "Round the screen opening corners concentric with the phone corners",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_left"
+            },
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_top"
+            }
+          ],
+          "note": "top-left corner of screen opening"
+        },
+        {
+          "between": [
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_right"
+            },
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_top"
+            }
+          ],
+          "note": "top-right corner of screen opening"
+        },
+        {
+          "between": [
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_left"
+            },
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_bottom"
+            }
+          ],
+          "note": "bottom-left corner of screen opening"
+        },
+        {
+          "between": [
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_right"
+            },
+            {
+              "feature": "screen_opening",
+              "role": "side",
+              "entity": "opening_bottom"
+            }
+          ],
+          "note": "bottom-right corner of screen opening"
+        }
+      ],
+      "radius": "phone_r + clr - lip_w"
+    },
+    {
+      "id": "pocket_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "back_t"
+      },
+      "entities": [
+        {
+          "id": "pocket_bottom",
+          "p1": [
+            -33.95,
+            -69.5
+          ],
+          "p2": [
+            33.95,
+            -69.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "pocket_right",
+          "p1": [
+            33.95,
+            -69.5
+          ],
+          "p2": [
+            33.95,
+            69.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "pocket_top",
+          "p1": [
+            33.95,
+            69.5
+          ],
+          "p2": [
+            -33.95,
+            69.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "pocket_left",
+          "p1": [
+            -33.95,
+            69.5
+          ],
+          "p2": [
+            -33.95,
+            -69.5
+          ],
+          "type": "line"
+        },
+        {
+          "id": "circle1",
+          "center": [
+            -2.3303,
+            48.8296
+          ],
+          "r": 9.8608,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "pocket_bottom.p2",
+            "pocket_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pocket_right.p2",
+            "pocket_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pocket_top.p2",
+            "pocket_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pocket_left.p2",
+            "pocket_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "pocket_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "pocket_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "pocket_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "pocket_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "pocket_bottom"
+          ],
+          "value": "phone_w + 2*clr",
+          "name": "pocket_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "pocket_right"
+          ],
+          "value": "phone_l + 2*clr",
+          "name": "pocket_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "pocket_bottom.p1"
+          ],
+          "value": "(0) - ((phone_w + 2*clr) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "pocket_bottom.p1"
+          ],
+          "value": "(0) - ((phone_l + 2*clr) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "phone_pocket",
+      "type": "extrude",
+      "intent": "Phone cavity: phone size plus clearance, from back floor up to under the lip",
+      "profile": {
+        "sketch": "pocket_sketch"
+      },
+      "distance": "phone_t + clr",
+      "mode": "cut"
+    },
+    {
+      "id": "pocket_corners",
+      "type": "fillet",
+      "intent": "Round the pocket corners to match the phone's corner radius",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_left"
+            },
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_top"
+            }
+          ],
+          "note": "top-left inside corner of phone pocket"
+        },
+        {
+          "between": [
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_right"
+            },
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_top"
+            }
+          ],
+          "note": "top-right inside corner of phone pocket"
+        },
+        {
+          "between": [
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_left"
+            },
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_bottom"
+            }
+          ],
+          "note": "bottom-left inside corner of phone pocket"
+        },
+        {
+          "between": [
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_right"
+            },
+            {
+              "feature": "phone_pocket",
+              "role": "side",
+              "entity": "pocket_bottom"
+            }
+          ],
+          "note": "bottom-right inside corner of phone pocket"
+        }
+      ],
+      "radius": "phone_r + clr"
+    },
+    {
+      "id": "outer_corners",
+      "type": "fillet",
+      "intent": "Round the four outer corners to follow the phone's corner radius",
+      "edges": [
+        {
+          "of": {
+            "feature": "body",
+            "role": "side"
+          },
+          "filter": {
+            "type": "line",
+            "parallel_to": "Z"
+          },
+          "note": "four vertical outer corner edges of the case"
+        }
+      ],
+      "radius": "phone_r + clr + wall"
+    },
+    {
+      "id": "stud_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "stud_1",
+          "center": [
+            -12.0,
+            -28.0
+          ],
+          "r": 2.4,
+          "type": "circle"
+        },
+        {
+          "id": "stud_2",
+          "center": [
+            -4.0,
+            -28.0
+          ],
+          "r": 2.4,
+          "type": "circle"
+        },
+        {
+          "id": "stud_3",
+          "center": [
+            4.0,
+            -28.0
+          ],
+          "r": 2.4,
+          "type": "circle"
+        },
+        {
+          "id": "stud_4",
+          "center": [
+            12.0,
+            -28.0
+          ],
+          "r": 2.4,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "stud_1"
+          ],
+          "value": "stud_d",
+          "name": "stud_1_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "stud_1.center"
+          ],
+          "value": "-1.5 * stud_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "stud_1.center"
+          ],
+          "value": "-(stud_ny - 1) / 2 * stud_pitch"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "stud_2"
+          ],
+          "value": "stud_d",
+          "name": "stud_2_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "stud_2.center"
+          ],
+          "value": "-0.5 * stud_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "stud_2.center"
+          ],
+          "value": "-(stud_ny - 1) / 2 * stud_pitch"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "stud_3"
+          ],
+          "value": "stud_d",
+          "name": "stud_3_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "stud_3.center"
+          ],
+          "value": "0.5 * stud_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "stud_3.center"
+          ],
+          "value": "-(stud_ny - 1) / 2 * stud_pitch"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "stud_4"
+          ],
+          "value": "stud_d",
+          "name": "stud_4_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "stud_4.center"
+          ],
+          "value": "1.5 * stud_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "stud_4.center"
+          ],
+          "value": "-(stud_ny - 1) / 2 * stud_pitch"
+        }
+      ]
+    },
+    {
+      "id": "stud",
+      "type": "extrude",
+      "intent": "First row of 4 LEGO studs (d 4.8, h 1.7, 8 mm pitch, centred in X) protruding from the case back",
+      "profile": {
+        "sketch": "stud_sketch"
+      },
+      "distance": "stud_h",
+      "direction": "reverse"
+    },
+    {
+      "id": "stud_grid",
+      "type": "linear_pattern",
+      "intent": "Repeat the stud row along the length at LEGO 8 mm pitch",
+      "features": [
+        "stud"
+      ],
+      "direction": "Y",
+      "spacing": "stud_pitch",
+      "count": "stud_ny"
+    },
+    {
+      "id": "camera_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "cam_end1",
+          "center": [
+            21.61429,
+            48.762153
+          ],
+          "r": 6.0,
+          "start_angle": 155.0,
+          "end_angle": 335.0,
+          "type": "arc"
+        },
+        {
+          "id": "cam_end2",
+          "center": [
+            26.68571,
+            59.637847
+          ],
+          "r": 6.0,
+          "start_angle": -25.0,
+          "end_angle": 155.0,
+          "type": "arc"
+        },
+        {
+          "id": "cam_side1",
+          "p1": [
+            21.247863,
+            62.173556
+          ],
+          "p2": [
+            16.176444,
+            51.297863
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cam_side2",
+          "p1": [
+            27.052137,
+            46.226444
+          ],
+          "p2": [
+            32.123556,
+            57.102137
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cam_axis",
+          "p1": [
+            21.61429,
+            48.762153
+          ],
+          "p2": [
+            26.68571,
+            59.637847
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "cam_mid",
+          "at": [
+            24.15,
+            54.2
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "cam_end2.end",
+            "cam_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cam_side1.p2",
+            "cam_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cam_end1.end",
+            "cam_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cam_side2.p2",
+            "cam_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "cam_end2",
+            "cam_side1",
+            "cam_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "cam_side1",
+            "cam_end1",
+            "cam_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "cam_end1",
+            "cam_side2",
+            "cam_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "cam_side2",
+            "cam_end2",
+            "cam_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cam_axis.p1",
+            "cam_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cam_axis.p2",
+            "cam_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "cam_end1",
+            "cam_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "cam_end1"
+          ],
+          "value": "cam_w",
+          "name": "cam_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "cam_axis"
+          ],
+          "value": "cam_len",
+          "name": "cam_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "cam_axis"
+          ],
+          "value": 65.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "cam_mid",
+            "cam_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cam_mid"
+          ],
+          "value": "phone_w/2 - cam_from_side"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cam_mid"
+          ],
+          "value": "phone_l/2 - cam_from_top"
+        }
+      ]
+    },
+    {
+      "id": "camera_cut",
+      "type": "extrude",
+      "intent": "Opening through the back for the rear camera, flash and mic (top corner, +X seen from the front)",
+      "profile": {
+        "sketch": "camera_sketch"
+      },
+      "distance": "back_t",
+      "mode": "cut"
+    },
+    {
+      "id": "vol_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "-(outer_w/2 + 1)"
+      },
+      "entities": [
+        {
+          "id": "vol_end1",
+          "center": [
+            22.2,
+            5.4
+          ],
+          "r": 2.5,
+          "start_angle": 90.0,
+          "end_angle": 270.0,
+          "type": "arc"
+        },
+        {
+          "id": "vol_end2",
+          "center": [
+            54.2,
+            5.4
+          ],
+          "r": 2.5,
+          "start_angle": -90.0,
+          "end_angle": 90.0,
+          "type": "arc"
+        },
+        {
+          "id": "vol_side1",
+          "p1": [
+            54.2,
+            7.9
+          ],
+          "p2": [
+            22.2,
+            7.9
+          ],
+          "type": "line"
+        },
+        {
+          "id": "vol_side2",
+          "p1": [
+            22.2,
+            2.9
+          ],
+          "p2": [
+            54.2,
+            2.9
+          ],
+          "type": "line"
+        },
+        {
+          "id": "vol_axis",
+          "p1": [
+            22.2,
+            5.4
+          ],
+          "p2": [
+            54.2,
+            5.4
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "vol_mid",
+          "at": [
+            38.2,
+            5.4
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "vol_end2.end",
+            "vol_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "vol_side1.p2",
+            "vol_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "vol_end1.end",
+            "vol_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "vol_side2.p2",
+            "vol_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "vol_end2",
+            "vol_side1",
+            "vol_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "vol_side1",
+            "vol_end1",
+            "vol_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "vol_end1",
+            "vol_side2",
+            "vol_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "vol_side2",
+            "vol_end2",
+            "vol_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "vol_axis.p1",
+            "vol_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "vol_axis.p2",
+            "vol_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "vol_end1",
+            "vol_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "vol_end1"
+          ],
+          "value": "side_slot_w",
+          "name": "vol_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "vol_axis"
+          ],
+          "value": "vol_len",
+          "name": "vol_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "vol_axis"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "vol_mid",
+            "vol_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "vol_mid"
+          ],
+          "value": "phone_l/2 - vol_from_top"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "vol_mid"
+          ],
+          "value": "mid_z"
+        }
+      ]
+    },
+    {
+      "id": "vol_cut",
+      "type": "extrude",
+      "intent": "Left-side opening for mute switch and volume buttons",
+      "profile": {
+        "sketch": "vol_sketch"
+      },
+      "distance": "wall + clr + 2",
+      "mode": "cut"
+    },
+    {
+      "id": "pwr_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "outer_w/2 + 1"
+      },
+      "entities": [
+        {
+          "id": "pwr_end1",
+          "center": [
+            27.2,
+            5.4
+          ],
+          "r": 2.5,
+          "start_angle": 90.0,
+          "end_angle": 270.0,
+          "type": "arc"
+        },
+        {
+          "id": "pwr_end2",
+          "center": [
+            39.2,
+            5.4
+          ],
+          "r": 2.5,
+          "start_angle": -90.0,
+          "end_angle": 90.0,
+          "type": "arc"
+        },
+        {
+          "id": "pwr_side1",
+          "p1": [
+            39.2,
+            7.9
+          ],
+          "p2": [
+            27.2,
+            7.9
+          ],
+          "type": "line"
+        },
+        {
+          "id": "pwr_side2",
+          "p1": [
+            27.2,
+            2.9
+          ],
+          "p2": [
+            39.2,
+            2.9
+          ],
+          "type": "line"
+        },
+        {
+          "id": "pwr_axis",
+          "p1": [
+            27.2,
+            5.4
+          ],
+          "p2": [
+            39.2,
+            5.4
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "pwr_mid",
+          "at": [
+            33.2,
+            5.4
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "pwr_end2.end",
+            "pwr_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pwr_side1.p2",
+            "pwr_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pwr_end1.end",
+            "pwr_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pwr_side2.p2",
+            "pwr_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "pwr_end2",
+            "pwr_side1",
+            "pwr_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "pwr_side1",
+            "pwr_end1",
+            "pwr_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "pwr_end1",
+            "pwr_side2",
+            "pwr_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "pwr_side2",
+            "pwr_end2",
+            "pwr_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pwr_axis.p1",
+            "pwr_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "pwr_axis.p2",
+            "pwr_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "pwr_end1",
+            "pwr_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "pwr_end1"
+          ],
+          "value": "side_slot_w",
+          "name": "pwr_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "pwr_axis"
+          ],
+          "value": "pwr_len",
+          "name": "pwr_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "pwr_axis"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "pwr_mid",
+            "pwr_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "pwr_mid"
+          ],
+          "value": "phone_l/2 - pwr_from_top"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "pwr_mid"
+          ],
+          "value": "mid_z"
+        }
+      ]
+    },
+    {
+      "id": "pwr_cut",
+      "type": "extrude",
+      "intent": "Right-side opening for the power button",
+      "profile": {
+        "sketch": "pwr_sketch"
+      },
+      "distance": "wall + clr + 2",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "ends_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XZ"
+      },
+      "entities": [
+        {
+          "id": "u_left",
+          "p1": [
+            -23.65,
+            11.2
+          ],
+          "p2": [
+            -23.65,
+            2.6
+          ],
+          "type": "line"
+        },
+        {
+          "id": "u_arc_left",
+          "center": [
+            -22.65,
+            2.6
+          ],
+          "r": 1.0,
+          "start_angle": 180.0,
+          "end_angle": 270.0,
+          "type": "arc"
+        },
+        {
+          "id": "u_floor",
+          "p1": [
+            -22.65,
+            1.6
+          ],
+          "p2": [
+            22.65,
+            1.6
+          ],
+          "type": "line"
+        },
+        {
+          "id": "u_arc_right",
+          "center": [
+            22.65,
+            2.6
+          ],
+          "r": 1.0,
+          "start_angle": 270.0,
+          "end_angle": 360.0,
+          "type": "arc"
+        },
+        {
+          "id": "u_right",
+          "p1": [
+            23.65,
+            2.6
+          ],
+          "p2": [
+            23.65,
+            11.2
+          ],
+          "type": "line"
+        },
+        {
+          "id": "u_top",
+          "p1": [
+            23.65,
+            11.2
+          ],
+          "p2": [
+            -23.65,
+            11.2
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "u_left.p2",
+            "u_arc_left.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "u_arc_left.end",
+            "u_floor.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "u_floor.p2",
+            "u_arc_right.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "u_arc_right.end",
+            "u_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "u_right.p2",
+            "u_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "u_top.p2",
+            "u_left.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "u_left",
+            "u_arc_left",
+            "u_left.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "u_arc_left",
+            "u_floor",
+            "u_floor.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "u_floor",
+            "u_arc_right",
+            "u_floor.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "u_arc_right",
+            "u_right",
+            "u_right.p1"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "u_left"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "u_right"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "u_top"
+          ]
+        },
+        {
+          "type": "radius",
+          "on": [
+            "u_arc_left"
+          ],
+          "value": "root_r",
+          "name": "root_r_left"
+        },
+        {
+          "type": "equal",
+          "on": [
+            "u_arc_left",
+            "u_arc_right"
+          ]
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "u_floor.p1"
+          ],
+          "value": "back_t",
+          "name": "floor_z"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "u_top.p1"
+          ],
+          "value": "outer_h + 1",
+          "name": "cut_top_z"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "u_left.p1"
+          ],
+          "value": "-end_open_w/2",
+          "name": "open_left_x"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "u_right.p1"
+          ],
+          "value": "end_open_w/2",
+          "name": "open_right_x"
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "u_floor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "end_openings",
+      "type": "extrude",
+      "intent": "Remove the top and bottom end walls and lip between the corners (down to the back floor, with root_r radii into the floor for crack resistance) so the long side walls can spread and snap over a phone in rigid plastic; the bottom opening also clears the Lightning port, speaker and mic. Cut runs the full length but only removes material at the two ends; the middle of that zone is already the phone pocket",
+      "profile": {
+        "sketch": "ends_sketch"
+      },
+      "distance": "outer_l + 2",
+      "direction": "symmetric",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "back_chamfer",
+      "type": "chamfer",
+      "intent": "Break the outer back edge and camera opening edge; studs deliberately excluded so they keep a crisp LEGO fit",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "body",
+              "role": "start",
+              "note": "flat back face of the case"
+            },
+            {
+              "feature": "body",
+              "role": "side",
+              "note": "straight outer side walls"
+            }
+          ],
+          "note": "straight runs of the outer back perimeter edge"
+        },
+        {
+          "between": [
+            {
+              "feature": "body",
+              "role": "start",
+              "note": "flat back face of the case"
+            },
+            {
+              "feature": "outer_corners",
+              "role": "fillet",
+              "note": "rounded outer corners"
+            }
+          ],
+          "note": "rounded corner runs of the outer back perimeter edge"
+        },
+        {
+          "between": [
+            {
+              "feature": "body",
+              "role": "start",
+              "note": "flat back face of the case"
+            },
+            {
+              "feature": "camera_cut",
+              "role": "side",
+              "note": "walls of the camera opening"
+            }
+          ],
+          "note": "outside edge of the camera opening on the back"
+        }
+      ],
+      "distance": 1.0
+    },
+    {
+      "id": "end_open_round",
+      "type": "fillet",
+      "intent": "Round the outside edge all the way around each U-shaped end opening (hook tips and floor edge) so there are no sharp edges against the hand",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "end_openings",
+              "role": "side",
+              "note": "faces of the U-shaped end opening cut"
+            },
+            {
+              "feature": "body",
+              "role": "side",
+              "entity": "outline_top",
+              "note": "flat outer top end face of the case"
+            }
+          ],
+          "note": "outer edge of the U-shaped opening at the top end"
+        },
+        {
+          "between": [
+            {
+              "feature": "end_openings",
+              "role": "side",
+              "note": "faces of the U-shaped end opening cut"
+            },
+            {
+              "feature": "body",
+              "role": "side",
+              "entity": "outline_bottom",
+              "note": "flat outer bottom end face of the case"
+            }
+          ],
+          "note": "outer edge of the U-shaped opening at the bottom end"
+        }
+      ],
+      "radius": "open_r"
+    },
+    {
+      "id": "hook_tip_chamfer",
+      "type": "chamfer",
+      "intent": "Break the top edge of each corner-hook tip at the open ends; OpenCascade carries it along the tangent-continuous inner top edge of the screen lip, which also gives the phone a small lead-in when snapping in",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "end_openings",
+              "role": "side",
+              "entity": "u_left",
+              "note": "left flat face of the U end cut (hook tips on -X side)"
+            },
+            {
+              "feature": "body",
+              "role": "end",
+              "note": "top (screen-side) face of the case rim"
+            }
+          ],
+          "note": "top edge of the -X hook tips"
+        },
+        {
+          "between": [
+            {
+              "feature": "end_openings",
+              "role": "side",
+              "entity": "u_right",
+              "note": "right flat face of the U end cut (hook tips on +X side)"
+            },
+            {
+              "feature": "body",
+              "role": "end",
+              "note": "top (screen-side) face of the case rim"
+            }
+          ],
+          "note": "top edge of the +X hook tips"
+        }
+      ],
+      "distance": "tip_c"
+    },
+    {
+      "id": "button_slot_round",
+      "type": "fillet",
+      "intent": "Round the outside edges of the volume and power button openings",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "vol_cut",
+              "role": "side",
+              "note": "walls of the volume/mute opening"
+            },
+            {
+              "feature": "body",
+              "role": "side",
+              "entity": "outline_left",
+              "note": "outer left side wall"
+            }
+          ],
+          "note": "outer edge of the volume/mute opening"
+        },
+        {
+          "between": [
+            {
+              "feature": "pwr_cut",
+              "role": "side",
+              "note": "walls of the power button opening"
+            },
+            {
+              "feature": "body",
+              "role": "side",
+              "entity": "outline_right",
+              "note": "outer right side wall"
+            }
+          ],
+          "note": "outer edge of the power button opening"
+        }
+      ],
+      "radius": "open_r"
+    },
+    {
+      "id": "side_slots_sketch",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "body",
+          "role": "side",
+          "entity": "outline_right",
+          "note": "face body.side[outline_right], picked in the GUI"
+        }
+      },
+      "entities": [
+        {
+          "id": "sslot_end1",
+          "center": [
+            -28.5,
+            7.0
+          ],
+          "r": 2.0,
+          "start_angle": 180.0,
+          "end_angle": 360.0,
+          "type": "arc"
+        },
+        {
+          "id": "sslot_end2",
+          "center": [
+            -28.5,
+            10.2
+          ],
+          "r": 2.0,
+          "start_angle": 0.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "sslot_side1",
+          "p1": [
+            -30.5,
+            10.2
+          ],
+          "p2": [
+            -30.5,
+            7.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "sslot_side2",
+          "p1": [
+            -26.5,
+            7.0
+          ],
+          "p2": [
+            -26.5,
+            10.2
+          ],
+          "type": "line"
+        },
+        {
+          "id": "sslot_axis",
+          "p1": [
+            -28.5,
+            7.0
+          ],
+          "p2": [
+            -28.5,
+            10.2
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "sslot_mid",
+          "at": [
+            -28.5,
+            8.6
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "sslot_end2.end",
+            "sslot_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sslot_side1.p2",
+            "sslot_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sslot_end1.end",
+            "sslot_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sslot_side2.p2",
+            "sslot_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "sslot_end2",
+            "sslot_side1",
+            "sslot_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "sslot_side1",
+            "sslot_end1",
+            "sslot_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "sslot_end1",
+            "sslot_side2",
+            "sslot_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "sslot_side2",
+            "sslot_end2",
+            "sslot_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sslot_axis.p1",
+            "sslot_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sslot_axis.p2",
+            "sslot_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "sslot_end1",
+            "sslot_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "sslot_end1"
+          ],
+          "value": "sslot_w",
+          "name": "sslot_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "sslot_axis"
+          ],
+          "value": "outer_h + 2 - sslot_bottom_z - sslot_w",
+          "name": "sslot_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "sslot_axis"
+          ],
+          "value": 90.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "sslot_mid",
+            "sslot_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "sslot_mid"
+          ],
+          "value": "sslot_first_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "sslot_mid"
+          ],
+          "value": "(sslot_bottom_z + outer_h + 2) / 2"
+        }
+      ]
+    },
+    {
+      "id": "side_slot",
+      "type": "extrude",
+      "intent": "First vertical slot through the right side wall, open at the top, bottom sslot_bottom_z above the back (as sketched by the user)",
+      "profile": {
+        "sketch": "side_slots_sketch"
+      },
+      "distance": "wall + clr + 1",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "side_slot_row",
+      "type": "linear_pattern",
+      "intent": "Repeat the right-side slot toward the top of the phone at sslot_pitch",
+      "features": [
+        "side_slot"
+      ],
+      "direction": "Y",
+      "spacing": "sslot_pitch",
+      "count": "sslot_count"
+    },
+    {
+      "id": "side_slot_top_round",
+      "type": "fillet",
+      "intent": "Round the top corners where each right-side slot opens through the rim, giving the wavy finger profile the user sketched",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "side_slot",
+              "role": "side",
+              "instance": "*",
+              "note": "straight side walls of all four right-side slots"
+            },
+            {
+              "feature": "body",
+              "role": "end",
+              "note": "top (screen-side) face of the case rim"
+            }
+          ],
+          "note": "top corners where each right-side slot breaks through the rim"
+        }
+      ],
+      "radius": "sslot_top_r"
+    },
+    {
+      "id": "lh_both_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ"
+      },
+      "entities": [
+        {
+          "id": "lh_b0",
+          "center": [
+            -55.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_b1",
+          "center": [
+            -45.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_b2",
+          "center": [
+            -35.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_b6",
+          "center": [
+            5.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_b7",
+          "center": [
+            15.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "lh_b0"
+          ],
+          "value": "lh_d",
+          "name": "lh_b0_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_b0.center"
+          ],
+          "value": "lh_first_y + 0*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_b0.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_b1"
+          ],
+          "value": "lh_d",
+          "name": "lh_b1_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_b1.center"
+          ],
+          "value": "lh_first_y + 1*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_b1.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_b2"
+          ],
+          "value": "lh_d",
+          "name": "lh_b2_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_b2.center"
+          ],
+          "value": "lh_first_y + 2*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_b2.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_b6"
+          ],
+          "value": "lh_d",
+          "name": "lh_b6_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_b6.center"
+          ],
+          "value": "lh_first_y + 6*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_b6.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_b7"
+          ],
+          "value": "lh_d",
+          "name": "lh_b7_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_b7.center"
+          ],
+          "value": "lh_first_y + 7*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_b7.center"
+          ],
+          "value": "mid_z"
+        }
+      ]
+    },
+    {
+      "id": "lh_both",
+      "type": "extrude",
+      "intent": "Lightening holes through both long side walls at grid positions clear of every other side opening",
+      "profile": {
+        "sketch": "lh_both_sketch"
+      },
+      "distance": "outer_w + 2",
+      "direction": "symmetric",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "lh_left_sketch",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "body",
+          "role": "side",
+          "entity": "outline_left",
+          "note": "face body.side[outline_left], picked in the GUI"
+        }
+      },
+      "entities": [
+        {
+          "id": "lh_l3",
+          "center": [
+            25.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_l4",
+          "center": [
+            15.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_l5",
+          "center": [
+            5.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "lh_l3"
+          ],
+          "value": "lh_d",
+          "name": "lh_l3_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_l3.center"
+          ],
+          "value": "-(lh_first_y + 3*lh_pitch)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_l3.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_l4"
+          ],
+          "value": "lh_d",
+          "name": "lh_l4_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_l4.center"
+          ],
+          "value": "-(lh_first_y + 4*lh_pitch)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_l4.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_l5"
+          ],
+          "value": "lh_d",
+          "name": "lh_l5_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_l5.center"
+          ],
+          "value": "-(lh_first_y + 5*lh_pitch)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_l5.center"
+          ],
+          "value": "mid_z"
+        }
+      ]
+    },
+    {
+      "id": "lh_left",
+      "type": "extrude",
+      "intent": "Extra lightening holes in the left wall where the right wall has the grip slots (sketch x = -world Y on this face)",
+      "profile": {
+        "sketch": "lh_left_sketch"
+      },
+      "distance": "wall + clr + 1",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "lh_right_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "outer_w/2 + 1"
+      },
+      "entities": [
+        {
+          "id": "lh_r10",
+          "center": [
+            45.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        },
+        {
+          "id": "lh_r11",
+          "center": [
+            55.0,
+            5.4
+          ],
+          "r": 2.25,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "lh_r10"
+          ],
+          "value": "lh_d",
+          "name": "lh_r10_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_r10.center"
+          ],
+          "value": "lh_first_y + 10*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_r10.center"
+          ],
+          "value": "mid_z"
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "lh_r11"
+          ],
+          "value": "lh_d",
+          "name": "lh_r11_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lh_r11.center"
+          ],
+          "value": "lh_first_y + 11*lh_pitch"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lh_r11.center"
+          ],
+          "value": "mid_z"
+        }
+      ]
+    },
+    {
+      "id": "lh_right",
+      "type": "extrude",
+      "intent": "Extra lightening holes in the right wall above the power button, where the left wall has the volume slot",
+      "profile": {
+        "sketch": "lh_right_sketch"
+      },
+      "distance": "wall + clr + 2",
+      "direction": "reverse",
+      "mode": "cut"
+    },
+    {
+      "id": "sketch2",
+      "type": "sketch",
+      "plane": {
+        "datum": "XZ"
+      },
+      "entities": [],
+      "constraints": []
+    },
+    {
+      "id": "sketch1",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "body",
+          "role": "side",
+          "entity": "outline_right",
+          "note": "face body.side[outline_right], picked in the GUI"
+        }
+      },
+      "entities": [],
+      "constraints": []
+    }
+  ]
+}

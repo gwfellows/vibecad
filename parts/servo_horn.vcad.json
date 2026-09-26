@@ -1,0 +1,650 @@
+{
+  "vibecad": "0.1",
+  "name": "servo_horn",
+  "process": "FDM 3D printing",
+  "design_notes": "Hub adapts a servo's 4-hole spline-horn screw pattern (sketch1, holes at \u00b17mm) to a goBILDA 12mm ReX hex shaft. Assumptions: corner screw clearance 2.8mm (M2.5), hex bore across-flats = shaft_af + 0.15mm slip clearance, set-screw is an M3 self-tap (2.5mm pilot) aimed at a hex flat for axial retention only \u2014 torque is carried by the hex fit. Process: FDM 3D print.",
+  "params": {
+    "corner_hole_d": "2.8 mm",
+    "hub_od": "24 mm",
+    "hub_h": "12 mm",
+    "shaft_af": "12 mm",
+    "shaft_clearance": "0.15 mm",
+    "setscrew_d": "2.5 mm"
+  },
+  "features": [
+    {
+      "id": "sketch1",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "circle1",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 6.0,
+          "type": "circle"
+        },
+        {
+          "id": "circle2",
+          "center": [
+            7.0,
+            7.0
+          ],
+          "r": 1.4,
+          "type": "circle"
+        },
+        {
+          "id": "circle3",
+          "center": [
+            -7.0,
+            7.0
+          ],
+          "r": 1.4,
+          "type": "circle"
+        },
+        {
+          "id": "circle4",
+          "center": [
+            -7.0,
+            -7.0
+          ],
+          "r": 1.4,
+          "type": "circle"
+        },
+        {
+          "id": "circle5",
+          "center": [
+            7.0,
+            -7.0
+          ],
+          "r": 1.4,
+          "type": "circle"
+        },
+        {
+          "id": "rect1_bottom",
+          "p1": [
+            7.0,
+            -7.0
+          ],
+          "p2": [
+            -7.0,
+            -7.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "rect1_right",
+          "p1": [
+            -7.0,
+            -7.0
+          ],
+          "p2": [
+            -7.0,
+            7.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "rect1_top",
+          "p1": [
+            -7.0,
+            7.0
+          ],
+          "p2": [
+            7.0,
+            7.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "rect1_left",
+          "p1": [
+            7.0,
+            7.0
+          ],
+          "p2": [
+            7.0,
+            -7.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "line1",
+          "p1": [
+            -7.0,
+            7.0
+          ],
+          "p2": [
+            7.0,
+            -7.0
+          ],
+          "construction": true,
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "circle1.center",
+            "origin"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "circle1"
+          ],
+          "value": 12.0,
+          "name": "circle1_d"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_bottom.p2",
+            "rect1_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_right.p2",
+            "rect1_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_top.p2",
+            "rect1_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_left.p2",
+            "rect1_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "rect1_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "rect1_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "rect1_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "rect1_left"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_left.p1",
+            "circle2.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_right.p1",
+            "circle4.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "circle3.center",
+            "rect1_right.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "rect1_bottom.p1",
+            "circle5.center"
+          ]
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "rect1_right"
+          ],
+          "value": 14.0,
+          "name": "rect1_right_dy"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "rect1_top"
+          ],
+          "value": 14.0,
+          "name": "rect1_top_dx"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "line1.p1",
+            "circle3.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "line1.p2",
+            "circle5.center"
+          ]
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "origin",
+            "line1"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "circle3",
+            "circle2"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "circle2",
+            "circle5"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "circle5",
+            "circle4"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "circle2"
+          ],
+          "value": "corner_hole_d",
+          "name": "corner_hole_d"
+        }
+      ]
+    },
+    {
+      "id": "hub_outer_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "hub_outer",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 12.0,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "hub_outer"
+          ],
+          "value": "hub_od",
+          "name": "hub_outer_diameter"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hub_outer.center",
+            "origin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hub_base",
+      "type": "extrude",
+      "intent": "Cylindrical hub body large enough to enclose the servo screw pattern and carry the shaft bore.",
+      "profile": {
+        "sketch": "hub_outer_sketch"
+      },
+      "distance": "hub_h"
+    },
+    {
+      "id": "corner_holes_cut",
+      "type": "extrude",
+      "intent": "Clearance holes for the screws that fasten the hub to the servo output flange, matching the servo's spline mounting pattern.",
+      "profile": {
+        "sketch": "sketch1",
+        "regions": [
+          "circle2",
+          "circle3",
+          "circle4",
+          "circle5"
+        ]
+      },
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "hex_sketch",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "hub_base",
+          "role": "end",
+          "note": "top face of the hub, opposite the servo mounting face"
+        }
+      },
+      "entities": [
+        {
+          "id": "hex_bore_1",
+          "p1": [
+            6.075,
+            3.507403
+          ],
+          "p2": [
+            0.0,
+            7.014806
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_bore_2",
+          "p1": [
+            0.0,
+            7.014806
+          ],
+          "p2": [
+            -6.075,
+            3.507403
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_bore_3",
+          "p1": [
+            -6.075,
+            3.507403
+          ],
+          "p2": [
+            -6.075,
+            -3.507403
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_bore_4",
+          "p1": [
+            -6.075,
+            -3.507403
+          ],
+          "p2": [
+            -0.0,
+            -7.014806
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_bore_5",
+          "p1": [
+            -0.0,
+            -7.014806
+          ],
+          "p2": [
+            6.075,
+            -3.507403
+          ],
+          "type": "line"
+        },
+        {
+          "id": "hex_bore_6",
+          "p1": [
+            6.075,
+            -3.507403
+          ],
+          "p2": [
+            6.075,
+            3.507403
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "hex_bore_1.p2",
+            "hex_bore_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_bore_2.p2",
+            "hex_bore_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_bore_3.p2",
+            "hex_bore_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_bore_4.p2",
+            "hex_bore_5.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_bore_5.p2",
+            "hex_bore_6.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "hex_bore_6.p2",
+            "hex_bore_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_bore_1.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * cos((30) + 0.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_bore_1.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * sin((30) + 0.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_bore_2.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * cos((30) + 60.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_bore_2.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * sin((30) + 60.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_bore_3.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * cos((30) + 120.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_bore_3.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * sin((30) + 120.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_bore_4.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * cos((30) + 180.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_bore_4.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * sin((30) + 180.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_bore_5.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * cos((30) + 240.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_bore_5.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * sin((30) + 240.0)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "hex_bore_6.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * cos((30) + 300.0)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "hex_bore_6.p1"
+          ],
+          "value": "(0) + ((((shaft_af + shaft_clearance) / 2) / cos(180 / 6))) * sin((30) + 300.0)"
+        }
+      ]
+    },
+    {
+      "id": "hex_bore_cut",
+      "type": "extrude",
+      "intent": "Hex bore matching the goBILDA 12mm ReX hex shaft (across-flats + slip clearance), through the full hub for shaft insertion.",
+      "profile": {
+        "sketch": "hex_sketch"
+      },
+      "direction": "reverse",
+      "extent": "through_all",
+      "mode": "cut"
+    },
+    {
+      "id": "setscrew_sketch",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "hub_od/2"
+      },
+      "entities": [
+        {
+          "id": "setscrew_hole",
+          "center": [
+            0.0,
+            6.0
+          ],
+          "r": 1.25,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "setscrew_hole"
+          ],
+          "value": "setscrew_d",
+          "name": "setscrew_hole_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "setscrew_hole.center"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "setscrew_hole.center"
+          ],
+          "value": "hub_h/2"
+        }
+      ]
+    },
+    {
+      "id": "setscrew_cut",
+      "type": "extrude",
+      "intent": "Radial set-screw hole (M3 tap drill) aimed at a hex flat to clamp the hub onto the shaft.",
+      "profile": {
+        "sketch": "setscrew_sketch"
+      },
+      "distance": "hub_od/2 - shaft_af/2 + 1",
+      "direction": "reverse",
+      "mode": "cut"
+    }
+  ]
+}
