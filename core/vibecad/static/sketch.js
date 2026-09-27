@@ -15,6 +15,7 @@ export const TOOLS = [
   { id: "rect", label: "Rect", key: "r", title: "Rectangle: click two opposite corners (R)" },
   { id: "circle", label: "Circle", key: "c", title: "Circle: click centre, click a point on the rim (C)" },
   { id: "arc", label: "Arc", key: "a", title: "Arc: click centre, start, end (counterclockwise) (A)" },
+  { id: "point", label: "Point", key: "p", title: "Point: click to place one (hole positions, construction references) (P)" },
   { id: "mark", label: "Mark", key: "m", title: "Mark: draw freehand to show the agent what you mean; goes with your next prompt, never into the part (M)" },
 ];
 export const CONSTRAINTS = [
@@ -434,6 +435,11 @@ export function createSketchEditor(ctx) {
       }
       pending = [];
       await commit(ops, `draw rectangle ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "point") {
+      const id = newId("pt");  // snapped to a point (the origin, a corner) or onto a curve: stays attached to it
+      await commit([E({ id, type: "point", at: r4(s.uv) }), ...attach(s, id)], `place ${id} in ${sid}`);
       return render();
     }
     if (tool === "circle") {

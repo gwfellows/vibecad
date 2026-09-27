@@ -27,6 +27,8 @@ const ICONS = {
   linear_pattern: '<rect x="2.5" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="16.5" y="9" width="5" height="6"/>',
   circular_pattern: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="4.5" r="1.6"/><circle cx="18.5" cy="15.8" r="1.6"/><circle cx="5.5" cy="15.8" r="1.6"/>',
   mirror: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7l-6 5 6 5z"/><path d="M15 7l6 5-6 5z"/>',
+  import: '<path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5"/>',
+  hole: '<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0"/>',
 };
 const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy="12" r="6"/>'}</svg>`;
 
@@ -429,11 +431,12 @@ async function loadParts() {
 
 // ── 3D view ───────────────────────────────────────────────────────
 const host = $("#viewer");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(devicePixelRatio);
+renderer.setClearColor(0x000000, 0);  // the viewport's CSS gradient shows through
+renderer.localClippingEnabled = true;  // section view
 host.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf6f7f9);
 const persp = new THREE.PerspectiveCamera(35, 1, 0.1, 100000);
 const ortho = new THREE.OrthographicCamera(-50, 50, 50, -50, -100000, 100000);
 let camera = ortho, viewRadius = 50;
@@ -445,17 +448,40 @@ function makeControls(cam, target) {
   if (target) c.target.copy(target);
   return c;
 }
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a93a5, 1.6));
-const key = new THREE.DirectionalLight(0xffffff, 1.6);
+// studio lighting: sky/ground fill, a key light that follows the camera, and a soft rim from behind
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7d8698, 1.35));
+const key = new THREE.DirectionalLight(0xffffff, 1.55);
 scene.add(key);
+const rim = new THREE.DirectionalLight(0xdfe8ff, 0.55);
+scene.add(rim);
 const partGroup = new THREE.Group();
 scene.add(partGroup);
-const axes = new THREE.AxesHelper(10);
+const refGroup = new THREE.Group();  // reference imports: ghosted, never part of the solid
+scene.add(refGroup);
+const axes = new THREE.AxesHelper(10);  // a short triad at the origin
+axes.material.transparent = true; axes.material.opacity = 0.7;
 scene.add(axes);
-const BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
+let grid = null;  // ground grid under the part, resized to it on each fit
+function setGrid(box) {
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  const size = box.getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.y, 10) * 2.2;
+  const step = 10 ** Math.floor(Math.log10(span / 8));
+  const n = Math.max(2, Math.ceil(span / step / 2) * 2);
+  grid = new THREE.GridHelper(n * step, n, 0xcfd5de, 0xe2e6ec);
+  grid.rotation.x = Math.PI / 2;  // three's grid lies in XZ; ours is the XY plane (Z up)
+  const c = box.getCenter(new THREE.Vector3());
+  grid.position.set(Math.round(c.x / step) * step, Math.round(c.y / step) * step, Math.min(box.min.z, 0) - 1e-3 * span);
+  grid.material.transparent = true; grid.material.opacity = 0.8; grid.material.depthWrite = false;
+  grid.renderOrder = -1;
+  scene.add(grid);
+}
+const BASE = new THREE.Color(0xb7c2d1), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
 let pickedFaces = [];  // faces clicked in the 3D view, shift-click adds: {mesh, labels, point}
 const lastPicked = () => pickedFaces.at(-1) || null;
-let faceMeshes = [], edgeObjs = [], meshRev = null, hovered = null, hoveredEdge = null;
+let faceMeshes = [], edgeObjs = [], refMeshes = [], meshRev = null, hovered = null, hoveredEdge = null;
+const REF_COLOR = new THREE.Color(0x8b5cf6), REF_HOVER = new THREE.Color(0x6d28d9);
+const clipPlanes = [];  // the section view's plane, when on (shared by every part material)
 let pickedEdges = [];  // edges clicked in the 3D view: {i, ref, label, point}; fillet/chamfer act on them
 const EDGE = new THREE.Color(0x1b1f27), EDGE_HOVER = new THREE.Color(0x2f6fe0), EDGE_PICKED = new THREE.Color(0xea580c);
 const edgeMarks = new THREE.Group();  // thick tubes over hovered and picked edges (WebGL lines are 1px)
@@ -478,7 +504,9 @@ function loop() {
   requestAnimationFrame(loop);
   controls.update();
   key.position.copy(camera.position);
+  rim.position.copy(controls.target).sub(camera.position).add(controls.target).add(new THREE.Vector3(0, 0, viewRadius));
   renderer.render(scene, camera);
+  drawGizmo();
   SK.placeLabels();
 }
 
@@ -519,19 +547,35 @@ async function loadMesh(fit) {
     g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
     g.setIndex(f.i);
     g.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color: BASE.clone(), metalness: 0.05, roughness: 0.65, side: THREE.DoubleSide,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    const mat = new THREE.MeshStandardMaterial({ color: BASE.clone(), metalness: 0.12, roughness: 0.52, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: clipPlanes });
     const mesh = new THREE.Mesh(g, mat);
     mesh.userData = { features: f.features, labels: f.labels };
     partGroup.add(mesh);
     faceMeshes.push(mesh);
+  }
+  refGroup.clear();
+  refMeshes = [];
+  for (const rb of m.refs || []) {
+    for (const f of rb.faces) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
+      g.setIndex(f.i);
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: REF_COLOR.clone(), transparent: true, opacity: 0.32,
+        depthWrite: false, side: THREE.DoubleSide, roughness: 0.8, clippingPlanes: clipPlanes }));
+      mesh.userData = { features: f.features, labels: f.labels, ref: rb.id };
+      mesh.renderOrder = 2;
+      refGroup.add(mesh);
+      refMeshes.push(mesh);
+    }
   }
   edgeObjs = [];
   m.edges.forEach((e, i) => {  // one pickable line per edge; the index is the server's edge index
     if (m.edge_seam?.[i]) return;
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(e, 3));
-    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: EDGE.clone(), transparent: true }));
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: EDGE.clone(), transparent: true, opacity: 0.85, clippingPlanes: clipPlanes }));
     line.userData = { i };
     partGroup.add(line);
     edgeObjs.push(line);
@@ -540,13 +584,21 @@ async function loadMesh(fit) {
   pickedEdges = pickedEdges.filter((p) => { const o = edgeObjs.find((x) => x.userData.i === p.i); return o && nearLine(o, p.point); });
   hoveredEdge = null;
   pickedFaces = pickedFaces.map((p) => {  // the new mesh has new face objects: keep picks whose labelled face still exists
-    const same = faceMeshes.find((x) => x.userData.labels.join() === p.labels.join());
+    const same = [...faceMeshes, ...refMeshes].find((x) => x.userData.labels.join() === p.labels.join());
     return same && { ...p, mesh: same };
   }).filter(Boolean);
   pickUpdate();
   colorFaces();
   if (inSketch()) ghostPart(true);
   if (fit) pendingFit = !fitView("iso");
+  if (section) applySection();
+  if (measuring) {  // the new mesh has new face objects: keep face picks whose label still exists (edge indices may change)
+    mPicks = mPicks.filter((p) => p.edge == null).map((p) => {
+      const same = [...faceMeshes, ...refMeshes].find((x) => x.userData.labels.includes(p.label));
+      return same && { ...p, mesh: same };
+    }).filter(Boolean);
+    runMeasure();
+  }
 }
 
 function nearLine(o, pt) {  // does the polyline pass through pt (the edge's midpoint from the server)?
@@ -578,6 +630,11 @@ function colorFaces() {
   colorEdges();
   for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : pickedFaces.some((p) => p.mesh === m) ? PICKED
     : selected && m.userData.features.includes(selected) ? HI : BASE);
+  for (const m of refMeshes) {
+    const on = m === hovered || pickedFaces.some((p) => p.mesh === m) || (selected && m.userData.ref === selected);
+    m.material.color.copy(on ? REF_HOVER : REF_COLOR);
+    m.material.opacity = on ? 0.5 : 0.32;
+  }
 }
 
 function frame(center, radius, dir, up) {
@@ -591,16 +648,58 @@ function frame(center, radius, dir, up) {
   controls.update();
 }
 function fitView(dir) {  // false if there is nothing to fit yet
-  const box = new THREE.Box3().setFromObject(partGroup);
+  const box = new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup));
   if (box.isEmpty()) return false;
   const c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 || 10;
-  axes.scale.setScalar(r * 0.35);
+  axes.scale.setScalar(r * 0.02);
+  setGrid(box);
   const d = { iso: [1, -1, 0.8], front: [0, -1, 0], top: [0, 0, 1], right: [1, 0, 0] }[dir] || [1, -1, 0.8];
   frame(c, r, new THREE.Vector3(...d), dir === "top" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1));
   return true;
 }
 document.querySelectorAll(".vtools [data-view]").forEach((b) => (b.onclick = () => { exitSketch(); fitView(b.dataset.view); }));
 $("#fitBtn").onclick = () => (inSketch() ? viewSketch() : fitView("iso"));
+
+// view gizmo (bottom left): the world axes as the camera sees them; click one to look along it
+const GZ = [["X", [1, 0, 0], "#e5484d"], ["Y", [0, 1, 0], "#30a46c"], ["Z", [0, 0, 1], "#3e63dd"]];
+const gzItems = [];  // built once; each frame only moves them (a node rebuilt every frame can't be clicked)
+(function buildGizmo() {
+  const svg = $("#gizmo"), NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+  el("circle", { class: "ring", r: 46 }, svg);
+  for (const [n, v, col] of GZ) for (const sgn of [1, -1]) {
+    const g = el("g", { class: `ax${sgn < 0 ? " neg" : ""}`, "data-ax": n, "data-sgn": sgn }, svg);
+    el("title", {}, g).textContent = `Look ${sgn > 0 ? "down" : "up"} the ${n} axis`;
+    const line = sgn > 0 ? el("line", { x1: 0, y1: 0, stroke: col, "stroke-width": 2.2 }, g) : null;
+    const dot = el("circle", { r: sgn > 0 ? 9 : 6.5, fill: col }, g);
+    const label = sgn > 0 ? el("text", {}, g) : null;
+    if (label) label.textContent = n;
+    gzItems.push({ v: new THREE.Vector3(...v).multiplyScalar(sgn), g, line, dot, label, z: 0 });
+  }
+})();
+let gzOrder = "";
+function drawGizmo() {
+  const q = camera.quaternion.clone().invert();
+  for (const it of gzItems) {
+    const p = it.v.clone().applyQuaternion(q), x = (p.x * 34).toFixed(1), y = (-p.y * 34).toFixed(1);
+    it.z = p.z;
+    it.dot.setAttribute("cx", x); it.dot.setAttribute("cy", y);
+    if (it.line) { it.line.setAttribute("x2", x); it.line.setAttribute("y2", y); }
+    if (it.label) { it.label.setAttribute("x", x); it.label.setAttribute("y", y); }
+  }
+  const order = [...gzItems].sort((a, b) => a.z - b.z);  // far axes first
+  const key = order.map((it) => gzItems.indexOf(it)).join();
+  if (key !== gzOrder) { gzOrder = key; for (const it of order) $("#gizmo").appendChild(it.g); }
+}
+$("#gizmo").addEventListener("click", (ev) => {
+  const g = ev.target.closest(".ax");
+  if (!g || inSketch()) return;
+  const v = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[g.dataset.ax].map((c) => c * +g.dataset.sgn);
+  const box = new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup));
+  if (box.isEmpty()) return;
+  const up = g.dataset.ax === "Z" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  frame(box.getCenter(new THREE.Vector3()), box.getSize(new THREE.Vector3()).length() / 2 || 10, new THREE.Vector3(...v), up);
+});
 
 // hover + pick
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
@@ -610,8 +709,9 @@ function pickHit(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  return ray.intersectObjects(faceMeshes)[0] || null;
+  return ray.intersectObjects([...faceMeshes, ...refMeshes]).find((h) => !clipped(h.point)) || null;
 }
+const clipped = (p) => clipPlanes.some((pl) => pl.distanceToPoint(p) < 0);
 function unitsPerPixel() {
   const h = renderer.domElement.clientHeight || 1;
   if (camera === ortho) return (ortho.top - ortho.bottom) / ortho.zoom / h;
@@ -643,6 +743,7 @@ renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.client
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
   if (refPick) return void refFromView(ev);
+  if (measuring) return void measurePick(ev);
   if (EE) { const h = edgeHit(ev); if (h) eeToggle(h.object.userData.i); return; }
   const eh = edgeHit(ev);
   if (eh) return pickEdge(eh.object.userData.i, ev.shiftKey);
@@ -714,7 +815,7 @@ function viewSketch() {
     c = box.getCenter(new THREE.Vector3());
     r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 5) * 1.35;
   } else {  // a new, empty sketch: frame the part as seen on this plane
-    const pb = new THREE.Box3().setFromObject(partGroup);
+    const pb = new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup));
     const pc = pb.isEmpty() ? F.o.clone() : pb.getCenter(new THREE.Vector3());
     c = pc.clone().addScaledVector(F.n, -pc.clone().sub(F.o).dot(F.n));
     r = pb.isEmpty() ? 30 : Math.max(pb.getSize(new THREE.Vector3()).length() / 2, 10);
@@ -752,8 +853,9 @@ function exitSketch() {
 $("#exitSketch").onclick = () => { selected = null; exitSketch(); renderTree(null); renderDetails(); colorFaces(); };
 function ghostPart(on) {
   for (const m of faceMeshes) { m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
-  for (const o of edgeObjs) o.material.opacity = on ? 0.45 : 1;
+  for (const o of edgeObjs) o.material.opacity = on ? 0.45 : 0.85;
   edgeMarks.visible = !on;
+  for (const m of refMeshes) m.material.opacity = on ? 0.12 : 0.32;
 }
 
 // sketch toolbar: drawing tools, constraints (enabled when the selection fits), edit actions
@@ -775,6 +877,8 @@ function ghostPart(on) {
          btn("delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
          btn("ask", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
   for (const b of document.querySelectorAll("button.ico[data-icon]")) b.innerHTML = ICON[b.dataset.icon];
+  for (const b of document.querySelectorAll("button.rb[data-icon]")) b.innerHTML = `${ICON[b.dataset.icon]}<span>${b.dataset.label}</span>`;
+  for (const b of document.querySelectorAll("button.hb[data-icon]")) b.insertAdjacentHTML("afterbegin", ICON[b.dataset.icon]);
   for (const b of document.querySelectorAll("button.refbtn[data-icon]")) b.insertAdjacentHTML("afterbegin", ICON[b.dataset.icon]);
 })();
 function askAboutSketch() {
@@ -788,6 +892,7 @@ const HINTS = {
   rect: (n) => (n ? "Click the opposite corner" : "Click the first corner"),
   circle: (n) => (n ? "Click a point on the rim" : "Click the centre"),
   arc: (n) => ["Click the centre", "Click the start point", "Click the end point (counterclockwise)"][n] || "",
+  point: () => "Click to place a point (snaps to points and curves) · a Hole on this sketch drills at every point",
   mark: () => `Draw on the sketch to show the agent what you mean (${SK.marks().length} mark(s)); they go with your next prompt and are never saved to the part`,
 };
 function sketchBarUpdate() {
@@ -842,9 +947,9 @@ function faceRef(label, point) {
 }
 function popup(el, anchor) {
   const a = anchor.getBoundingClientRect(), h = $("#center").getBoundingClientRect();
-  el.style.left = Math.min(a.left - h.left, h.width - 260) + "px";
+  el.hidden = false;  // shown first, so its real width is known: keep it inside the view
+  el.style.left = Math.max(8, Math.min(a.left - h.left, h.width - el.offsetWidth - 8)) + "px";
   el.style.top = a.bottom - h.top + 6 + "px";
-  el.hidden = false;
   const close = (ev) => { if (!el.contains(ev.target) && ev.target !== anchor) { el.hidden = true; document.removeEventListener("pointerdown", close, true); } };
   document.addEventListener("pointerdown", close, true);
 }
@@ -1038,6 +1143,14 @@ function profileSketch() {
   return [...upto].reverse().find((f) => f.type === "sketch" && !used.has(f.id) && f.status !== "error")?.id || null;
 }
 function modelToolsUpdate() {
+  const hasBody = !!S && S.volume != null, rep = S ? replayable() : [];
+  $("#holeBtn").disabled = $("#shellBtn").disabled = !hasBody;
+  $("#holeBtn").title = hasBody ? "Hole: click a flat face where it goes (or use a sketch's points), then choose the screw size and type" : "Hole: the part needs a solid first";
+  $("#shellBtn").title = hasBody ? "Shell: hollow the part; click the faces to leave open first" : "Shell: the part needs a solid first";
+  $("#patternBtn").disabled = $("#mirrorBtn").disabled = !rep.length;
+  $("#patternBtn").title = rep.length ? "Pattern: repeat features in a row or around an axis" : "Pattern: make an extrude, revolve or hole to repeat first";
+  $("#mirrorBtn").title = rep.length ? "Mirror: copy features across a datum plane" : "Mirror: make an extrude, revolve or hole to mirror first";
+  $("#exportBtn").disabled = !hasBody;
   const sid = profileSketch();
   for (const [b, kind] of [[$("#extrude3dBtn"), "Extrude"], [$("#revolve3dBtn"), "Revolve"]]) {
     b.disabled = !sid;
@@ -1055,6 +1168,386 @@ for (const [id, kind] of [["#extrude3dBtn", "extrude"], ["#revolve3dBtn", "revol
     featureForm(kind);
   };
 }
+// ── hole: at the point clicked on a face (a new face sketch holds it), or at the points of an existing sketch ──
+// ISO metric screws: clearance (medium fit), socket-head counterbore, flat-head (90°) countersink, tap drill
+const SCREWS = {
+  M2: { clear: 2.4, cbore: [4.4, 2.3], csk: 4.4, tap: 1.6, pitch: 0.4 },
+  "M2.5": { clear: 2.9, cbore: [5.5, 2.8], csk: 5.5, tap: 2.05, pitch: 0.45 },
+  M3: { clear: 3.4, cbore: [6.5, 3.3], csk: 6.5, tap: 2.5, pitch: 0.5 },
+  M4: { clear: 4.5, cbore: [8, 4.4], csk: 8.6, tap: 3.3, pitch: 0.7 },
+  M5: { clear: 5.5, cbore: [9.5, 5.4], csk: 10.4, tap: 4.2, pitch: 0.8 },
+  M6: { clear: 6.6, cbore: [11, 6.5], csk: 12.4, tap: 5.0, pitch: 1.0 },
+  M8: { clear: 9.0, cbore: [14.5, 8.6], csk: 16.4, tap: 6.8, pitch: 1.25 },
+  M10: { clear: 11.0, cbore: [17.5, 10.8], csk: 20.4, tap: 8.5, pitch: 1.5 },
+  M12: { clear: 13.5, cbore: [20, 13], csk: 24.4, tap: 10.2, pitch: 1.75 },
+};
+function holeSketches() {  // sketches above the rollback bar with points or circles to drill at
+  return S.features.slice(0, rollIndex()).filter((f) => f.type === "sketch" && f.status === "ok" && f.n_entities > 0).map((f) => f.id);
+}
+$("#holeBtn").onclick = () => {
+  if (!S || S.volume == null) return note("Hole: the part needs a solid first", "err");
+  const pf = lastPicked(), onFace = pf && !pf.mesh?.userData?.ref;
+  const sks = holeSketches();
+  const m = $("#featMenu");
+  const where = [...(onFace ? [["face", `where I clicked on ${pf.labels[0]}`]] : []),
+    ...sks.map((id) => [`sk:${id}`, `at every point of ${id}`])];
+  if (!where.length) return note("Hole: click a flat face where the hole goes, or draw a sketch with points (Point tool) first", "err");
+  m.innerHTML = `<div class="ttl">Hole</div>
+    <div class="row"><label>where</label><select id="hoWhere">${where.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("")}</select></div>
+    <div class="row"><label>type</label><select id="hoKind"><option value="simple">Simple</option><option value="counterbore">Counterbore</option>
+      <option value="countersink">Countersink</option><option value="tapped">Tapped</option></select></div>
+    <div class="row"><label>screw</label><select id="hoScrew"><option value="">custom size</option>${Object.keys(SCREWS).map((k) => `<option ${k === "M4" ? "selected" : ""}>${k}</option>`).join("")}</select></div>
+    <div class="row"><label>diameter</label><input id="hoD"></div>
+    <div class="row" data-k="counterbore"><label>counterbore</label><input id="hoCbD" title="counterbore diameter" placeholder="⌀"><input id="hoCbH" title="counterbore depth" placeholder="depth"></div>
+    <div class="row" data-k="countersink"><label>countersink</label><input id="hoCsD" title="countersink diameter" placeholder="⌀"><input id="hoCsA" value="90" title="countersink angle (degrees)" placeholder="angle"></div>
+    <div class="row"><label>depth</label><select id="hoExt"><option value="through_all">through all</option><option value="blind">blind</option></select><input id="hoDepth" value="10" hidden></div>
+    <div class="muted" id="hoNote"></div>
+    <button class="go" id="hoGo">Add hole</button>`;
+  popup(m, $("#holeBtn"));
+  const fill = () => {
+    const k = $("#hoKind").value, sc = SCREWS[$("#hoScrew").value];
+    m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== k));
+    $("#hoDepth").hidden = $("#hoExt").value !== "blind";
+    if (k === "tapped" && $("#hoExt").value === "through_all" && !fill.touched) { $("#hoExt").value = "blind"; $("#hoDepth").hidden = false; }
+    if (!sc) { $("#hoNote").textContent = ""; return; }
+    $("#hoD").value = k === "tapped" ? sc.tap : sc.clear;
+    $("#hoCbD").value = sc.cbore[0]; $("#hoCbH").value = sc.cbore[1]; $("#hoCsD").value = sc.csk;
+    $("#hoNote").textContent = k === "tapped" ? `${$("#hoScrew").value}x${sc.pitch} thread: ${sc.tap} mm tap drill` : `${$("#hoScrew").value} clearance (ISO medium fit)`;
+  };
+  $("#hoKind").onchange = $("#hoScrew").onchange = () => fill();
+  $("#hoExt").onchange = () => { fill.touched = true; fill(); };
+  for (const q of ["#hoD", "#hoCbD", "#hoCbH", "#hoCsD"]) $(q).oninput = () => { $("#hoScrew").value = ""; $("#hoNote").textContent = ""; };
+  fill();
+  $("#hoGo").onclick = async () => {
+    const kind = $("#hoKind").value, where = $("#hoWhere").value, screw = $("#hoScrew").value;
+    const id = nextId("hole"), f = { id, type: "hole", kind: kind === "tapped" ? "simple" : kind, diameter: numOrExpr($("#hoD").value) };
+    if (kind === "counterbore") Object.assign(f, { cbore_diameter: numOrExpr($("#hoCbD").value), cbore_depth: numOrExpr($("#hoCbH").value) });
+    if (kind === "countersink") Object.assign(f, { csk_diameter: numOrExpr($("#hoCsD").value), csk_angle: numOrExpr($("#hoCsA").value) });
+    if ($("#hoExt").value === "blind") Object.assign(f, { extent: "blind", depth: numOrExpr($("#hoDepth").value) });
+    if (kind === "tapped" && screw) f.thread = `${screw}x${SCREWS[screw].pitch}`;
+    f.intent = `${screw ? screw + " " : ""}${kind === "simple" ? "clearance hole" : kind === "tapped" ? "tapped hole" : kind + " hole"}${f.extent === "blind" ? `, ${f.depth} deep` : ", through"}`;
+    m.hidden = true;
+    if (where.startsWith("sk:")) {
+      f.sketch = where.slice(3);
+      if (await addFeature(f, `hole at the points of ${f.sketch}`)) select(id);
+      return;
+    }
+    const ref = faceRef(pf.labels[0], pf.point);
+    let at;
+    try { at = await api("/api/face_point", { ref, point: pf.point }); } catch { return; }
+    const sid = `${id}_at`, [u, v] = at.uv.map((c) => +c.toFixed(2));
+    f.sketch = sid;
+    const rb = S.rollback, anchor = rb != null && rb > 0 ? { after: S.features[rb - 1].id } : {};
+    const ok = await edit([
+      { op: "add_feature", ...anchor, feature: { id: sid, type: "sketch", plane: { face: ref }, intent: `position of ${id}`,
+        entities: [{ id: "p1", type: "point", at: [u, v] }],
+        constraints: [{ type: "distance_x", on: ["origin", "p1"], value: u, name: `${id}_x` }, { type: "distance_y", on: ["origin", "p1"], value: v, name: `${id}_y` }] } },
+      { op: "add_feature", after: sid, feature: f },
+    ], `hole on ${pf.labels[0]}`);
+    if (ok) {
+      if (rb != null) setState((await api("/api/rollback", { index: rb + 2 })).state);
+      pickedFaces = []; pickUpdate(); select(id);
+    }
+  };
+};
+
+// ── shell, pattern, mirror ──
+$("#shellBtn").onclick = () => {
+  if (!S || S.volume == null) return note("Shell: the part needs a solid first", "err");
+  const faces = pickedFaces.filter((p) => !p.mesh?.userData?.ref);
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Shell</div>
+    <div class="muted">${faces.length ? `Opens ${faces.map((p) => esc(p.labels[0])).join(", ")}` : "Hollows the part closed. Click a face first (shift-click more) to leave it open."}</div>
+    <div class="row"><label>wall</label><input id="shT" value="2"></div>
+    <button class="go" id="shGo">Shell</button>`;
+  popup(m, $("#shellBtn"));
+  $("#shGo").onclick = async () => {
+    const id = nextId("shell"), refs = faces.map((p) => faceRef(p.labels[0], p.point));
+    m.hidden = true;
+    if (await addFeature({ id, type: "shell", remove_faces: refs, thickness: numOrExpr($("#shT").value),
+      intent: `Hollow to a ${$("#shT").value} mm wall${faces.length ? `, open at ${faces.map((p) => p.labels[0]).join(", ")}` : ""}` }, `shell ${id}`)) {
+      pickedFaces = []; pickUpdate(); select(id);
+    }
+  };
+};
+const REPLAYABLE = ["extrude", "revolve", "hole", "import"];
+function replayable() {
+  return S.features.slice(0, rollIndex()).filter((f) => REPLAYABLE.includes(f.type) && f.status === "ok").map((f) => f.id);
+}
+function featurePicker(ids) {
+  const sel = ids.includes(selected) ? selected : ids.at(-1);
+  return `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${id === sel ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>`;
+}
+const pickedIds = (m) => [...m.querySelectorAll(".checks input:checked")].map((x) => x.value);
+$("#patternBtn").onclick = () => {
+  const ids = S ? replayable() : [];
+  if (!ids.length) return note("Pattern: make an extrude, revolve or hole to repeat first", "err");
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Pattern</div><div class="muted">Repeat these features:</div>${featurePicker(ids)}
+    <div class="row"><label>kind</label><select id="paKind"><option value="linear">In a row</option><option value="circular">Around an axis</option></select></div>
+    <div class="row" data-k="linear"><label>direction</label><select id="paDir">${["X", "Y", "Z", "-X", "-Y", "-Z"].map((d) => `<option>${d}</option>`).join("")}</select></div>
+    <div class="row" data-k="linear"><label>spacing</label><input id="paSp" value="10"></div>
+    <div class="row" data-k="circular"><label>axis</label><select id="paAx"><option>Z</option><option>X</option><option>Y</option></select></div>
+    <div class="row" data-k="circular"><label>through</label><input id="paOx" value="0" title="x"><input id="paOy" value="0" title="y"><input id="paOz" value="0" title="z"></div>
+    <div class="row" data-k="circular"><label>angle</label><input id="paAng" value="360" title="360 spaces the copies evenly around"></div>
+    <div class="row"><label>count</label><input id="paN" value="4" title="including the original"></div>
+    <button class="go" id="paGo">Pattern</button>`;
+  popup(m, $("#patternBtn"));
+  const kind = () => { m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== $("#paKind").value)); };
+  $("#paKind").onchange = kind; kind();
+  $("#paGo").onclick = async () => {
+    const feats = pickedIds(m);
+    if (!feats.length) return note("Pattern: tick at least one feature", "err");
+    const id = nextId("pattern"), count = numOrExpr($("#paN").value);
+    let f;
+    if ($("#paKind").value === "linear") {
+      const d = $("#paDir").value, v = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[d.replace("-", "")].map((c) => (d.startsWith("-") ? -c : c));
+      f = { id, type: "linear_pattern", features: feats, direction: d.startsWith("-") ? v : d, spacing: numOrExpr($("#paSp").value), count,
+        intent: `${count} × ${feats.join(", ")} along ${d}, ${$("#paSp").value} apart` };
+    } else {
+      f = { id, type: "circular_pattern", features: feats, axis: $("#paAx").value, origin: ["#paOx", "#paOy", "#paOz"].map((q) => numOrExpr($(q).value)),
+        count, angle: numOrExpr($("#paAng").value), intent: `${count} × ${feats.join(", ")} around ${$("#paAx").value}` };
+    }
+    m.hidden = true;
+    if (await addFeature(f, `pattern ${feats.join(", ")}`)) select(id);
+  };
+};
+$("#mirrorBtn").onclick = () => {
+  const ids = S ? replayable() : [];
+  if (!ids.length) return note("Mirror: make an extrude, revolve or hole to mirror first", "err");
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Mirror</div><div class="muted">Mirror these features:</div>${featurePicker(ids)}
+    <div class="row"><label>plane</label><select id="miPl"><option value="YZ">YZ (flip X)</option><option value="XZ">XZ (flip Y)</option><option value="XY">XY (flip Z)</option></select></div>
+    <div class="row"><label id="miAtL">at X =</label><input id="miOff" value="0" title="where the mirror plane is, in world coordinates"></div>
+    <button class="go" id="miGo">Mirror</button>`;
+  popup(m, $("#mirrorBtn"));
+  $("#miPl").onchange = () => { $("#miAtL").textContent = `at ${{ YZ: "X", XZ: "Y", XY: "Z" }[$("#miPl").value]} =`; };
+  $("#miGo").onclick = async () => {
+    const feats = pickedIds(m);
+    if (!feats.length) return note("Mirror: tick at least one feature", "err");
+    // a datum's offset runs along its normal, and XZ's normal is -Y: turn "at Y = 20" into offset -20
+    const id = nextId("mirror"), at = numOrExpr($("#miOff").value || "0"), plane = { datum: $("#miPl").value };
+    const off = plane.datum !== "XZ" ? at : typeof at === "number" ? -at : `-(${at})`;
+    if (off !== 0) plane.offset = off;
+    m.hidden = true;
+    if (await addFeature({ id, type: "mirror", features: feats, plane, intent: `Mirror of ${feats.join(", ")} across ${plane.datum}` }, `mirror ${feats.join(", ")}`)) select(id);
+  };
+};
+
+// ── measure: click faces or edges (two for a distance and angle); the panel also shows the part's mass ──
+let measuring = false, mPicks = [];  // [{label, point, mesh} | {edge: i}]
+const measureGroup = new THREE.Group();
+scene.add(measureGroup);
+function setMeasuring(on) {
+  if (on && inSketch()) exitSketch();
+  if (on && sectionOn()) {}  // both can be on
+  measuring = on;
+  mPicks = [];
+  $("#measureBtn").classList.toggle("on", on);
+  $("#measurePanel").hidden = !on;
+  measureGroup.clear();
+  if (on) { pickedFaces = []; pickedEdges = []; pickUpdate(); colorFaces(); runMeasure(); }
+  else colorFaces();
+}
+$("#measureBtn").onclick = () => setMeasuring(!measuring);
+function mSphere(p, col) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(unitsPerPixel() * 4, 12, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+  s.position.set(...p); s.renderOrder = 6;
+  return s;
+}
+async function measurePick(ev) {
+  const eh = edgeHit(ev);
+  let pk = null;
+  if (eh) pk = { edge: eh.object.userData.i, obj: eh.object };
+  else {
+    const h = pickHit(ev);
+    if (h) pk = { label: h.object.userData.labels[0], point: h.point.toArray().map((v) => +v.toFixed(4)), mesh: h.object };
+  }
+  if (!pk) { mPicks = []; return runMeasure(); }
+  mPicks = ev.shiftKey || mPicks.length === 1 ? [...mPicks, pk].slice(-2) : [pk];
+  runMeasure();
+}
+const mm = (v, d = 3) => `${fmt(v, d)} mm`;
+async function runMeasure() {
+  if (!measuring || !S) return;
+  measureGroup.clear();
+  colorFaces();
+  for (const p of mPicks) if (p.mesh) p.mesh.material.color.copy(PICKED);
+  let r;
+  try { r = await api("/api/measure", { picks: mPicks.map(({ label, point, edge }) => (edge != null ? { edge } : { label, point })) }); } catch { return; }
+  if (!measuring) return;
+  const desc = (d) => d.kind === "face"
+    ? `<b>${esc(d.surface)} face</b>${d.diameter != null ? ` · ⌀ ${mm(d.diameter)}` : ""}${d.radius != null && d.diameter == null ? ` · R ${mm(d.radius)}` : ""}<br><span class="muted">area ${fmt(d.area, 2)} mm²</span>`
+    : `<b>${esc(d.curve)} edge</b> · ${mm(d.length)}${d.diameter != null ? ` · ⌀ ${mm(d.diameter)}` : ""}`;
+  let html = `<h4>Measure<span class="grow"></span><button id="mClose" title="Close (Esc)">✕</button></h4>`;
+  if (!mPicks.length) html += `<div class="hint">Click a face or edge. Click a second one for the distance and angle between them (shift-click to start over with two).</div>`;
+  r.picks.forEach((d, i) => { html += `<div class="mp"><span class="tag">${i + 1}</span><div>${desc(d)}</div></div>`; });
+  if (r.between) {
+    const b = r.between;
+    html += `<div class="big">${b.distance != null ? mm(b.distance) : ""}</div><table>`;
+    if (b.plane_distance != null) html += `<tr><td>between the planes</td><td>${mm(b.plane_distance)}</td></tr>`;
+    if (b.axis_distance != null) html += `<tr><td>between the axes</td><td>${mm(b.axis_distance)}</td></tr>`;
+    if (b.distance != null) html += `<tr><td>Δx Δy Δz</td><td>${fmt(b.dx, 3)}, ${fmt(b.dy, 3)}, ${fmt(b.dz, 3)}</td></tr>`;
+    if (b.angle != null) html += `<tr><td>angle</td><td>${fmt(b.angle, 3)}°${b.parallel ? " (parallel)" : ""}</td></tr>`;
+    html += `</table>`;
+    if (b.p && b.distance > 1e-9) {
+      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...b.p), new THREE.Vector3(...b.q)]);
+      const line = new THREE.Line(g, new THREE.LineDashedMaterial({ color: 0x1d4ed8, dashSize: unitsPerPixel() * 6, gapSize: unitsPerPixel() * 4, depthTest: false }));
+      line.computeLineDistances(); line.renderOrder = 6;
+      measureGroup.add(line, mSphere(b.p, 0x1d4ed8), mSphere(b.q, 0x1d4ed8));
+    }
+  }
+  for (const p of mPicks) if (p.point) measureGroup.add(mSphere(p.point, 0xea580c));
+  if (r.part) {
+    const P = r.part;
+    html += `<div class="sub">Part</div><table>
+      <tr><td>volume</td><td>${fmt(P.volume, 1)} mm³</td></tr>
+      <tr><td>surface area</td><td>${fmt(P.area, 1)} mm²</td></tr>
+      <tr><td>mass</td><td>${P.mass_g != null ? `${fmt(P.mass_g, 1)} g` : "—"}</td></tr>
+      <tr><td>size</td><td>${P.bbox.map((v) => fmt(v, 2)).join(" × ")}</td></tr>
+      <tr><td>centre of mass</td><td>${P.center_of_mass.map((v) => fmt(v, 2)).join(", ")}</td></tr></table>
+      <div class="muted small">${P.mass_g != null ? `${esc(P.material)}: ${P.density} g/cm³` : P.material ? `No density known for “${esc(P.material)}”` : "Set a material (part notes) for the mass"}</div>`;
+  }
+  $("#measurePanel").innerHTML = html;
+  $("#mClose").onclick = () => setMeasuring(false);
+}
+
+// ── section view: clip the model with a plane; the cut shows the inside in a contrasting colour ──
+let section = null;  // {axis: "X"|"Y"|"Z", t: 0..1, flip}
+const sectionOn = () => !!section;
+const capMat = new THREE.MeshBasicMaterial({ color: 0xe07b39, side: THREE.BackSide, clippingPlanes: clipPlanes });
+let caps = [];
+function partBox() { return new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup)); }
+function applySection() {
+  const had = clipPlanes.length;
+  clipPlanes.length = 0;
+  for (const c of caps) c.removeFromParent();
+  caps = [];
+  if (section) {
+    const box = partBox();
+    if (!box.isEmpty()) {
+      // three keeps what lies on the plane's positive side: by default the far (+axis) side, which the usual
+      // views (from -Y, -X... iso from the front) look into
+      const i = "XYZ".indexOf(section.axis), sg = section.flip ? -1 : 1, n = new THREE.Vector3().setComponent(i, sg);
+      const lo = box.min.getComponent(i), hi = box.max.getComponent(i), at = lo + (hi - lo) * section.t;
+      clipPlanes.push(new THREE.Plane(n, -sg * at));
+      $("#secAt") && ($("#secAt").textContent = `${section.axis} = ${fmt(at, 2)} mm`);
+      for (const m of faceMeshes) {  // the part's inside, seen through the cut: its faces from behind
+        const c = new THREE.Mesh(m.geometry, capMat);
+        c.renderOrder = 1;
+        partGroup.add(c);
+        caps.push(c);
+      }
+    }
+  }
+  if (had !== clipPlanes.length) {  // three compiles the plane count into each shader
+    const mats = [...faceMeshes, ...refMeshes, ...edgeObjs].map((o) => o.material).concat([capMat]);
+    for (const m of mats) m.needsUpdate = true;
+  }
+  for (const m of faceMeshes) m.material.side = section ? THREE.FrontSide : THREE.DoubleSide;
+}
+$("#sectionBtn").onclick = () => {
+  section = section ? null : { axis: "Y", t: 0.5, flip: false };
+  $("#sectionBtn").classList.toggle("on", !!section);
+  $("#sectionPanel").hidden = !section;
+  if (section) {
+    $("#sectionPanel").innerHTML = `<h4>Section<span class="grow"></span><button id="secClose" title="Close">✕</button></h4>
+      <div class="row"><label>plane</label><span class="seg">${["X", "Y", "Z"].map((a) => `<button data-ax="${a}" class="${a === section.axis ? "on" : ""}">${a}</button>`).join("")}</span>
+        <label style="width:auto"><input type="checkbox" id="secFlip"> flip</label></div>
+      <div class="row"><label>position</label><input type="range" id="secT" min="0" max="1" step="0.001" value="${section.t}"></div>
+      <div class="muted" id="secAt"></div>`;
+    $("#sectionPanel").querySelectorAll("[data-ax]").forEach((b) => (b.onclick = () => {
+      section.axis = b.dataset.ax;
+      $("#sectionPanel").querySelectorAll("[data-ax]").forEach((x) => x.classList.toggle("on", x === b));
+      applySection();
+    }));
+    $("#secT").oninput = () => { section.t = +$("#secT").value; applySection(); };
+    $("#secFlip").onchange = () => { section.flip = $("#secFlip").checked; applySection(); };
+    $("#secClose").onclick = () => $("#sectionBtn").click();
+  }
+  applySection();
+};
+
+// ── import a CAD file: upload it next to the part, then choose how it joins the model ──
+const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4 };
+$("#importBtn").onclick = () => {
+  if (!S) return note("Open or create a part first.", "err");
+  $("#importFile").value = "";
+  $("#importFile").click();
+};
+$("#importFile").onchange = async () => {
+  const f = $("#importFile").files[0];
+  $("#importFile").value = "";  // choosing the same file again must still import it
+  if (f) await importFlow(f);
+};
+async function importFlow(file) {
+  let info;
+  rebuildStart(`Reading ${file.name}`);
+  try {
+    const r = await fetch(`/api/import?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
+    info = await r.json().catch(() => ({}));
+    if (!r.ok) return note(`Import: ${info.detail || r.statusText}`, "err");
+  } finally { rebuildEnd(); }
+  importForm(info);
+  return info;
+}
+function importForm(info) {
+  const m = $("#featMenu"), hasBody = S.volume != null, solid = info.solids > 0;
+  const modes = [["reference", "Reference: design around it (not part of the solid)"], ["new", hasBody ? "New body" : "Base solid of this part"],
+    ["add", "Add to the part"], ["cut", "Cut from the part"], ["intersect", "Keep only the overlap"]];
+  const def = !solid ? "reference" : hasBody ? "reference" : "new";
+  const sz = info.bbox_size.map((v) => fmt(v, 2)).join(" × ");
+  const stem = (info.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "imported").slice(0, 28);
+  m.innerHTML = `<div class="ttl">Import ${esc(info.name)}</div>
+    <div class="muted">${esc(info.format.toUpperCase())} · ${info.mesh ? `mesh, ${info.triangles} triangles` : `${info.faces} faces, ${info.solids} solid${info.solids === 1 ? "" : "s"}`} · ${sz} (file units)</div>
+    <div class="row"><label>name</label><input id="imId" value="${esc(nextId(stem))}"></div>
+    <div class="row"><label>as</label><select id="imMode">${modes.map(([v, t]) => `<option value="${v}" ${v === def ? "selected" : ""} ${!solid && v !== "reference" ? "disabled" : ""}>${esc(t)}</option>`).join("")}</select></div>
+    <div class="row"><label>units</label><select id="imUnits">${Object.keys(UNITS).map((u) => `<option ${u === info.units_hint ? "selected" : ""}>${u}</option>`).join("")}</select></div>
+    <div class="row"><label>place</label><select id="imPlace"><option value="keep">where the file puts it</option><option value="origin">centred on the origin, on XY</option></select></div>
+    <div class="row"><label>rotate °</label><input id="imRx" value="0" title="about X"><input id="imRy" value="0" title="about Y"><input id="imRz" value="0" title="about Z"></div>
+    <div class="muted" id="imSize"></div>
+    <button class="go" id="imGo">Import</button>`;
+  popup(m, $("#importBtn"));
+  const upd = () => { const k = UNITS[$("#imUnits").value]; $("#imSize").textContent = `Size in the part: ${info.bbox_size.map((v) => fmt(v * k, 2)).join(" × ")} mm`; };
+  $("#imUnits").onchange = upd;
+  upd();
+  $("#imGo").onclick = async () => {
+    const id = $("#imId").value.trim(), mode = $("#imMode").value, k = UNITS[$("#imUnits").value];
+    if (!/^[A-Za-z_]\w*$/.test(id)) return note("Import: the name must be letters, digits and underscores", "err");
+    const f = { id, type: "import", file: info.file, mode, intent: `${info.name}, imported ${{ reference: "as a reference body (not part of the solid)", new: hasBody ? "as a new body" : "as the base solid", add: "and added", cut: "and cut away", intersect: "and intersected" }[mode]}` };
+    if (k !== 1) f.scale = k;
+    const rot = ["#imRx", "#imRy", "#imRz"].map((q) => numOrExpr($(q).value || "0"));
+    if (rot.some((v) => v !== 0)) f.rotate = rot;
+    if ($("#imPlace").value === "origin") {  // centre in X and Y, sit on XY (only exact for no rotation)
+      const c = info.bbox_min.map((v, i) => (v + info.bbox_size[i] / (i < 2 ? 2 : 1e9)) * k);
+      f.translate = [-c[0], -c[1], -info.bbox_min[2] * k].map((v) => +v.toFixed(4));
+    }
+    m.hidden = true;
+    if (await addFeature(f, `import ${info.name}`)) { select(id); fitView("iso"); }
+  };
+}
+// drop a CAD file anywhere on the 3D view to import it
+$("#center").addEventListener("dragover", (ev) => { if ([...ev.dataTransfer.items].some((i) => i.kind === "file")) ev.preventDefault(); });
+$("#center").addEventListener("drop", (ev) => {
+  const f = [...ev.dataTransfer.files].find((x) => /\.(step|stp|iges|igs|brep|brp|stl)$/i.test(x.name));
+  if (!f) return;
+  ev.preventDefault();
+  if (!S) return note("Open or create a part first.", "err");
+  importFlow(f);
+});
+
+// ── export: download the shown part ──
+$("#exportBtn").onclick = () => {
+  if (!S) return;
+  const m = $("#featMenu");
+  const opts = [["step", "STEP", "exact solid for other CAD tools"], ["stl", "STL", "mesh for 3D printing"], ["3mf", "3MF", "mesh with units, for slicers"],
+    ["brep", "BREP", "OpenCascade's own format"], ["glb", "glTF (GLB)", "for viewers and the web"]];
+  m.innerHTML = `<div class="ttl">Export ${esc(S.name)}${S.rollback != null ? " (as rolled back)" : ""}</div>` +
+    opts.map(([f, n, d]) => `<a class="menuitem" data-fmt="${f}" href="/api/export?fmt=${f}" download><b>${n}</b><span>${d}</span></a>`).join("");
+  popup(m, $("#exportBtn"));
+  m.querySelectorAll("a").forEach((a) => (a.onclick = () => { m.hidden = true; }));
+};
+
 window.vibecadView = {  // for browser tests and the devtools console
   toScreen: (x, y, z) => {
     const p = new THREE.Vector3(x, y, z).project(camera), r = renderer.domElement.getBoundingClientRect();
@@ -1073,6 +1566,11 @@ window.vibecadView = {  // for browser tests and the devtools console
     return [r.left + ((q.x + 1) / 2) * r.width, r.top + ((1 - q.y) / 2) * r.height];
   },
   edgeIds: () => edgeObjs.map((o) => o.userData.i),
+  refs: () => [...new Set(refMeshes.map((m) => m.userData.ref))],
+  clip: () => clipPlanes.map((p) => ({ normal: p.normal.toArray(), constant: p.constant })),
+  viewDir: () => controls.target.clone().sub(camera.position).normalize().toArray().map((v) => +v.toFixed(4)),
+  measuring: () => measuring,
+  measurePicks: () => mPicks.map((p) => p.label || `edge ${p.edge}`),
 };
 
 // ── dialogs ───────────────────────────────────────────────────────
@@ -1385,6 +1883,11 @@ document.addEventListener("keydown", (ev) => {
   if (ev.target.matches("input, textarea, [contenteditable=true]")) return;
   if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }
   if (ev.key === "Escape" && inSketch()) { $("#exitSketch").click(); return; }
+  if (ev.key === "Escape" && measuring) { setMeasuring(false); return; }
+  if (!inSketch() && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+    if (ev.key === "m") { setMeasuring(!measuring); return; }
+    if (ev.key === "f") { fitView("iso"); return; }
+  }
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); undoRedo(ev.shiftKey ? "redo" : "undo"); }
 });
 

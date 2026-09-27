@@ -15,15 +15,15 @@
 </head>
 <body>
 <header>
-  <span class="brand">VibeCAD</span>
+  <span class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/><path d="M12 12l8.5-5M12 12v10M12 12L3.5 7"/></svg>VibeCAD</span>
   <select id="partSelect" title="Open a part"></select>
-  <button id="newBtn" title="New part">New</button>
+  <button id="newBtn" class="hb" data-icon="new" title="New part">New</button>
   <span class="sep"></span>
-  <button id="undoBtn" title="Undo (Ctrl/Cmd+Z)">Undo</button>
-  <button id="redoBtn" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+  <button id="undoBtn" class="hb" data-icon="undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+  <button id="redoBtn" class="hb" data-icon="redo" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
   <span class="sep"></span>
-  <button id="historyBtn" title="Every change to this part">History</button>
-  <button id="rendersBtn" title="The rendered views the agent sees">Renders</button>
+  <button id="historyBtn" class="hb" data-icon="history" title="Every change to this part">History</button>
+  <button id="rendersBtn" class="hb" data-icon="renders" title="The rendered views the agent sees">Renders</button>
   <span id="partStatus" class="status"></span>
   <span class="grow"></span>
   <span id="conn" class="conn">connecting</span>
@@ -45,23 +45,32 @@
     <div id="rebuild" class="rebuild" hidden><span class="spin"></span><span id="rebuildText">Rebuilding…</span></div>
     <div id="edgeEdit" class="edgeedit" hidden><span id="edgeEditText"></span>
       <button id="edgeEditDone" class="go">Done</button><button id="edgeEditCancel">Cancel</button></div>
-    <div class="vtools left">
-      <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
-      <button data-view="top">Top</button><button data-view="right">Right</button>
-      <button id="fitBtn" title="Fit the part in view">Fit</button>
+    <div id="modelTools" class="ribbon">
+      <div class="rgroup"><button id="newSketchBtn" class="rb" data-icon="sketch" data-label="Sketch" title="New sketch: on a datum plane, or on the face you clicked"></button></div>
+      <div class="rgroup"><button id="extrude3dBtn" class="rb" data-icon="extrude" data-label="Extrude"></button>
+        <button id="revolve3dBtn" class="rb" data-icon="revolve" data-label="Revolve"></button>
+        <button id="holeBtn" class="rb" data-icon="hole" data-label="Hole"></button></div>
+      <div class="rgroup"><button id="filletBtn" class="rb" data-icon="fillet" data-label="Fillet" data-kind="Fillet"></button>
+        <button id="chamferBtn" class="rb" data-icon="chamfer" data-label="Chamfer" data-kind="Chamfer"></button>
+        <button id="shellBtn" class="rb" data-icon="shell" data-label="Shell"></button></div>
+      <div class="rgroup"><button id="patternBtn" class="rb" data-icon="pattern" data-label="Pattern"></button>
+        <button id="mirrorBtn" class="rb" data-icon="mirror" data-label="Mirror"></button></div>
+      <div class="rgroup"><button id="importBtn" class="rb" data-icon="import" data-label="Import" title="Import a STEP, IGES, BREP or STL file: as the part's base solid, added or cut, or as a reference body to design around"></button></div>
+      <div class="rgroup"><button id="measureBtn" class="rb" data-icon="measure" data-label="Measure" title="Measure: click faces, edges or points (M)"></button>
+        <button id="sectionBtn" class="rb" data-icon="section" data-label="Section" title="Section view: cut the view with a plane"></button></div>
+      <div class="rgroup"><button id="exportBtn" class="rb" data-icon="export" data-label="Export" title="Download the part as STEP, STL, 3MF, BREP or glTF"></button></div>
+      <input id="importFile" type="file" accept=".step,.stp,.iges,.igs,.brep,.brp,.stl" hidden>
     </div>
-    <div id="modelTools" class="sktools mtools">
-      <span class="skgroup">
-        <button id="newSketchBtn" class="ico" data-icon="sketch" title="New sketch: on a datum plane, or on the face you clicked"></button>
-        <button id="extrude3dBtn" class="ico" data-icon="extrude"></button>
-        <button id="revolve3dBtn" class="ico" data-icon="revolve"></button>
-        <button id="filletBtn" class="ico" data-icon="fillet" data-kind="Fillet"></button>
-        <button id="chamferBtn" class="ico" data-icon="chamfer" data-kind="Chamfer"></button>
-      </span>
-    </div>
-    <div class="vtools right">
+    <div class="vtools left viewbar">
+      <button data-view="iso" title="Isometric view">Iso</button><button data-view="front" title="Front view (looking along +Y)">Front</button>
+      <button data-view="top" title="Top view">Top</button><button data-view="right" title="Right view">Right</button>
+      <button id="fitBtn" title="Fit the part in view (F)">Fit</button>
+      <span class="vsep"></span>
       <button id="projBtn" title="Switch between orthographic and perspective">Orthographic</button>
     </div>
+    <svg id="gizmo" class="gizmo" viewBox="-50 -50 100 100" aria-label="View orientation: click an axis to look along it"></svg>
+    <div id="measurePanel" class="floatpanel" hidden></div>
+    <div id="sectionPanel" class="floatpanel" hidden></div>
     <div id="sketchBar" class="sketchbar" hidden>
       <div class="skhead"><span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
         <span class="skacts"><button id="extrudeBtn" class="ico" data-icon="extrude" title="Extrude this sketch's closed profiles: add, cut or a new body"></button>

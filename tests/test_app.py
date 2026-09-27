@@ -291,3 +291,52 @@ def test_regen_reports_progress_only_for_rebuilt_features(tmp_path):
     rebuilt = [x[3] for x in seen if x[3]]
     assert rebuilt == ["corner_fillet"]  # only the feature that uses corner_r; the rest come from the cache
     assert seen[-1][3] is None and seen[-1][1] == seen[-1][2]
+
+
+def test_import_file_saves_next_to_the_part_and_describes_it(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    bd.export_step(bd.Box(1, 2, 3), str(tmp_path / "tiny.step"))
+    info = a.import_file("my part.STEP", (tmp_path / "tiny.step").read_bytes())
+    assert info["file"] == "imports/my_part.STEP" and (tmp_path / "imports" / "my_part.STEP").exists()
+    assert info["solids"] == 1 and info["volume"] == pytest.approx(6) and info["units_hint"] == "in"
+    again = a.import_file("my part.STEP", (tmp_path / "tiny.step").read_bytes())
+    assert again["file"] == info["file"]  # the same bytes are not copied twice
+    with pytest.raises(Exception, match="can't import"):
+        a.import_file("notes.txt", b"hi")
+    rep = a.ws.apply_ops([{"op": "add_feature", "feature": {"id": "ref_box", "type": "import", "file": info["file"],
+                                                            "mode": "reference", "scale": 25.4}}], "import", "user")
+    assert '"ok": true' in rep, rep
+    m = a.mesh()
+    assert [r["id"] for r in m["refs"]] == ["ref_box"] and len(m["refs"][0]["faces"]) == 6
+    assert m["refs"][0]["faces"][0]["labels"][0].startswith("ref_box.face[f")
+
+
+def test_export_formats(tmp_path):
+    a = _app(tmp_path)
+    for fmt in ("step", "stl", "3mf", "brep", "glb"):
+        path, name = a.export_file(fmt)
+        assert name == f"l_bracket.{fmt}" and Path(path).stat().st_size > 1000, fmt
+    with pytest.raises(Exception, match="can't export"):
+        a.export_file("dwg")
+
+
+def test_measure_faces_edges_and_mass(tmp_path):
+    from vibecad.topo import list_edges
+
+    a = _app(tmp_path)  # l_bracket: 6061 aluminium, base 60 x 40 x 5, wall 5 thick along y = 0..5, holes 5.5
+    one = a.measure([{"label": "base.end", "point": [30, 25, 5]}])
+    assert one["picks"][0]["surface"] == "plane" and one["picks"][0]["normal"] == [0, 0, 1]
+    assert one["part"]["density"] == 2.70 and one["part"]["mass_g"] == pytest.approx(one["part"]["volume"] / 1000 * 2.7, abs=1e-3)
+    two = a.measure([{"label": "base.start", "point": [30, 20, 0]}, {"label": "base.end", "point": [30, 25, 5]}])
+    b = two["between"]
+    assert b["distance"] == pytest.approx(5) and b["plane_distance"] == pytest.approx(5) and b["angle"] == pytest.approx(0)
+    hole = a.measure([{"label": "hole_cut.side[hole_l]", "point": [15, 2.5, 35 + 2.75]}])
+    assert hole["picks"][0]["surface"] == "cylinder" and hole["picks"][0]["diameter"] == pytest.approx(5.5)
+    holes = a.measure([{"label": "hole_cut.side[hole_l]", "point": [15, 2.5, 37.75]}, {"label": "hole_cut.side[hole_r]", "point": [45, 2.5, 37.75]}])
+    assert holes["between"]["axis_distance"] == pytest.approx(30)  # hole_spacing
+    body = a.view_result().body
+    i = next(k for k, e in enumerate(list_edges(body.shape)) if a.edge_ref(k)["label"] in ("base.side[base_front] | base.start", "base.start | base.side[base_front]"))
+    e = a.measure([{"edge": i}])
+    assert e["picks"][0]["curve"] == "line" and e["picks"][0]["length"] == pytest.approx(60)

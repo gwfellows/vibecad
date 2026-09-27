@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -207,23 +208,29 @@ class App:
         from OCP.TopoDS import TopoDS
 
         from .topo import list_edges, list_faces
-        body = self.view_result().body
-        out = {"faces": [], "edges": [], "rev": rev}
+        vr = self.view_result()
+        body = vr.body
+        out = {"faces": [], "edges": [], "rev": rev, "refs": []}
+        shapes = [b.shape for b in [body, *vr.refs.values()] if b.shape is not None]
+        if not shapes:
+            return out
+        diag = max(bd.Shape.cast(x).bounding_box().diagonal for x in shapes) or 1.0
+        for rid, rb in vr.refs.items():  # reference imports: drawn ghosted, faces pickable (sketch planes)
+            faces = []
+            for f in list_faces(rb.shape):
+                m = _face_mesh(f, diag)
+                if m:
+                    labels = rb.labels_of(f)
+                    faces.append({**m, "features": [rid], "labels": sorted({str(l) for l in labels})})
+            out["refs"].append({"id": rid, "faces": faces})
         if body.shape is None:
             return out
-        diag = bd.Shape.cast(body.shape).bounding_box().diagonal or 1.0
         for f in list_faces(body.shape):
-            face = bd.Face(TopoDS.Face(f))
-            verts, tris = face.tessellate(diag / 500, 0.15)
-            if not tris:
+            m = _face_mesh(f, diag)
+            if not m:
                 continue
             labels = body.labels_of(f)
-            out["faces"].append({
-                "p": [round(c, 4) for v in verts for c in (v.X, v.Y, v.Z)],
-                "i": [k for t in tris for k in t],
-                "features": sorted({l.feature for l in labels}),
-                "labels": sorted({str(l) for l in labels}),
-            })
+            out["faces"].append({**m, "features": sorted({l.feature for l in labels}), "labels": sorted({str(l) for l in labels})})
         face_edges = [list_edges(f) for f in list_faces(body.shape)]
         out["edge_seam"] = []  # a cylinder's seam lies inside one face: drawn by nobody, pickable by nobody
         for e in list_edges(body.shape):
@@ -234,6 +241,138 @@ class App:
             out["edges"].append([round(c, 4) for q in pts for c in (q.X, q.Y, q.Z)])
         self.mesh_cache = {key: out}
         return out
+
+    def import_file(self, name: str, data: bytes) -> dict:
+        """Save a CAD file next to the open part (imports/), and say what's in it, so the import form can
+        suggest a mode and units. The part refers to it by that relative path, so the folder stays portable."""
+        import hashlib
+        import re
+
+        import build123d as bd
+
+        from .importer import MAX_STL_SOLID_TRIANGLES, SUFFIXES, ImportError_, load
+        if not data:
+            raise ToolError("empty file")
+        if Path(name).suffix.lower() not in SUFFIXES:
+            raise ToolError(f"can't import {Path(name).suffix or name!r}; use STEP (.step/.stp), IGES, BREP or STL")
+        if self.ws.active is None:
+            raise ToolError("open or create a part first")
+        d = Path(self.ws.active).parent / "imports"
+        d.mkdir(parents=True, exist_ok=True)
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(name).name).strip("._") or "part"
+        p, n = d / safe, 1
+        while p.exists() and hashlib.sha1(p.read_bytes()).digest() != hashlib.sha1(data).digest():
+            p, n = d / f"{Path(safe).stem}_{n}{Path(safe).suffix}", n + 1
+        p.write_bytes(data)
+        try:
+            shape, info = load(p, as_solid=False)
+        except ImportError_ as e:
+            p.unlink(missing_ok=True)
+            raise ToolError(str(e)) from None
+        sh = bd.Shape.cast(shape)
+        bb = sh.bounding_box()
+        solids = sh.solids() if not info.get("mesh") else []
+        if info.get("mesh") and info.get("triangles", 0) <= MAX_STL_SOLID_TRIANGLES:  # can it be sewn into a solid?
+            try:
+                solids = bd.Shape.cast(load(p, as_solid=True)[0]).solids()
+            except ImportError_:
+                solids = []
+        out = {"file": str(p.relative_to(Path(self.ws.active).parent)), "name": Path(name).name, "format": info["format"],
+               "mesh": info.get("mesh", False), "triangles": info.get("triangles"), "faces": len(sh.faces()),
+               "solids": len(solids), "volume": round(sum(x.volume for x in solids), 3) if solids else None,
+               "bbox_min": [round(v, 3) for v in (bb.min.X, bb.min.Y, bb.min.Z)],
+               "bbox_size": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)]}
+        # a model a few mm across is usually in inches (or metres, if tiny); the form offers the scale
+        big = max(out["bbox_size"]) if out["bbox_size"] else 0
+        out["units_hint"] = "m" if 0 < big < 1.0 else "in" if big < 12 else "mm"
+        return out
+
+    def face_point(self, ref: dict, point: list[float]) -> dict:
+        """Where a point clicked on a face lands in a sketch on that face: sketch coordinates (u, v), for placing
+        a hole or a sketch point where the user clicked."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from . import schema as S
+        from .frames import face_frame
+        from .topo import resolve_faces
+        vr = self.view_result()
+        fr = S.FaceRef.model_validate(ref)
+        body = vr.refs.get(fr.feature, vr.body)
+        faces = resolve_faces(body, fr)
+        p = bd.Vector(*point)
+        face = bd.Face(TopoDS.Face(min(faces, key=lambda f: bd.Face(TopoDS.Face(f)).distance_to(p))))
+        try:
+            frame = face_frame(face)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        u, v, w = frame.to_local(p)
+        return {"uv": [round(u, 4), round(v, 4)], "off_plane": round(w, 6), "frame": frame.describe()}
+
+    def _pick_shape(self, pick: dict):
+        """A face ({"label", "point"}) or an edge ({"edge": i}) of the shown part or a reference body."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from . import schema as S
+        from .topo import list_edges, resolve_faces
+        vr = self.view_result()
+        if "edge" in pick:
+            edges = list_edges(vr.body.shape) if vr.body.shape is not None else []
+            if not 0 <= pick["edge"] < len(edges):
+                raise ToolError(f"no edge {pick['edge']}")
+            return edges[pick["edge"]]
+        m = re.match(r"^([^.]+)\.([a-z_]+)(?:\[([^\]]+)\])?(?:@(.+))?$", pick["label"])
+        if not m:
+            raise ToolError(f"bad face label {pick['label']!r}")
+        ref = S.FaceRef(feature=m.group(1), role=m.group(2), entity=m.group(3), instance=m.group(4))
+        body = vr.refs.get(ref.feature, vr.body)
+        faces = resolve_faces(body, ref)
+        p = bd.Vector(*pick["point"])
+        return min(faces, key=lambda f: bd.Face(TopoDS.Face(f)).distance_to(p))
+
+    def measure(self, picks: list[dict]) -> dict:
+        from .measure import between, describe, mass_properties
+        with self.ws.lock:
+            vr = self.view_result()
+            out = {"picks": []}
+            shapes = [self._pick_shape(p) for p in picks[:2]]
+            for sh in shapes:
+                out["picks"].append(describe(sh))
+            if len(shapes) == 2:
+                out["between"] = between(shapes[0], shapes[1], *out["picks"])
+            if vr.body.shape is not None:
+                out["part"] = mass_properties(vr.body.shape, vr.doc.material)
+            return out
+
+    def export_file(self, fmt: str) -> tuple[str, str]:
+        """The shown part (rolled back, if the bar is up) written as STEP / STL / 3MF / BREP / GLB."""
+        import tempfile
+
+        import build123d as bd
+        vr = self.view_result()
+        part = vr.part
+        if part is None:
+            raise ToolError("there is no solid to export yet")
+        name = re.sub(r"[^A-Za-z0-9._-]+", "_", vr.doc.name or "part").strip("._") or "part"
+        fmt = fmt.lower()
+        out = Path(tempfile.mkdtemp(prefix="vibecad-export-")) / f"{name}.{fmt}"
+        with self.ws.lock:
+            if fmt == "step":
+                bd.export_step(part, str(out))
+            elif fmt == "stl":
+                bd.export_stl(part, str(out), tolerance=0.01, angular_tolerance=0.1)
+            elif fmt == "brep":
+                bd.export_brep(part, str(out))
+            elif fmt == "glb":
+                bd.export_gltf(part, str(out), binary=True)
+            elif fmt == "3mf":
+                m = bd.Mesher()
+                m.add_shape(part, linear_deflection=0.01, angular_deflection=0.1)
+                m.write(str(out))
+            else:
+                raise ToolError(f"can't export {fmt!r}; use step, stl, 3mf, brep or glb")
+        return str(out), out.name
 
     def sketch_geometry(self, sid: str) -> dict:
         """A solved sketch for the sketch editor, in sketch-local coordinates (the client maps them onto the
@@ -529,6 +668,36 @@ class App:
         self.run_task = asyncio.create_task(go())
 
 
+def _face_mesh(f, diag: float) -> dict | None:
+    """Triangles of one face for the viewer: {"p": flat xyz, "i": flat indices}. A face that is only a mesh (an
+    imported STL) has no surface to re-mesh, so its stored triangulation is sent as is."""
+    import build123d as bd
+    from OCP.BRep import BRep_Tool
+    from OCP.TopLoc import TopLoc_Location
+    from OCP.TopoDS import TopoDS
+
+    face = TopoDS.Face(f)
+    if BRep_Tool.Surface_s(face) is None:
+        loc = TopLoc_Location()
+        tri = BRep_Tool.Triangulation_s(face, loc)
+        if tri is None:
+            return None
+        trsf = loc.Transformation()
+        p = []
+        for k in range(1, tri.NbNodes() + 1):
+            q = tri.Node(k).Transformed(trsf)
+            p += [round(q.X(), 4), round(q.Y(), 4), round(q.Z(), 4)]
+        idx = []
+        for k in range(1, tri.NbTriangles() + 1):
+            a, b, c = tri.Triangle(k).Get()
+            idx += [a - 1, b - 1, c - 1]
+        return {"p": p, "i": idx}
+    verts, tris = bd.Face(face).tessellate(diag / 500, 0.15)
+    if not tris:
+        return None
+    return {"p": [round(c, 4) for v in verts for c in (v.X, v.Y, v.Z)], "i": [k for t in tris for k in t]}
+
+
 def _r(p):
     return [round(p[0], 6) + 0.0, round(p[1], 6) + 0.0]
 
@@ -789,6 +958,24 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
         from . import uploads
         data = await request.body()
         return await asyncio.to_thread(guard, uploads.save, A.ws.root, name, data)
+
+    @api.post("/api/import")
+    async def import_cad(request: Request, name: str):
+        data = await request.body()
+        return await asyncio.to_thread(guard, A.import_file, name, data)
+
+    @api.post("/api/face_point")
+    async def face_point(body: dict = Body(...)):
+        return await asyncio.to_thread(guard, A.face_point, body["ref"], body["point"])
+
+    @api.post("/api/measure")
+    async def measure(body: dict = Body(...)):
+        return await asyncio.to_thread(guard, A.measure, body.get("picks", []))
+
+    @api.get("/api/export")
+    async def export_cad(fmt: str = "step"):
+        path, fname = await asyncio.to_thread(guard, A.export_file, fmt)
+        return FileResponse(path, filename=fname, media_type="application/octet-stream")
 
     @api.get("/api/upload/{fid:path}")
     def upload_file(fid: str):
