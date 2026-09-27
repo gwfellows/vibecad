@@ -297,3 +297,14 @@ body.rebuilding #params input, body.rebuilding #tree input { opacity: .6; }
 #details details.json summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .popmenu.wide { min-width: 280px; }
 .popmenu .row input[id^=efO], .popmenu .row input[id^=efR], .popmenu .row input[id^=efT], .popmenu .row input[id^=efC] { width: 40px; flex: 1; min-width: 0; }
+
+dialog.formdlg { width: 440px; }
+dialog.formdlg form { display: flex; flex-direction: column; gap: 10px; }
+dialog.formdlg label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+dialog.formdlg input, dialog.formdlg textarea { font-size: 13px; color: var(--ink); }
+dialog.formdlg .dlg-foot { display: flex; gap: 8px; justify-content: flex-end; }
+dialog.formdlg .go { background: var(--accent); color: #fff; border-color: var(--accent); }
+dialog::backdrop { background: rgba(15,23,42,.35); }
+#keysList { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 12.5px; padding: 6px 2px; min-width: 420px; }
+#keysList kbd { font: 11.5px ui-monospace, Menlo, monospace; background: #f1f4f9; border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+#keysList .h { grid-column: 1 / -1; font-weight: 600; margin-top: 6px; }

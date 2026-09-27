@@ -15,6 +15,8 @@ export const TOOLS = [
   { id: "rect", label: "Rect", key: "r", title: "Rectangle: click two opposite corners (R)" },
   { id: "circle", label: "Circle", key: "c", title: "Circle: click centre, click a point on the rim (C)" },
   { id: "arc", label: "Arc", key: "a", title: "Arc: click centre, start, end (counterclockwise) (A)" },
+  { id: "slot", label: "Slot", key: "o", title: "Slot: click one end's centre, the other end's centre, then the width (O)" },
+  { id: "polygon", label: "Polygon", key: "n", title: "Polygon: click the centre, then a corner; asks how many sides (N)" },
   { id: "point", label: "Point", key: "p", title: "Point: click to place one (hole positions, construction references) (P)" },
   { id: "mark", label: "Mark", key: "m", title: "Mark: draw freehand to show the agent what you mean; goes with your next prompt, never into the part (M)" },
 ];
@@ -166,7 +168,28 @@ export function createSketchEditor(ctx) {
       if (tool === "circle" || pending.length === 1) addLine(polyline({ type: "circle", center: ctr, r }), pv, pending.length === 1 && tool === "arc", 14);
       else addLine(polyline({ type: "arc", center: ctr, r, start_angle: angOf(ctr, pending[1].uv), end_angle: angOf(ctr, c) }), pv, false, 14);
     }
+    if (tool === "slot" && pending.length) {
+      const a = pending[0].uv, b = pending[1]?.uv || c;
+      if (pending.length === 1) addLine([a, c], pv, true, 14);
+      else addLine(slotOutline(a, b, Math.max(distToLine(c, a, b), 1e-6)), pv, false, 14);
+    }
+    if (tool === "polygon" && pending.length) addLine(polygonOutline(pending[0].uv, c, 6), pv, false, 14);
     addPoints([c], snapInfo?.ref || snapInfo?.on ? COLORS.sel : COLORS.hover, 7);
+  }
+  function distToLine(p, a, b) {
+    const d = [b[0] - a[0], b[1] - a[1]], l = Math.hypot(...d) || 1;
+    return Math.abs((p[0] - a[0]) * d[1] - (p[1] - a[1]) * d[0]) / l;
+  }
+  function slotOutline(a, b, r) {
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), out = [];
+    for (let k = 0; k <= 16; k++) { const t = ang + Math.PI / 2 + (Math.PI * k) / 16; out.push([a[0] + r * Math.cos(t), a[1] + r * Math.sin(t)]); }
+    for (let k = 0; k <= 16; k++) { const t = ang - Math.PI / 2 + (Math.PI * k) / 16; out.push([b[0] + r * Math.cos(t), b[1] + r * Math.sin(t)]); }
+    out.push(out[0]);
+    return out;
+  }
+  function polygonOutline(c, corner, n) {
+    const r = dist(c, corner), a0 = Math.atan2(corner[1] - c[1], corner[0] - c[0]);
+    return Array.from({ length: n + 1 }, (_, k) => [c[0] + r * Math.cos(a0 + (2 * Math.PI * k) / n), c[1] + r * Math.sin(a0 + (2 * Math.PI * k) / n)]);
   }
 
   // ── dimensions, drawn like a CAD sketcher: extension lines, dimension line, arrows, value ──
@@ -404,7 +427,7 @@ export function createSketchEditor(ctx) {
   }
 
   async function drawClick(uv) {
-    const s = snap(uv, (tool === "line" || tool === "rect") && pending.length ? pending[0].uv : null);
+    const s = snap(uv, (tool === "line" || tool === "rect" || (tool === "slot" && pending.length === 1)) && pending.length ? pending[0].uv : null);
     if (tool === "line") {
       if (!pending.length) { pending = [s]; return render(); }
       const a = pending[0];
@@ -435,6 +458,32 @@ export function createSketchEditor(ctx) {
       }
       pending = [];
       await commit(ops, `draw rectangle ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "slot") {
+      if (pending.length < 2) {
+        if (pending.length === 1 && dist(pending[0].uv, s.uv) < 1e-9) return;
+        pending.push(s);
+        return render();
+      }
+      const [a, b] = pending.map((p) => p.uv), w = 2 * distToLine(uv, a, b);
+      if (w < 1e-6) return;
+      const id = newId("slot"), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      pending = [];
+      await commit([{ op: "add_slot", sketch: sid, id, length: +dist(a, b).toFixed(4), width: +w.toFixed(4), center: r4(mid),
+        angle: +((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI).toFixed(4) }], `draw slot ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "polygon") {
+      if (!pending.length) { pending = [s]; return render(); }
+      const c = pending[0].uv, r = dist(c, s.uv);
+      if (r < 1e-9) return;
+      const n = parseInt(ctx.ask("Number of sides (3 or more):", "6") || "", 10);
+      pending = [];
+      if (!(n >= 3)) return render();
+      const id = newId(n === 6 ? "hex" : "poly");
+      await commit([{ op: "add_regular_polygon", sketch: sid, id, sides: n, diameter: +(2 * r).toFixed(4), across: "corners", center: r4(c),
+        angle: +((Math.atan2(s.uv[1] - c[1], s.uv[0] - c[0]) * 180) / Math.PI).toFixed(4) }], `draw ${n}-gon ${id} in ${sid}`);
       return render();
     }
     if (tool === "point") {

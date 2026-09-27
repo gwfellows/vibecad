@@ -22,6 +22,7 @@
   <button id="undoBtn" class="hb" data-icon="undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
   <button id="redoBtn" class="hb" data-icon="redo" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
   <span class="sep"></span>
+  <button id="propsBtn" class="hb" data-icon="part" title="Part properties: name, material (for the mass), process, design notes">Part</button>
   <button id="historyBtn" class="hb" data-icon="history" title="Every change to this part">History</button>
   <button id="rendersBtn" class="hb" data-icon="renders" title="The rendered views the agent sees">Renders</button>
   <span id="partStatus" class="status"></span>
@@ -119,6 +120,21 @@
   </section>
 </main>
 
+<dialog id="propsDlg" class="formdlg"><form method="dialog" id="propsForm">
+  <div class="dlg-head"><b>Part properties</b></div>
+  <label>Name<input id="ppName" autocomplete="off"></label>
+  <label>Material<input id="ppMat" list="materials" autocomplete="off" placeholder="e.g. PLA, 6061-T6 aluminium, mild steel"></label>
+  <datalist id="materials"><option>PLA</option><option>PETG</option><option>ABS</option><option>ASA</option><option>Nylon (PA12)</option><option>TPU</option>
+    <option>Polycarbonate</option><option>Acetal (POM)</option><option>6061-T6 aluminium</option><option>Mild steel</option><option>304 stainless steel</option>
+    <option>Brass</option><option>Titanium Ti-6Al-4V</option><option>Plywood</option></datalist>
+  <div class="muted small" id="ppDensity"></div>
+  <label>Process<input id="ppProc" list="processes" autocomplete="off" placeholder="e.g. FDM 3D print, CNC milled, laser-cut sheet"></label>
+  <datalist id="processes"><option>FDM 3D print</option><option>SLA resin print</option><option>SLS print</option><option>CNC milled</option><option>CNC turned</option>
+    <option>Laser-cut sheet</option><option>Sheet metal, bent</option><option>Injection moulded</option></datalist>
+  <label>Design notes<textarea id="ppNotes" rows="6" placeholder="What the part is for, what it mates with, assumptions"></textarea></label>
+  <div class="dlg-foot"><button value="cancel">Cancel</button><button value="save" class="go" id="ppSave">Save</button></div>
+</form></dialog>
+<dialog id="keysDlg"><div class="dlg-head"><b>Keyboard shortcuts</b><form method="dialog"><button>Close</button></form></div><div id="keysList"></div></dialog>
 <dialog id="historyDlg"><div class="dlg-head"><b>History</b><form method="dialog"><button>Close</button></form></div><ol id="history"></ol></dialog>
 <dialog id="rendersDlg"><div class="dlg-head"><b>Renders</b> <span class="muted small">(what the agent sees; selected feature in orange)</span><form method="dialog"><button>Close</button></form></div><img id="rendersImg" alt=""></dialog>
 <dialog id="imgDialog"><img id="imgBig" alt=""><form method="dialog"><button>Close</button></form></dialog>

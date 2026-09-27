@@ -9,6 +9,8 @@ export const ICON = {
   rect: S('<rect x="4" y="6" width="16" height="12" rx=".5"/>'),
   circle: S('<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
   arc: S('<path d="M4 17a8.5 8.5 0 0 1 16 0"/><circle cx="12" cy="17" r="1" fill="currentColor"/>'),
+  slot: S('<rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="7" cy="12" r="1" fill="currentColor"/><circle cx="17" cy="12" r="1" fill="currentColor"/>'),
+  polygon: S('<path d="M12 3.5l7.4 4.25v8.5L12 20.5l-7.4-4.25v-8.5z"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
   point: S('<path d="M12 4v5M12 15v5M4 12h5M15 12h5"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/>'),
   mark: S('<path d="M3 18c2.5-5 4.5 1.5 7-3s4.5 1 7-5l2-3"/>'),
   // constraints
@@ -47,6 +49,7 @@ export const ICON = {
   export: S('<path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 14V3M7.5 7.5L12 3l4.5 4.5"/>'),
   measure: S('<path d="M3 16.5L16.5 3 21 7.5 7.5 21z"/><path d="M7 12.5l2 2M10 9.5l1.5 1.5M13 6.5l2 2M5.5 15.5l1.3 1.3"/>'),
   section: S('<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M2 12.5l10 4.5 10-4.5" stroke-width="2"/><path d="M4 8l8 4 8-4M12 12v8" stroke-width="1" opacity=".55"/>'),
+  part: S('<path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12v9.5M12 12L3.5 7.3"/>'),
   undo: S('<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
   redo: S('<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>'),
   history: S('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5"/><path d="M3.5 4v4.5H8M12 7.5V12l3 2"/>'),

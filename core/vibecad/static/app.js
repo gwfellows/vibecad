@@ -925,6 +925,8 @@ const HINTS = {
   rect: (n) => (n ? "Click the opposite corner" : "Click the first corner"),
   circle: (n) => (n ? "Click a point on the rim" : "Click the centre"),
   arc: (n) => ["Click the centre", "Click the start point", "Click the end point (counterclockwise)"][n] || "",
+  slot: (n) => ["Click the centre of one end", "Click the centre of the other end (snaps level / plumb)", "Click to set the width"][n] || "",
+  polygon: (n) => (n ? "Click a corner (you'll be asked how many sides)" : "Click the centre"),
   point: () => "Click to place a point (snaps to points and curves) · a Hole on this sketch drills at every point",
   mark: () => `Draw on the sketch to show the agent what you mean (${SK.marks().length} mark(s)); they go with your next prompt and are never saved to the part`,
 };
@@ -1439,7 +1441,7 @@ async function runMeasure() {
       <tr><td>mass</td><td>${P.mass_g != null ? `${fmt(P.mass_g, 1)} g` : "—"}</td></tr>
       <tr><td>size</td><td>${P.bbox.map((v) => fmt(v, 2)).join(" × ")}</td></tr>
       <tr><td>centre of mass</td><td>${P.center_of_mass.map((v) => fmt(v, 2)).join(", ")}</td></tr></table>
-      <div class="muted small">${P.mass_g != null ? `${esc(P.material)}: ${P.density} g/cm³` : P.material ? `No density known for “${esc(P.material)}”` : "Set a material (part notes) for the mass"}</div>`;
+      <div class="muted small">${P.mass_g != null ? `${esc(P.material)}: ${P.density} g/cm³` : P.material ? `No density known for “${esc(P.material)}”` : "Set a material (Part, in the header) for the mass"}</div>`;
   }
   $("#measurePanel").innerHTML = html;
   $("#mClose").onclick = () => setMeasuring(false);
@@ -1705,6 +1707,38 @@ $("#rendersBtn").onclick = () => {
   $("#rendersImg").src = `/api/render.png?views=iso,iso_back,iso_below,top&highlight=${encodeURIComponent(selected || "")}&v=${encodeURIComponent(S.rev)}`;
   $("#rendersDlg").showModal();
 };
+// part properties: name, material (the Measure panel's mass), process, notes
+const DENSITY_HINTS = [[/titanium|ti-?6al/i, 4.43], [/stainless|304|316/i, 8.0], [/steel/i, 7.85], [/alumin/i, 2.70], [/brass/i, 8.5], [/bronze/i, 8.8],
+  [/copper/i, 8.96], [/\bpla\b/i, 1.24], [/petg|\bpet\b/i, 1.27], [/\babs\b/i, 1.04], [/\basa\b/i, 1.07], [/nylon|\bpa\d*\b|polyamide/i, 1.14],
+  [/\btpu\b/i, 1.21], [/polycarbonate|\bpc\b/i, 1.20], [/acetal|delrin|\bpom\b/i, 1.41], [/resin/i, 1.15], [/plywood|wood|mdf/i, 0.65]];
+$("#propsBtn").onclick = () => {
+  if (!S) return note("Open or create a part first.", "err");
+  $("#ppName").value = S.name || ""; $("#ppMat").value = S.material || ""; $("#ppProc").value = S.process || ""; $("#ppNotes").value = S.design_notes || "";
+  const dens = () => {
+    const hit = DENSITY_HINTS.find(([re]) => re.test($("#ppMat").value));
+    $("#ppDensity").textContent = hit ? `Density ${hit[1]} g/cm³: Measure shows the mass` : $("#ppMat").value ? "Unknown density: Measure can't show a mass for this material" : "";
+  };
+  $("#ppMat").oninput = dens; dens();
+  $("#propsDlg").showModal();
+};
+$("#propsDlg").onclose = async () => {
+  if ($("#propsDlg").returnValue !== "save" || !S) return;
+  const set = {}, now = { name: $("#ppName").value.trim(), material: $("#ppMat").value.trim() || null, process: $("#ppProc").value.trim() || null,
+    design_notes: $("#ppNotes").value.trim() || null };
+  for (const [k, v] of Object.entries(now)) if ((v || null) !== (S[k] || null) && !(k === "name" && !v)) set[k] = v;
+  if (Object.keys(set).length) await edit([{ op: "set_meta", set }], "part properties");
+};
+
+// keyboard shortcuts: ? shows them
+const KEYS = [["Model", ""], ["M", "Measure"], ["F", "Fit the part in view"], ["Ctrl/⌘ Z", "Undo"], ["Ctrl/⌘ Shift Z", "Redo"], ["Double-click a feature", "Edit it"],
+  ["Shift-click", "Pick more faces or edges"], ["Esc", "Leave measure / reference picking"], ["Sketch", ""], ["S L R C A", "Select, Line, Rectangle, Circle, Arc"], ["O N P", "Slot, Polygon, Point"],
+  ["M", "Mark (freehand, for the agent)"], ["H V E T D", "Horizontal, Vertical, Equal, Tangent, Dimension"], ["G", "Construction on/off"], ["Delete", "Delete the selection"],
+  ["Esc", "Cancel the tool, clear the selection, then leave the sketch"], ["", ""], ["?", "This list"]];
+function showKeys() {
+  $("#keysList").innerHTML = KEYS.map(([k, d]) => (!d ? (k ? `<div class="h">${k}</div>` : "") : `<div>${k.split(" / ").map((x) => `<kbd>${esc(x)}</kbd>`).join(" / ")}</div><div>${esc(d)}</div>`)).join("");
+  $("#keysDlg").showModal();
+}
+
 $("#historyBtn").onclick = async () => {
   if (!S) return;
   const r = await api("/api/history");
@@ -2010,6 +2044,7 @@ document.addEventListener("keydown", (ev) => {
   if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }
   if (ev.key === "Escape" && inSketch()) { $("#exitSketch").click(); return; }
   if (ev.key === "Escape" && measuring) { setMeasuring(false); return; }
+  if (ev.key === "?") { showKeys(); return; }
   if (!inSketch() && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
     if (ev.key === "m") { setMeasuring(!measuring); return; }
     if (ev.key === "f") { fitView("iso"); return; }

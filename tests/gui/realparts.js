@@ -273,6 +273,49 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const pv = await vol();
   check("a STEP of a real part imports as the base solid", near(pv, 29540.964, 0.5), `${pv}`);
 
+  // ── sketch tools for real outlines: slot and polygon, drawn by clicking, fully constrained ──
+  await newPart("sketch_tools");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  const skf = (fn, a) => page.evaluate(([src, a]) => new Function("sk", "a", `return (${src})(sk, a)`)(window.vibecadSketch, a), [fn.toString(), a]);
+  const at = async (u, v) => { const [x, y] = await skf((s, a) => s.toScreen(a[0], a[1]), [u, v]); await page.mouse.click(x, y); await page.waitForTimeout(500); };
+  await page.keyboard.press("o");
+  check("O picks the slot tool", (await skf((s) => s.tool())) === "slot");
+  await at(-10, 0); await at(10, 0); await at(0, 4);
+  await page.waitForTimeout(600);
+  let d = await skf((s) => s.data());
+  check("slot drawn: two arcs, two sides, 0 DOF", d.entities.filter((e) => e.type === "arc").length === 2 && d.dof === 0, `${d.entities.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.keyboard.press("n");
+  partName = "6";  // the sides prompt
+  await at(0, 20); await at(6, 20);
+  await page.waitForTimeout(800);
+  d = await skf((s) => s.data());
+  check("hexagon drawn, still 0 DOF", d.entities.filter((e) => e.id.startsWith("hex")).length === 6 && d.dof === 0, `${d.entities.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "5");
+  await page.click("#ffGo");
+  await idle();
+  const slotA = 20 * 8 + Math.PI * 16, hexA = (3 * Math.sqrt(3) / 2) * 36;
+  check("slot and hexagon extrude to the right volume", near(await vol(), (slotA + hexA) * 5, 0.5), `${await vol()} (expected ${((slotA + hexA) * 5).toFixed(1)})`);
+
+  // ── part properties: a material gives Measure a mass ──
+  await page.click("#propsBtn");
+  await page.fill("#ppMat", "PETG");
+  check("the density shows as you type", (await page.textContent("#ppDensity")).includes("1.27"));
+  await page.click("#ppSave");
+  await idle();
+  check("material saved", (await state()).material === "PETG");
+  await page.click("#measureBtn");
+  await page.waitForTimeout(1200);
+  const mass = (await vol()) / 1000 * 1.27;
+  check("Measure shows the mass", (await page.textContent("#measurePanel")).includes(`${mass.toFixed(1)} g`), (await page.textContent("#measurePanel")).slice(-160));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("?");
+  check("? lists the shortcuts", await page.isVisible("#keysDlg") && (await page.textContent("#keysList")).includes("Measure"));
+  await page.keyboard.press("Escape");
+
   // ── the user's own parts (if given): open each, edit a parameter, undo ──
   const parts = await page.$$eval("#partSelect option", (l) => l.map((o) => o.value).filter((v) => v.startsWith("userparts/")));
   for (const p of parts) {
