@@ -87,7 +87,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // feature JSON edit
   await page.click("#tree li.feat >> text=corner_fillet");
-  await page.waitForSelector("#details textarea", { timeout: 10000 });
+  await page.waitForSelector("#details details.json", { timeout: 10000 });
+  await page.click("#details details.json summary");
   const txt = await page.inputValue("#details textarea");
   const j = JSON.parse(txt);
   check("details shows feature JSON", j.id === "corner_fillet", j.type);
@@ -102,7 +103,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // bad JSON in the feature editor shows an error, no crash
   await page.click("#tree li.feat >> text=corner_fillet"); // deselect
   await page.click("#tree li.feat >> text=corner_fillet"); // reselect
-  await page.waitForSelector("#details textarea");
+  await page.waitForSelector("#details details.json");
+  if (!(await page.isVisible("#details textarea"))) await page.click("#details details.json summary");
   await page.fill("#details textarea", "{ not json");
   await page.click("#applyFeat");
   await sleep(300);
@@ -152,7 +154,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // rollback bar: drag it above 'wall'
   const bar = page.locator("#tree li.rollbar");
   const target = page.locator("#tree li.feat >> text=wall_sketch");
-  await page.evaluate(() => document.querySelector("#left").scrollTo(0, 0));
+  await page.evaluate(() => document.querySelector("#treePane").scrollTo(0, 0));
   const bb = await bar.boundingBox(), tb = await target.boundingBox();
   await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
   await page.mouse.down();

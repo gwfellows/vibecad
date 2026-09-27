@@ -32,11 +32,14 @@
 <main>
   <section id="left">
     <div class="panel-title">Feature tree <span id="partName" class="muted small"></span></div>
-    <ol id="tree"></ol>
-    <div class="panel-title">Parameters</div>
-    <table id="params"><colgroup><col class="n"><col><col class="v"></colgroup><tbody></tbody></table>
-    <div class="panel-title">Selected <span id="selName" class="muted"></span></div>
-    <div id="details" class="muted small">Click a feature in the tree or a face in the view.</div>
+    <div id="treePane" class="pane"><ol id="tree"></ol></div>
+    <div id="splitter" class="splitter" title="Drag to give the tree more or less room"></div>
+    <div id="lowerPane" class="pane">
+      <div class="panel-title">Parameters</div>
+      <table id="params"><colgroup><col class="n"><col><col class="v"></colgroup><tbody></tbody></table>
+      <div class="panel-title">Selected <span id="selName" class="muted"></span></div>
+      <div id="details" class="muted small">Click a feature in the tree or a face in the view.</div>
+    </div>
   </section>
 
   <section id="center">

@@ -178,6 +178,29 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   await idle();
   check("mirror across the block's middle: one more hole", near(v3 - (await vol()), tap, 0.1), `${v3} -> ${await vol()}`);
 
+  // ── edit a feature in its own form: double-click it in the tree ──
+  const v5 = await vol();
+  await page.dblclick("#tree li.feat[data-id=hole2] .fid");
+  await page.waitForSelector("#efGo", { timeout: 10000 });
+  check("double-click opens the hole's settings", (await page.textContent("#featMenu .ttl")).includes("hole2") && (await page.inputValue("#efDepth")) === "8");
+  await page.fill("#efDepth", "10");
+  await page.click("#efGo");
+  await idle();
+  // four tapped holes now (the original, two pattern copies, the mirror): each 2 mm deeper
+  check("deeper tapped holes, patterned and mirrored copies too", near(v5 - (await vol()), 4 * Math.PI * 1.65 ** 2 * 2, 0.05), `${v5} -> ${await vol()}`);
+  await page.click("#tree li.feat[data-id=pattern1] .fid");
+  await page.waitForSelector("#details .editbtn");
+  await page.click("#details .editbtn");
+  await page.waitForSelector("#efGo");
+  await page.fill("#efN", "2");
+  const v6 = await vol();
+  await page.click("#efGo");
+  await idle();
+  check("pattern count 3 → 2 via Edit", near((await vol()) - v6, Math.PI * 1.65 ** 2 * 10 + Math.PI * 1.65 ** 2 * (1.65 / Math.tan((59 * Math.PI) / 180)) / 3, 0.05), `${v6} -> ${await vol()}`);
+  await page.click("#tree li.feat[data-id=block_inches1] .fid");
+  const impEdit = await page.waitForFunction(() => document.querySelector("#details .editbtn")?.textContent.includes("Edit import"), null, { timeout: 10000 }).then(() => true, () => false);
+  check("an import's settings are editable too", impEdit);
+
   // ── measure ──
   await page.click("#measureBtn");
   check("measure mode on", await page.evaluate(() => window.vibecadView.measuring()));

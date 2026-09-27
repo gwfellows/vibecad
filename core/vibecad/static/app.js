@@ -183,7 +183,6 @@ function renderTree(before) {
     li.onclick = (ev) => { if (ev.detail > 1) return; select(f.id === selected ? null : f.id); };
     if (f.type === "fillet" || f.type === "chamfer") {  // double-click: change which edges it rounds
       li.title = "Double-click to change which edges it acts on";
-      li.ondblclick = () => { if (!selected || selected !== f.id) select(f.id); if (i < rollIndex() || S.rollback == null) startEdgeEdit(f.id); };
     }
     const caret = li.querySelector(".caret");
     if (rows.length) caret.onclick = (ev) => {
@@ -204,8 +203,40 @@ function renderTree(before) {
     }
   });
   if (rb >= n) ol.appendChild(rollbar());
+  ol.querySelector("li.feat.selected")?.scrollIntoView({ block: "nearest" });  // picked in the view: show it in the tree
 }
 
+// the splitter between the tree and the parameters / details: drag to resize, remembered per browser
+(function splitter() {
+  const sp = $("#splitter"), left = $("#left");
+  try { const h = localStorage.getItem("vibecad.treeH"); if (h) left.style.setProperty("--tree-h", h); } catch {}
+  sp.onpointerdown = (ev) => {
+    ev.preventDefault();
+    sp.setPointerCapture(ev.pointerId);
+    sp.classList.add("dragging");
+    const top = $("#treePane").getBoundingClientRect().top, total = left.getBoundingClientRect().bottom - top;
+    sp.onpointermove = (mv) => left.style.setProperty("--tree-h", `${Math.max(12, Math.min(85, ((mv.clientY - top) / total) * 100)).toFixed(1)}%`);
+    sp.onpointerup = () => {
+      sp.onpointermove = sp.onpointerup = null;
+      sp.classList.remove("dragging");
+      try { localStorage.setItem("vibecad.treeH", left.style.getPropertyValue("--tree-h")); } catch {}
+    };
+  };
+})();
+
+// double-click a feature to edit its settings (on the list: the first click re-renders the row). Fillets and
+// chamfers have their own double-click: picking their edges
+$("#tree").addEventListener("dblclick", (ev) => {
+  const li = ev.target.closest("li.feat"), f = li && S?.features.find((x) => x.id === li.dataset.id);
+  if (!f || !EDITABLE.includes(f.type)) return;
+  ev.preventDefault();
+  if (selected !== f.id) select(f.id);
+  if (f.type === "fillet" || f.type === "chamfer") {  // double-click: change which edges it acts on
+    if (S.features.indexOf(f) < rollIndex() || S.rollback == null) startEdgeEdit(f.id);
+    return;
+  }
+  editFeature(f.id, $(`#tree li.feat[data-id="${f.id}"]`) || li);
+});
 function rollbar() {
   const bar = document.createElement("li");
   bar.className = "rollbar";
@@ -283,13 +314,14 @@ async function renderDetails() {
       <button data-a="up" title="Move up the tree" ${i === 0 ? "disabled" : ""}>↑</button>
       <button data-a="down" title="Move down the tree" ${i === S.features.length - 1 ? "disabled" : ""}>↓</button>
       <span class="grow"></span><button data-a="delete" class="danger" title="Delete this feature (undo brings it back)">Delete</button></div>
+    ${EDITABLE.includes(f.type) ? `<button class="editbtn" data-a="edit" title="Change this ${f.type.replace("_", " ")}'s settings (or double-click it in the tree)">Edit ${esc(f.type.replace("_", " "))}…</button>` : ""}
     <div class="intent small" title="Click to edit: one line on why this feature exists">${esc(f.intent || "No intent written. Click to add one.")}</div>
     ${f.type === "fillet" || f.type === "chamfer" ? `<div class="edgelist"><div class="row"><b>Edges</b><span class="grow"></span>
       <button data-a="edges" title="Show the part just before this ${f.type} and click edges to add or remove them">Edit edges…</button></div>
       ${(json.edges || []).map((r) => `<span class="e" title="${esc(JSON.stringify(r))}">${esc(refText(r))}</span>`).join("")}</div>` : ""}
-    <textarea spellcheck="false"></textarea>
-    <div class="row"><button id="applyFeat">Apply edit</button><span class="grow"></span>
-    <button id="askAbout" title="Ask the agent about this feature">Ask agent</button></div>`;
+    <details class="json"><summary>JSON</summary><textarea spellcheck="false"></textarea>
+    <div class="row"><button id="applyFeat">Apply edit</button></div></details>
+    <div class="row"><span class="grow"></span><button id="askAbout" title="Ask the agent about this feature">Ask agent</button></div>`;
   d.querySelector("textarea").value = JSON.stringify(json, null, 1);
   const act = {
     rename: async () => {
@@ -314,8 +346,9 @@ async function renderDetails() {
       if (await edit([{ op: "remove_feature", id: f.id }], `delete ${f.id}`)) select(null);
     },
     edges: () => startEdgeEdit(f.id),
+    edit: () => editFeature(f.id, d.querySelector(".editbtn")),
   };
-  d.querySelectorAll(".factions [data-a], .edgelist [data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
+  d.querySelectorAll(".factions [data-a], .edgelist [data-a], .editbtn[data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
   const intent = d.querySelector(".intent");
   intent.onclick = () => {
     const inp = Object.assign(document.createElement("input"), { value: f.intent || "", placeholder: "why this feature exists", className: "intent-edit" });
@@ -1467,6 +1500,99 @@ $("#sectionBtn").onclick = () => {
   }
   applySection();
 };
+
+// ── editing a feature's settings in the form that made it ──
+const EDITABLE = ["extrude", "revolve", "hole", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
+const val = (v) => (v == null ? "" : esc(String(v)));
+async function editFeature(fid, anchor) {
+  let j;
+  try { j = await api(`/api/feature/${encodeURIComponent(fid)}`); } catch { return; }
+  const m = $("#featMenu"), opt = (list, cur) => list.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(t ?? v)}</option>`).join("");
+  const modes = (cur, extra = []) => `<div class="row"><label>mode</label><select id="efMode">${opt([["add"], ["cut"], ["new"], ["intersect"], ...extra], cur)}</select></div>`;
+  let body = "", read;
+  if (j.type === "extrude") {
+    body = `<div class="row"><label>distance</label><input id="efDist" value="${val(j.distance)}"></div>
+      <div class="row"><label>direction</label><select id="efDir">${opt([["normal"], ["reverse"], ["symmetric"]], j.direction || "normal")}</select></div>
+      <div class="row"><label>through all</label><input id="efThru" type="checkbox" style="flex:0" ${j.extent === "through_all" ? "checked" : ""}></div>${modes(j.mode || "add")}`;
+    read = () => ({ distance: numOrExpr($("#efDist").value || "0"), direction: $("#efDir").value, extent: $("#efThru").checked ? "through_all" : "blind", mode: $("#efMode").value });
+  } else if (j.type === "revolve") {
+    body = `<div class="row"><label>axis</label><input id="efAxis" value="${val(j.axis)}"></div>
+      <div class="row"><label>angle</label><input id="efAng" value="${val(j.angle ?? 360)}"></div>${modes(j.mode || "add")}`;
+    read = () => ({ axis: $("#efAxis").value.trim(), angle: numOrExpr($("#efAng").value), mode: $("#efMode").value });
+  } else if (j.type === "hole") {
+    body = `<div class="row"><label>type</label><select id="efKind">${opt([["simple", "Simple"], ["counterbore", "Counterbore"], ["countersink", "Countersink"]], j.kind || "simple")}</select></div>
+      <div class="row"><label>diameter</label><input id="efD" value="${val(j.diameter)}"></div>
+      <div class="row" data-k="counterbore"><label>counterbore</label><input id="efCbD" placeholder="⌀" value="${val(j.cbore_diameter)}"><input id="efCbH" placeholder="depth" value="${val(j.cbore_depth)}"></div>
+      <div class="row" data-k="countersink"><label>countersink</label><input id="efCsD" placeholder="⌀" value="${val(j.csk_diameter)}"><input id="efCsA" placeholder="angle" value="${val(j.csk_angle ?? 90)}"></div>
+      <div class="row"><label>depth</label><select id="efExt">${opt([["through_all", "through all"], ["blind", "blind"]], j.extent || "through_all")}</select><input id="efDepth" value="${val(j.depth ?? 10)}"></div>
+      <div class="row"><label>thread</label><input id="efThread" value="${val(j.thread)}" placeholder="e.g. M4x0.7 (tapped)"></div>`;
+    read = () => {
+      const k = $("#efKind").value, out = { kind: k, diameter: numOrExpr($("#efD").value), extent: $("#efExt").value, thread: $("#efThread").value.trim() || null };
+      out.depth = out.extent === "blind" ? numOrExpr($("#efDepth").value) : null;
+      Object.assign(out, k === "counterbore" ? { cbore_diameter: numOrExpr($("#efCbD").value), cbore_depth: numOrExpr($("#efCbH").value) } : { cbore_diameter: null, cbore_depth: null });
+      Object.assign(out, k === "countersink" ? { csk_diameter: numOrExpr($("#efCsD").value), csk_angle: numOrExpr($("#efCsA").value) } : { csk_diameter: null });
+      return out;
+    };
+  } else if (j.type === "fillet" || j.type === "chamfer") {
+    const key = j.type === "fillet" ? "radius" : "distance";
+    body = `<div class="row"><label>${key}</label><input id="efSize" value="${val(j[key])}"></div><div class="muted">${(j.edges || []).length} edge reference(s): change them with Edit edges…</div>`;
+    read = () => ({ [key]: numOrExpr($("#efSize").value) });
+  } else if (j.type === "shell") {
+    body = `<div class="row"><label>wall</label><input id="efT" value="${val(j.thickness)}"></div><div class="muted">Open faces: ${(j.remove_faces || []).map((r) => esc(faceTxt(r))).join(", ") || "none"}</div>`;
+    read = () => ({ thickness: numOrExpr($("#efT").value) });
+  } else if (j.type === "linear_pattern" || j.type === "circular_pattern") {
+    const ids = [...new Set([...replayable(), ...j.features])];
+    const checks = `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.features.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>`;
+    if (j.type === "linear_pattern") {
+      const dir = Array.isArray(j.direction) ? j.direction.join(", ") : j.direction;
+      body = `${checks}<div class="row"><label>direction</label><input id="efDir" value="${esc(dir)}" title="X, Y, Z, or x, y, z"></div>
+        <div class="row"><label>spacing</label><input id="efSp" value="${val(j.spacing)}"></div><div class="row"><label>count</label><input id="efN" value="${val(j.count)}"></div>`;
+      read = () => {
+        const d = $("#efDir").value.trim(), v = d.includes(",") ? d.split(",").map((x) => numOrExpr(x)) : d;
+        return { features: pickedIds(m), direction: v, spacing: numOrExpr($("#efSp").value), count: numOrExpr($("#efN").value) };
+      };
+    } else {
+      body = `${checks}<div class="row"><label>axis</label><input id="efAx" value="${esc(Array.isArray(j.axis) ? j.axis.join(", ") : j.axis ?? "Z")}"></div>
+        <div class="row"><label>through</label>${(j.origin || [0, 0, 0]).map((v, k) => `<input id="efO${k}" value="${val(v)}">`).join("")}</div>
+        <div class="row"><label>count</label><input id="efN" value="${val(j.count)}"></div><div class="row"><label>angle</label><input id="efAng" value="${val(j.angle ?? 360)}"></div>`;
+      read = () => {
+        const a = $("#efAx").value.trim();
+        return { features: pickedIds(m), axis: a.includes(",") ? a.split(",").map((x) => numOrExpr(x)) : a, origin: [0, 1, 2].map((k) => numOrExpr($(`#efO${k}`).value)),
+          count: numOrExpr($("#efN").value), angle: numOrExpr($("#efAng").value) };
+      };
+    }
+  } else if (j.type === "mirror") {
+    const ids = [...new Set([...replayable(), ...j.features])], dat = j.plane.datum, off = j.plane.offset ?? 0;
+    const at = dat !== "XZ" ? off : typeof off === "number" ? -off : `-(${off})`;
+    body = `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.features.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>
+      <div class="row"><label>plane</label><select id="efPl">${opt([["YZ", "YZ (flip X)"], ["XZ", "XZ (flip Y)"], ["XY", "XY (flip Z)"]], dat)}</select></div>
+      <div class="row"><label>at</label><input id="efAt" value="${val(at)}" title="the plane's position along its axis, in world coordinates"></div>`;
+    read = () => {
+      const d = $("#efPl").value, a = numOrExpr($("#efAt").value || "0"), o = d !== "XZ" ? a : typeof a === "number" ? -a : `-(${a})`;
+      return { features: pickedIds(m), plane: o === 0 ? { datum: d } : { datum: d, offset: o } };
+    };
+  } else if (j.type === "import") {
+    const sc = j.scale ?? 1, unit = Object.entries(UNITS).find(([, k]) => k === sc)?.[0];
+    body = `<div class="muted">${esc(j.file)}</div>${modes(j.mode || "new", [["reference", "reference"]])}
+      <div class="row"><label>scale</label><input id="efSc" value="${val(sc)}" title="${unit ? `file in ${unit}` : ""}"></div>
+      <div class="row"><label>rotate °</label>${(j.rotate || [0, 0, 0]).map((v, k) => `<input id="efR${k}" value="${val(v)}">`).join("")}</div>
+      <div class="row"><label>move</label>${(j.translate || [0, 0, 0]).map((v, k) => `<input id="efT${k}" value="${val(v)}">`).join("")}</div>`;
+    read = () => ({ mode: $("#efMode").value, scale: numOrExpr($("#efSc").value), rotate: [0, 1, 2].map((k) => numOrExpr($(`#efR${k}`).value)),
+      translate: [0, 1, 2].map((k) => numOrExpr($(`#efT${k}`).value)) });
+  } else return;
+  m.innerHTML = `<div class="ttl">Edit ${esc(j.id)} <span class="muted">(${esc(j.type.replace("_", " "))})</span></div>${body}<button class="go" id="efGo">Apply</button>`;
+  m.classList.add("wide");
+  popup(m, anchor || $("#center"));
+  const kind = () => m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== $("#efKind")?.value));
+  if ($("#efKind")) { $("#efKind").onchange = kind; kind(); }
+  if ($("#efExt")) { const t = () => ($("#efDepth").hidden = $("#efExt").value !== "blind"); $("#efExt").onchange = t; t(); }
+  $("#efGo").onclick = async () => {
+    const want = read(), set = {};
+    for (const [k, v] of Object.entries(want)) if (JSON.stringify(v ?? null) !== JSON.stringify(j[k] ?? null)) set[k] = v;
+    m.hidden = true;
+    if (Object.keys(set).length) await edit([{ op: "update_feature", id: j.id, set }], `edit ${j.id}`);
+  };
+}
 
 // ── import a CAD file: upload it next to the part, then choose how it joins the model ──
 const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4 };
