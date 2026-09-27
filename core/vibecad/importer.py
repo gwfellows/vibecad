@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from OCP.BRep import BRep_Builder
+from OCP.BRep import BRep_Builder, BRep_Tool
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid, BRepBuilderAPI_Sewing
 from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
 from OCP.TopAbs import TopAbs_SHELL
@@ -41,7 +41,7 @@ def load(path: Path, as_solid: bool) -> tuple[TopoDS_Shape, dict]:
     kind = SUFFIXES.get(path.suffix.lower())
     if kind is None:
         raise ImportError_(f"can't import {path.suffix!r} files; use STEP (.step/.stp), IGES, BREP or STL")
-    key = (str(path.resolve()), file_stamp(path), as_solid if kind == "stl" else None)
+    key = (str(path.resolve()), file_stamp(path), as_solid)  # a solid may be sewn from the surfaces: cached apart
     if key in _cache:
         return _cache[key]
     info: dict = {"format": kind, "mesh": False}
@@ -65,7 +65,42 @@ def load(path: Path, as_solid: bool) -> tuple[TopoDS_Shape, dict]:
         shape, info = _load_stl(path, as_solid)
     if shape is None or shape.IsNull() or not list_faces(shape):
         raise ImportError_(f"{path.name} contains no surfaces")
+    if as_solid and kind != "stl":
+        shape, info = _solidify(shape, info)
     _cache[key] = (shape, info)
+    return shape, info
+
+
+def _solidify(shape: TopoDS_Shape, info: dict) -> tuple[TopoDS_Shape, dict]:
+    """Surfaces with no solid (IGES files usually, some STEP exports) sewn into solids, where they close. A shape
+    that already has solids is left as it is."""
+    import build123d as bd
+
+    sh = bd.Shape.cast(shape)
+    if sh.solids():
+        return shape, info
+    diag = sh.bounding_box().diagonal or 1.0
+    for tol in (1e-6 * diag, 1e-4 * diag, 1e-3 * diag):  # tightest first: a loose tolerance can merge real detail
+        sew = BRepBuilderAPI_Sewing(tol)
+        sew.Add(shape)
+        sew.Perform()
+        closed = [x for x in explore(sew.SewedShape(), TopAbs_SHELL) if BRep_Tool.IsClosed_s(x)]
+        if not closed:
+            continue
+        from OCP.BRepLib import BRepLib
+        solids = []
+        for x in closed:
+            mk = BRepBuilderAPI_MakeSolid(TopoDS.Shell(x))
+            so = mk.Solid()
+            BRepLib.OrientClosedSolid_s(so)
+            solids.append(so)
+        from OCP.TopoDS import TopoDS_Compound
+        comp = TopoDS_Compound()
+        b = BRep_Builder()
+        b.MakeCompound(comp)
+        for so in solids:
+            b.Add(comp, so)
+        return (solids[0] if len(solids) == 1 else comp), {**info, "sewn": True, "sew_tolerance": tol}
     return shape, info
 
 

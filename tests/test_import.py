@@ -187,3 +187,32 @@ def test_session_regen_resolves_paths_next_to_the_part(tmp_path):
     part = tmp_path / "parts" / "p.vcad.json"
     part.write_text(json.dumps({"name": "p", "features": [{"id": "c", "type": "import", "file": "imports/c.step"}]}))
     assert Session(part).result.part.volume == pytest.approx(125)
+
+
+def test_iges_surfaces_are_sewn_into_a_solid_for_solid_modes(tmp_path):
+    from OCP.IGESControl import IGESControl_Writer
+
+    box = bd.Box(10, 20, 30)
+    w = IGESControl_Writer("MM", 0)  # mode 0: faces only (no BRep solid entity), as many IGES exports are
+    for f in box.faces():
+        w.AddShape(f.wrapped)
+    w.ComputeModel()
+    assert w.Write(str(tmp_path / "faces.igs"))
+    res = _run(tmp_path, [{"id": "b", "type": "import", "file": "faces.igs"}])
+    assert res.ok, res.features[0].message
+    assert res.part.volume == pytest.approx(6000, rel=1e-6)
+    ref = _run(tmp_path, [{"id": "b", "type": "import", "file": "faces.igs", "mode": "reference"}])
+    assert ref.ok and ref.part is None and len(ref.refs["b"].faces()) == 6
+
+
+def test_open_surfaces_can_only_be_a_reference(tmp_path):
+    from OCP.IGESControl import IGESControl_Writer
+
+    w = IGESControl_Writer("MM", 0)
+    for f in bd.Box(10, 20, 30).faces()[:5]:  # a box missing its lid
+        w.AddShape(f.wrapped)
+    w.ComputeModel()
+    w.Write(str(tmp_path / "open.igs"))
+    res = _run(tmp_path, [{"id": "b", "type": "import", "file": "open.igs"}])
+    assert not res.ok and "no closed solid" in res.features[0].message
+    assert _run(tmp_path, [{"id": "b", "type": "import", "file": "open.igs", "mode": "reference"}]).ok

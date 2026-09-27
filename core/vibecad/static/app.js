@@ -1597,7 +1597,7 @@ async function editFeature(fid, anchor) {
 }
 
 // ── import a CAD file: upload it next to the part, then choose how it joins the model ──
-const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4 };
+const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, "µm": 0.001 };
 $("#importBtn").onclick = () => {
   if (!S) return note("Open or create a part first.", "err");
   $("#importFile").value = "";
@@ -1627,20 +1627,23 @@ function importForm(info) {
   const sz = info.bbox_size.map((v) => fmt(v, 2)).join(" × ");
   const stem = (info.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "imported").slice(0, 28);
   m.innerHTML = `<div class="ttl">Import ${esc(info.name)}</div>
-    <div class="muted">${esc(info.format.toUpperCase())} · ${info.mesh ? `mesh, ${info.triangles} triangles` : `${info.faces} faces, ${info.solids} solid${info.solids === 1 ? "" : "s"}`} · ${sz} (file units)</div>
+    <div class="muted">${esc(info.format.toUpperCase())} · ${info.mesh ? `mesh, ${info.triangles} triangles` : `${info.faces} faces`} · ${info.solids ? `${info.solids} solid${info.solids === 1 ? "" : "s"}${info.sewn ? " (sewn from its surfaces)" : ""}` : "surfaces only: import it as a reference"} · ${sz} (file units)</div>
     <div class="row"><label>name</label><input id="imId" value="${esc(nextId(stem))}"></div>
     <div class="row"><label>as</label><select id="imMode">${modes.map(([v, t]) => `<option value="${v}" ${v === def ? "selected" : ""} ${!solid && v !== "reference" ? "disabled" : ""}>${esc(t)}</option>`).join("")}</select></div>
-    <div class="row"><label>units</label><select id="imUnits">${Object.keys(UNITS).map((u) => `<option ${u === info.units_hint ? "selected" : ""}>${u}</option>`).join("")}</select></div>
+    <div class="row"><label>units</label><select id="imUnits">${Object.keys(UNITS).map((u) => `<option ${u === info.units_hint ? "selected" : ""}>${u}</option>`).join("")}</select>
+      <input id="imScale" title="scale factor to mm (type your own)" value="${UNITS[info.units_hint] ?? 1}"></div>
     <div class="row"><label>place</label><select id="imPlace"><option value="keep">where the file puts it</option><option value="origin">centred on the origin, on XY</option></select></div>
     <div class="row"><label>rotate °</label><input id="imRx" value="0" title="about X"><input id="imRy" value="0" title="about Y"><input id="imRz" value="0" title="about Z"></div>
     <div class="muted" id="imSize"></div>
     <button class="go" id="imGo">Import</button>`;
   popup(m, $("#importBtn"));
-  const upd = () => { const k = UNITS[$("#imUnits").value]; $("#imSize").textContent = `Size in the part: ${info.bbox_size.map((v) => fmt(v * k, 2)).join(" × ")} mm`; };
-  $("#imUnits").onchange = upd;
+  const scale = () => { const k = parseFloat($("#imScale").value); return k > 0 ? k : 1; };
+  const upd = () => { $("#imSize").textContent = `Size in the part: ${info.bbox_size.map((v) => fmt(v * scale(), 2)).join(" × ")} mm`; };
+  $("#imUnits").onchange = () => { $("#imScale").value = UNITS[$("#imUnits").value]; upd(); };
+  $("#imScale").oninput = upd;
   upd();
   $("#imGo").onclick = async () => {
-    const id = $("#imId").value.trim(), mode = $("#imMode").value, k = UNITS[$("#imUnits").value];
+    const id = $("#imId").value.trim(), mode = $("#imMode").value, k = scale();
     if (!/^[A-Za-z_]\w*$/.test(id)) return note("Import: the name must be letters, digits and underscores", "err");
     const f = { id, type: "import", file: info.file, mode, intent: `${info.name}, imported ${{ reference: "as a reference body (not part of the solid)", new: hasBody ? "as a new body" : "as the base solid", add: "and added", cut: "and cut away", intersect: "and intersected" }[mode]}` };
     if (k !== 1) f.scale = k;

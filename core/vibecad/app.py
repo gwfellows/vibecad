@@ -272,19 +272,21 @@ class App:
         sh = bd.Shape.cast(shape)
         bb = sh.bounding_box()
         solids = sh.solids() if not info.get("mesh") else []
-        if info.get("mesh") and info.get("triangles", 0) <= MAX_STL_SOLID_TRIANGLES:  # can it be sewn into a solid?
-            try:
-                solids = bd.Shape.cast(load(p, as_solid=True)[0]).solids()
+        sewn = False
+        if not solids and (not info.get("mesh") or info.get("triangles", 0) <= MAX_STL_SOLID_TRIANGLES):
+            try:  # surfaces only (IGES, a mesh): can they be sewn into a solid?
+                sh2, info2 = load(p, as_solid=True)
+                solids, sewn = bd.Shape.cast(sh2).solids(), bool(info2.get("sewn")) or info.get("mesh", False)
             except ImportError_:
                 solids = []
         out = {"file": str(p.relative_to(Path(self.ws.active).parent)), "name": Path(name).name, "format": info["format"],
                "mesh": info.get("mesh", False), "triangles": info.get("triangles"), "faces": len(sh.faces()),
-               "solids": len(solids), "volume": round(sum(x.volume for x in solids), 3) if solids else None,
+               "solids": len(solids), "volume": round(sum(x.volume for x in solids), 3) if solids else None, "sewn": sewn,
                "bbox_min": [round(v, 3) for v in (bb.min.X, bb.min.Y, bb.min.Z)],
                "bbox_size": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)]}
         # a model a few mm across is usually in inches (or metres, if tiny); the form offers the scale
         big = max(out["bbox_size"]) if out["bbox_size"] else 0
-        out["units_hint"] = "m" if 0 < big < 1.0 else "in" if big < 12 else "mm"
+        out["units_hint"] = "m" if 0 < big < 1.0 else "in" if big < 12 else "µm" if big > 5000 else "mm"
         return out
 
     def face_point(self, ref: dict, point: list[float]) -> dict:
