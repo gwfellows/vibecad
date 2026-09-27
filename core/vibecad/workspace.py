@@ -179,7 +179,7 @@ class Workspace:
             key = str(self._path(p))
             if key not in self.sessions and not Path(key).exists():
                 raise ToolError(f"no part file {p!r} (paths are relative to {self.root})")
-            other = self.sessions[key].result.part if key in self.sessions else Regenerator().run(load(key)).part
+            other = self.sessions[key].result.part if key in self.sessions else Regenerator(Path(key).parent).run(load(key)).part
             if other is None:
                 out[p] = "no solid"
                 continue

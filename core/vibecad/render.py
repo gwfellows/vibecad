@@ -144,6 +144,11 @@ def render_sketch(solved, frame, path: Path, constraints=(), env=None) -> None:
     ax.axvline(0, color="#ccc", lw=0.6, zorder=0)
     ax.set_aspect("equal")
     ax.margins(0.12)
+    # points in a row (a hole sketch) span nothing across: give both axes a real range, or matplotlib can't lay out
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    half = max(x1 - x0, y1 - y0, 10) / 2
+    ax.set_xlim((x0 + x1) / 2 - half, (x0 + x1) / 2 + half)
+    ax.set_ylim((y0 + y1) / 2 - half, (y0 + y1) / 2 + half)
     ax.tick_params(labelsize=7)
     dims = [f"{c.name or c.type}: {c.type}({', '.join(c.on)}) = {c.value}" for c in constraints if c.value is not None]
     if dims:

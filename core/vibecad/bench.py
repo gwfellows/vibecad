@@ -26,7 +26,7 @@ def part_volumes(workdir: Path) -> dict[str, float | None]:
     out = {}
     for p in sorted(workdir.rglob("*.vcad.json")):
         try:
-            part = Regenerator().run(load(p)).part
+            part = Regenerator(Path(p).parent).run(load(p)).part
             out[p.name] = part.volume if part is not None else None
         except Exception:
             out[p.name] = None
@@ -43,7 +43,7 @@ def check_parts(workdir: Path, task: dict, prev: dict[str, float | None] | None 
         out["problems"].append("no part files")
     for p in parts:
         try:
-            res = Regenerator().run(load(p))
+            res = Regenerator(Path(p).parent).run(load(p))
         except Exception as e:
             out["problems"].append(f"{p.name}: does not load: {e}")
             continue
@@ -75,7 +75,7 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
     target = workdir / chk["file"] if "file" in chk else (parts[0] if parts else None)
     if target is None or not target.exists():
         return f"check {chk['kind']}: part file {chk.get('file')} missing"
-    res = Regenerator().run(load(target))
+    res = Regenerator(Path(target).parent).run(load(target))
     part = res.part
     if part is None:
         return f"check {chk['kind']}: {target.name} has no solid"
@@ -93,7 +93,7 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
             if not base:
                 return f"check volume_change: no previous volume for {target.name}"
         else:
-            base = Regenerator().run(load(ROOT / chk["from"])).part.volume
+            base = Regenerator((ROOT / chk["from"]).parent).run(load(ROOT / chk["from"])).part.volume
         r = part.volume / base - 1
         ok = chk.get("min", -1e9) <= r <= chk.get("max", 1e9)
         return None if ok else f"volume change {r:+.1%} outside [{chk.get('min')}, {chk.get('max')}]"

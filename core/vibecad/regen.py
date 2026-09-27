@@ -54,6 +54,7 @@ class RegenResult:
     features: list[FeatureResult]
     sketches: dict[str, tuple[SolvedSketch, Frame]]
     seconds: float
+    refs: dict[str, Body] = field(default_factory=dict)  # reference imports, by feature id
     _summary: dict | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -93,8 +94,9 @@ class RegenResult:
 
 
 class Regenerator:
-    def __init__(self) -> None:
-        self._cache: dict[str, tuple[Body, dict, dict, FeatureResult]] = {}
+    def __init__(self, base_dir: str | Path | None = None) -> None:
+        self._cache: dict[str, tuple[Body, dict, dict, dict, FeatureResult]] = {}
+        self.base_dir = Path(base_dir) if base_dir is not None else Path.cwd()  # import paths are relative to it
 
     def run(self, doc: S.Document, overrides: dict[str, float | str] | None = None) -> RegenResult:
         t0 = time.perf_counter()
@@ -105,7 +107,7 @@ class Regenerator:
             msg = f"params do not evaluate: {e}"
             return RegenResult(doc, {}, Body(), [FeatureResult(f.id, f.type, "error", message=msg) for f in doc.features],
                                {}, time.perf_counter() - t0)
-        ctx = Ctx(env=env)
+        ctx = Ctx(env=env, base_dir=self.base_dir)
         results: list[FeatureResult] = []
         debug_sketches: dict[str, tuple[SolvedSketch, Frame]] = {}
         key = hashlib.sha256(b"vibecad-0.1").hexdigest()
@@ -117,17 +119,17 @@ class Regenerator:
             dump = feat.model_dump(mode="json")
             used = sorted(set().union(*[names_in(s) for s in _strings(dump)]) & set(env))
             key = hashlib.sha256(
-                (key + json.dumps(dump, sort_keys=True) + json.dumps({k: env[k] for k in used})).encode()
+                (key + json.dumps(dump, sort_keys=True) + json.dumps({k: env[k] for k in used}) + _file_key(feat, self.base_dir)).encode()
             ).hexdigest()
             if key in self._cache:
-                body, sketches, tools, res = self._cache[key]
-                ctx.body, ctx.sketches, ctx.tools = body, dict(sketches), dict(tools)
+                body, sketches, tools, refs, res = self._cache[key]
+                ctx.body, ctx.sketches, ctx.tools, ctx.refs = body, dict(sketches), dict(tools), dict(refs)
                 r = copy.copy(res)
                 r.cached = True
                 results.append(r)
                 debug_sketches.update(sketches)
                 continue
-            before = (ctx.body, dict(ctx.sketches), dict(ctx.tools))
+            before = (ctx.body, dict(ctx.sketches), dict(ctx.tools), dict(ctx.refs))
             if PROGRESS:
                 _progress(doc.name, i, len(doc.features), feat.id)
                 rebuilt = True
@@ -148,13 +150,22 @@ class Regenerator:
             if res.status == "error":
                 if isinstance(feat, S.Sketch) and feat.id in ctx.sketches:
                     res.info = {**res.info, "dof": ctx.sketches[feat.id][0].report.dof}
-                ctx.body, ctx.sketches, ctx.tools = before
+                ctx.body, ctx.sketches, ctx.tools, ctx.refs = before
             else:
-                self._cache[key] = (ctx.body, dict(ctx.sketches), dict(ctx.tools), res)
+                self._cache[key] = (ctx.body, dict(ctx.sketches), dict(ctx.tools), dict(ctx.refs), res)
             results.append(res)
         if rebuilt:
             _progress(doc.name, len(doc.features), len(doc.features), None)
-        return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0)
+        return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0, refs=ctx.refs)
+
+
+def _file_key(feat, base_dir: Path) -> str:
+    """An import rebuilds when its file changes on disk."""
+    if feat.type != "import":
+        return ""
+    from .importer import file_stamp
+    p = Path(feat.file)
+    return file_stamp(p if p.is_absolute() else base_dir / p)
 
 
 def _collapse(warnings: list[str]) -> list[str]:

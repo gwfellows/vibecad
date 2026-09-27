@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import build123d as bd
 from OCP.BRep import BRep_Builder
@@ -43,9 +44,30 @@ class Ctx:
     sketches: dict[str, tuple[SolvedSketch, Frame]] = field(default_factory=dict)
     tools: dict[str, Tool] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    refs: dict[str, Body] = field(default_factory=dict)  # reference imports: shown and referenced, not part of the solid
+    base_dir: Path = field(default_factory=Path.cwd)  # the part file's folder: import paths are relative to it
 
     def num(self, v) -> float:
         return evaluate(v, self.env)
+
+
+def faces_of(ctx: Ctx, ref: S.FaceRef) -> list:
+    """resolve_faces on the solid, or on a reference import when the ref names one."""
+    if ref.feature in ctx.refs:
+        return resolve_faces(ctx.refs[ref.feature], ref)
+    if ctx.body.shape is None:
+        raise FeatureError("a face reference needs an existing body")
+    return resolve_faces(ctx.body, ref)
+
+
+def edges_of(ctx: Ctx, ref: S.EdgeRef) -> list:
+    feats = {r.feature for r in (ref.between or [ref.of]) if r is not None}
+    ref_bodies = [ctx.refs[f] for f in feats if f in ctx.refs]
+    if ref_bodies:
+        if len(feats) > 1:
+            raise FeatureError("an edge ref can't mix a reference import's faces with the part's faces")
+        return resolve_edges(ref_bodies[0], ref)
+    return resolve_edges(ctx.body, ref)
 
 
 def _compound(shapes) -> TopoDS_Compound:
@@ -69,9 +91,7 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
     if isinstance(f.plane, S.DatumPlane):
         frame = datum_frame(f.plane.datum, ctx.num(f.plane.offset))
     else:
-        if ctx.body.shape is None:
-            raise FeatureError("sketch on a face needs an existing body")
-        faces = resolve_faces(ctx.body, f.plane.face)
+        faces = faces_of(ctx, f.plane.face)
         frames = [face_frame(bd.Face(TopoDS.Face(x)), ctx.num(f.plane.offset)) for x in faces]
         frame = frames[0]
         for fr in frames[1:]:  # several faces are fine if they lie in one plane (e.g. a top face split by a boss)
@@ -102,7 +122,7 @@ def _resolve_externals(ctx: Ctx, f: S.Sketch, frame: Frame) -> S.Sketch:
     constraints go after the user's, so constraint indices don't change."""
     if not any(isinstance(e, S.External) for e in f.entities):
         return f
-    if ctx.body.shape is None:
+    if ctx.body.shape is None and not ctx.refs:
         raise FeatureError("external geometry needs an existing body to project")
     ents, cons = [], []
     fix = lambda ref, uv: cons.append(S.Constraint(type="fix", on=[ref], at=(uv[0], uv[1])))
@@ -110,7 +130,7 @@ def _resolve_externals(ctx: Ctx, f: S.Sketch, frame: Frame) -> S.Sketch:
         if not isinstance(e, S.External):
             ents.append(e)
             continue
-        edges = resolve_edges(ctx.body, e.edge)
+        edges = edges_of(ctx, e.edge)
         if len(edges) != 1:
             raise FeatureError(f"external {e.id!r}: its edge ref matched {len(edges)} edges; it must name one "
                                "(use `between` two faces, or a `filter`)")
@@ -411,7 +431,7 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
 def _replay(ctx: Ctx, pid: str, features: list[str], transforms: list[gp_Trsf]) -> dict:
     for src in features:
         if src not in ctx.tools:
-            raise FeatureError(f"can only pattern extrude/revolve features that built before this one; {src!r} is not one")
+            raise FeatureError(f"can only pattern extrude, revolve, hole or import features that built before this one; {src!r} is not one")
     for i, trsf in enumerate(transforms, start=1):
         for src in features:
             tool = ctx.tools[src]
@@ -459,8 +479,180 @@ def do_mirror(ctx: Ctx, f: S.Mirror) -> dict:
     return _replay(ctx, f.id, f.features, [t])
 
 
+# ── Hole ───────────────────────────────────────────────────────────
+def hole_points(ctx: Ctx, f: S.Hole) -> list[tuple[str, tuple[float, float]]]:
+    if f.sketch not in ctx.sketches:
+        raise FeatureError(f"hole sketch {f.sketch!r} is missing, later in the tree, or failed to build")
+    solved, _ = ctx.sketches[f.sketch]
+    out = []
+    for e in solved.entities.values():
+        if f.points != "all" and e.id not in f.points:
+            continue
+        if e.type == "point":
+            out.append((e.id, tuple(e.p1)))
+        elif e.type in ("circle", "arc") and not (f.points == "all" and e.construction):  # construction circles
+            out.append((e.id, tuple(e.center)))  # (and projected edges) only when named in `points`
+    if f.points != "all":
+        missing = set(f.points) - {i for i, _ in out}
+        if missing:
+            raise FeatureError(f"hole points {sorted(missing)} are not points, circles or arcs in sketch {f.sketch!r}")
+    if not out:
+        raise FeatureError(f"sketch {f.sketch!r} has no points or circles to put holes at")
+    return out
+
+
+def hole_profile(ctx: Ctx, f: S.Hole, depth: float) -> list[tuple[tuple[float, float], str]]:
+    """The hole's half-section as (r, z) vertices, z = 0 at the sketch plane and negative into the part, each
+    with the role of the face the edge from it to the next vertex sweeps. Closed back along the axis."""
+    r = _positive(ctx.num(f.diameter), "hole diameter") / 2
+    # on a face, start just outside the surface so the cut never leaves a sliver; from a datum plane (which may
+    # lie inside the part) start exactly on it
+    src = ctx.sketches[f.sketch][0].source
+    lead = max(0.05, r * 0.05) if src is not None and isinstance(src.plane, S.FacePlane) else 0.0
+    pts: list[tuple[tuple[float, float], str]] = []
+    if f.kind == "counterbore":
+        R, h = ctx.num(f.cbore_diameter) / 2, ctx.num(f.cbore_depth)
+        if R <= r:
+            raise FeatureError(f"counterbore diameter ({2 * R:g}) must be larger than the hole ({2 * r:g})")
+        if not 0 < h < depth:
+            raise FeatureError(f"counterbore depth must be > 0 and less than the hole depth ({depth:g}), got {h:g}")
+        pts += [((0, lead), "top"), ((R, lead), "cbore_wall"), ((R, -h), "cbore_floor"), ((r, -h), "wall")]
+    elif f.kind == "countersink":
+        R, a = ctx.num(f.csk_diameter) / 2, ctx.num(f.csk_angle)
+        if R <= r:
+            raise FeatureError(f"countersink diameter ({2 * R:g}) must be larger than the hole ({2 * r:g})")
+        if not 0 < a < 180:
+            raise FeatureError(f"countersink angle must be between 0 and 180, got {a:g}")
+        t = math.tan(math.radians(a / 2))
+        h = (R - r) / t
+        if h >= depth:
+            raise FeatureError(f"the countersink ({h:.3g} deep) is deeper than the hole ({depth:g})")
+        pts += [((0, lead), "top"), ((R + lead * t, lead), "csk"), ((r, -h), "wall")]
+    else:
+        pts += [((0, lead), "top"), ((r, lead), "wall")]
+    tip = ctx.num(f.tip_angle) if f.extent == "blind" else 0
+    if tip and not 0 < tip < 180:
+        raise FeatureError(f"tip angle must be between 0 and 180 (0 = flat bottom), got {tip:g}")
+    if tip:
+        pts += [((r, -depth), "tip"), ((0, -depth - r / math.tan(math.radians(tip / 2))), "axis")]
+    else:
+        pts += [((r, -depth), "bottom"), ((0, -depth), "axis")]
+    return pts
+
+
+def do_hole(ctx: Ctx, f: S.Hole) -> dict:
+    if ctx.body.shape is None:
+        raise FeatureError("a hole needs an existing body")
+    solved, frame = ctx.sketches.get(f.sketch, (None, None))
+    where = hole_points(ctx, f)
+    if f.extent == "through_all":
+        bb = bd.Shape.cast(ctx.body.shape).bounding_box()
+        depth = 2 * bb.diagonal + 10
+    else:
+        depth = _positive(ctx.num(f.depth), "hole depth")
+    prof = hole_profile(ctx, f, depth)
+    down = frame.n * (-1 if f.direction == "reverse" else 1)
+    tools, labels = [], []
+    for pid, (u, v) in where:
+        o = frame.to_world(u, v)
+        # the profile lives in the plane through the axis spanned by the sketch x (radius) and the axis (depth)
+        to3 = lambda rz: o + frame.x * rz[0] + down * (-rz[1])
+        poly = bd.Wire.make_polygon([to3(p) for p, _ in prof], close=True)
+        face = bd.Face(poly)
+        rev = BRepPrimAPI_MakeRevol(face.wrapped, gp_Ax1(gp_Pnt(o.X, o.Y, o.Z), gp_Dir(down.X, down.Y, down.Z)), 2 * math.pi)
+        rev.Build()
+        if not rev.IsDone():
+            raise FeatureError(f"hole at {pid} failed to build")
+        edges = list_edges(poly.wrapped)
+        roles = {}
+        for e in edges:  # which profile segment each edge is: match by its midpoint
+            mid = bd.Edge(TopoDS.Edge(e)).position_at(0.5)
+            for k, (p, role) in enumerate(prof):
+                a, b = to3(p), to3(prof[(k + 1) % len(prof)][0])
+                if ((a + b) * 0.5 - mid).length < 1e-6 * max(1.0, depth):
+                    roles[k] = (e, role)
+        mine = []
+        for e, role in roles.values():
+            if role in ("axis", "top"):
+                continue
+            for g in rev.Generated(e):
+                mine.append((g, Label(f.id, role, pid)))
+        # OCCT's revolve reports no history for profile edges perpendicular to the axis (a counterbore floor, a
+        # flat bottom): such a face contains its profile edge, so match the rest by geometry
+        for tf in list_faces(rev.Shape()):
+            if any(tf.IsSame(g) for g, _ in mine):
+                continue
+            F = bd.Face(TopoDS.Face(tf))
+            for e, role in roles.values():
+                if role not in ("axis", "top") and F.distance_to(bd.Edge(TopoDS.Edge(e)).position_at(0.5)) < 1e-6:
+                    mine.append((tf, Label(f.id, role, pid)))
+                    break
+        labels += mine
+        tools.append(rev.Shape())
+    tool = _compound(tools) if len(tools) > 1 else tools[0]
+    ctx.tools[f.id] = Tool(tool, labels, "cut")
+    _combine(ctx, f.id, tool, labels, "cut")
+    return {"holes": len(where), "depth": round(depth, 6) if f.extent == "blind" else "through"}
+
+
+# ── Import ─────────────────────────────────────────────────────────
+def import_transform(ctx: Ctx, f: S.Import) -> gp_Trsf:
+    k = ctx.num(f.scale)
+    if k <= 0:
+        raise FeatureError(f"import scale must be > 0, got {k:g}")
+    t = gp_Trsf()
+    if abs(k - 1) > 1e-12:
+        t.SetScale(gp_Pnt(0, 0, 0), k)
+    for ang, axis in zip(f.rotate, ((1, 0, 0), (0, 1, 0), (0, 0, 1))):
+        a = ctx.num(ang)
+        if a:
+            r = gp_Trsf()
+            r.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(*axis)), math.radians(a))
+            t = r * t
+    d = [ctx.num(v) for v in f.translate]
+    if any(d):
+        m = gp_Trsf()
+        m.SetTranslation(gp_Vec(*d))
+        t = m * t
+    return t
+
+
+def do_import(ctx: Ctx, f: S.Import) -> dict:
+    from .importer import ImportError_, load
+
+    path = Path(f.file) if Path(f.file).is_absolute() else ctx.base_dir / f.file
+    try:
+        shape, info = load(path, as_solid=f.mode != "reference")
+    except ImportError_ as e:
+        raise FeatureError(str(e)) from None
+    tr = BRepBuilderAPI_Transform(shape, import_transform(ctx, f), True)
+    tr.Build()
+    shape = tr.Shape()
+    faces = list_faces(shape)
+    if info.get("mesh"):
+        labels = [(x, Label(f.id, "mesh")) for x in faces]
+    else:
+        labels = [(x, Label(f.id, "face", f"f{i}")) for i, x in enumerate(faces)]
+    bb = bd.Shape.cast(shape).bounding_box()
+    out = {"format": info["format"], "faces": len(faces),
+           "bbox": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)]}
+    if "triangles" in info:
+        out["triangles"] = info["triangles"]
+    if f.mode == "reference":
+        ctx.refs = {**ctx.refs, f.id: Body(shape, labels)}
+        return out
+    solids = bd.Shape.cast(shape).solids()
+    if not solids:
+        raise FeatureError(f"{path.name} has surfaces but no closed solid, so it can't be combined with the part; "
+                           "import it with mode 'reference'")
+    out["volume"] = round(sum(x.volume for x in solids), 3)
+    ctx.tools[f.id] = Tool(shape, labels, f.mode)
+    _combine(ctx, f.id, shape, labels, f.mode)
+    return out
+
+
 BUILDERS = {
     "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
-    "circular_pattern": do_circular_pattern, "mirror": do_mirror,
+    "circular_pattern": do_circular_pattern, "mirror": do_mirror, "import": do_import, "hole": do_hole,
 }

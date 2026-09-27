@@ -70,7 +70,10 @@ def list_faces(shape) -> list[TopoDS_Shape]:
 
 
 def list_edges(shape) -> list[TopoDS_Shape]:
-    return explore(shape, TopAbs_EDGE)
+    """Real edges only: a cone's apex or a sphere's pole is a degenerate edge with no length."""
+    from OCP.BRep import BRep_Tool
+    from OCP.TopoDS import TopoDS
+    return [e for e in explore(shape, TopAbs_EDGE) if not BRep_Tool.Degenerated_s(TopoDS.Edge(e))]
 
 
 def propagate(history, pairs, result, fallback: Label | None) -> list[tuple[TopoDS_Shape, Label]]:

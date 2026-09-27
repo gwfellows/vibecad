@@ -60,8 +60,14 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 | linear_pattern | `features: [extrude/revolve ids]`, `direction: X, Y, Z or [x,y,z]`, `spacing`, `count` |
 | circular_pattern | `features`, `axis`, `origin`, `count`, `angle` (360 = full circle, evenly spaced) |
 | mirror | `features`, `plane: {datum, offset}` |
+| hole | `sketch` (its points, and circle/arc centres, are the hole positions; `points` picks some), `kind: simple / counterbore / countersink`, `diameter`, `extent: through_all` (default) or `blind` with `depth`, `direction: reverse` (default, into the solid from a face sketch) or `normal`, `tip_angle` (blind: 118, 0 = flat), `cbore_diameter` + `cbore_depth`, `csk_diameter` + `csk_angle` (90), `thread` (e.g. `"M3x0.5"`: tapped; `diameter` is the tap drill) |
+| import | `file` (STEP / IGES / BREP / STL, relative to the part file), `mode: new / add / cut / intersect / reference`, `scale` (25.4 for inches), `rotate: [x, y, z]` degrees about the world axes in that order, `translate: [x, y, z]` after rotating |
 
 All features take `id`, optional `name`, `intent` (one line: why it exists), `suppressed`.
+
+Holes: `depth` is to the end of the full diameter; a blind hole's drill point is extra. A construction circle is not a hole position unless it is named in `points`. Patterns and mirrors can repeat holes and (solid) imports.
+
+Imports: `mode: reference` keeps the body out of the part: it is shown ghosted, and its faces and edges can be sketch planes, `external` projections and fit checks (a phone to fit a case around, a motor to mount). An STL is sewn into a solid for the other modes (up to 20,000 triangles; bigger meshes can only be references). The build re-reads the file when it changes on disk.
 
 ## References to faces and edges
 
@@ -73,7 +79,7 @@ EdgeRef: {"between": [FaceRef, FaceRef], "note": "..."}
        | {"of": FaceRef, "filter": {"type": "line", "parallel_to": "Z"}, "note": "..."}
 ```
 
-- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner`; `new` for faces with no better origin.
+- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner`; hole `wall`, `cbore_wall`, `cbore_floor`, `csk`, `tip`, `bottom` (entity = the point's id); import `face` (entity `f0`, `f1`, ... in the file's face order) or `mesh` for an STL reference; `new` for faces with no better origin.
 - `instance`: omitted = the original only; `"*"` = original and all copies; `"<pattern_id>#<n>"` = one copy.
 - `pick`: `largest`, `smallest`, or `nearest` (with `near: [x, y, z]`) when one face is required.
 - EdgeRef `pick: "nearest"` with `near: [x, y, z]` keeps the one edge closest to that point, for two faces that meet along more than one edge.

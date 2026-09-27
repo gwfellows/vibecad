@@ -235,6 +235,47 @@ class CircularPattern(_Feature):
     angle: Num = 360.0  # total span; 360 spaces copies evenly around the full circle
 
 
+class Hole(_Feature):
+    """Drilled holes at a sketch's points (point entities, and circle/arc centres), along the sketch normal.
+    `direction: reverse` (default) drills into the solid from a face sketch. `depth` is to the end of the
+    full diameter; a blind hole also gets a drill-point cone (`tip_angle`, 0 for a flat bottom)."""
+    type: Literal["hole"] = "hole"
+    sketch: str
+    points: Literal["all"] | list[str] = "all"  # entity ids: points, or circles/arcs (their centre)
+    kind: Literal["simple", "counterbore", "countersink"] = "simple"
+    diameter: Num
+    extent: Literal["blind", "through_all"] = "through_all"
+    depth: Num | None = None  # blind holes
+    direction: Literal["reverse", "normal"] = "reverse"
+    tip_angle: Num = 118.0
+    cbore_diameter: Num | None = None
+    cbore_depth: Num | None = None
+    csk_diameter: Num | None = None
+    csk_angle: Num = 90.0
+    thread: str | None = None  # e.g. "M3x0.5": the hole is tapped; `diameter` is the tap drill
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.extent == "blind" and self.depth is None:
+            raise ValueError("a blind hole needs `depth`")
+        if self.kind == "counterbore" and (self.cbore_diameter is None or self.cbore_depth is None):
+            raise ValueError("a counterbore hole needs `cbore_diameter` and `cbore_depth`")
+        if self.kind == "countersink" and self.csk_diameter is None:
+            raise ValueError("a countersink hole needs `csk_diameter`")
+        return self
+
+
+class Import(_Feature):
+    """A solid from a STEP / IGES / BREP / STL file. `mode: reference` keeps it out of the part: shown ghosted,
+    usable for sketch planes, projected edges and fit checks (a mating part, a phone, a motor)."""
+    type: Literal["import"] = "import"
+    file: str  # relative to the part file's folder
+    mode: Union[Mode, Literal["reference"]] = "new"
+    scale: Num = 1.0  # e.g. 25.4 for a file in inches
+    rotate: tuple[Num, Num, Num] = (0.0, 0.0, 0.0)  # degrees about world X, then Y, then Z (about the origin)
+    translate: tuple[Num, Num, Num] = (0.0, 0.0, 0.0)  # applied after rotate
+
+
 class Mirror(_Feature):
     type: Literal["mirror"] = "mirror"
     features: list[str]
@@ -242,7 +283,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror],
+    Union[Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole],
     Field(discriminator="type"),
 ]
 

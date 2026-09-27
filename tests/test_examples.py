@@ -72,6 +72,16 @@ def expected_volume(name, p):
         top = strap_len * strap_wid * p["sheet_t"]
         flange = strap_len * p["flange_h"] * p["sheet_t"] - 2 * pi * (p["bolt_d"] / 2) ** 2 * p["sheet_t"]
         return top + 2 * flange
+    if name == "mounting_plate":
+        t = p["plate_t"]
+        v = p["plate_w"] * p["plate_d"] * t
+        r, R, h = p["m4_clear_d"] / 2, p["m4_cbore_d"] / 2, p["m4_cbore_depth"]
+        v -= 4 * (pi * R**2 * h + pi * r**2 * (t - h))
+        r, R = p["m3_clear_d"] / 2, p["m3_csk_d"] / 2
+        hc = R - r  # 90 degree countersink: depth = radius difference
+        v -= 2 * (pi * hc / 3 * (R**2 + R * r + r**2) + pi * r**2 * (t - hc))
+        r = p["m6_tap_d"] / 2
+        return v - (pi * r**2 * p["m6_depth"] + pi * r**2 * (r / tan(59 * pi / 180)) / 3)
     if name == "hex_standoff":
         a, rb, c, L = p["af"] / 2, p["bore_d"] / 2, p["chamfer"], p["length"]
         hex_area = 6 * a * a * tan(pi / 6)

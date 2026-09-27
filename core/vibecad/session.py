@@ -55,7 +55,7 @@ class Session:
             self.path.write_text(dump_doc(self.doc))
         else:
             self.doc = S.Document.model_validate_json(self.path.read_text())
-        self.regen = Regenerator()
+        self.regen = Regenerator(self.path.parent)
         self.undo_stack: list[tuple[S.Document, str]] = []
         self.redo_stack: list[tuple[S.Document, str]] = []
         self.scope: set[str] | None = None
@@ -92,10 +92,10 @@ class Session:
             self._log({"author": author, "message": message, "rejected": str(e)[:500], "n_ops": len(ops)})
             return {"ok": False, "applied": 0, "error": str(e)}
         before = self.result
+        result = self.regen.run(new_doc)  # before swapping: readers never see a new doc with an old result
         self.undo_stack.append((self.doc, message))
         self.redo_stack.clear()
-        self.doc = new_doc
-        self.result = self.regen.run(self.doc)
+        self.doc, self.result = new_doc, result
         self._absorb_solved()
         self._save()
         self._log({"author": author, "message": message, "ops": ops})
@@ -127,10 +127,11 @@ class Session:
         if not self.undo_stack:
             return {"ok": False, "error": "nothing to undo"}
         before = self.result
-        doc, msg = self.undo_stack.pop()
+        doc, msg = self.undo_stack[-1]
+        result = self.regen.run(doc)
+        self.undo_stack.pop()
         self.redo_stack.append((self.doc, msg))
-        self.doc = doc
-        self.result = self.regen.run(self.doc)
+        self.doc, self.result = doc, result
         self._save()
         self._log({"author": "undo", "message": f"undo: {msg}"})
         return self._report(before, [f"undid: {msg or '(no message)'}"])
@@ -139,10 +140,11 @@ class Session:
         if not self.redo_stack:
             return {"ok": False, "error": "nothing to redo"}
         before = self.result
-        doc, msg = self.redo_stack.pop()
+        doc, msg = self.redo_stack[-1]
+        result = self.regen.run(doc)
+        self.redo_stack.pop()
         self.undo_stack.append((self.doc, msg))
-        self.doc = doc
-        self.result = self.regen.run(self.doc)
+        self.doc, self.result = doc, result
         self._save()
         self._log({"author": "redo", "message": f"redo: {msg}"})
         return self._report(before, [f"redid: {msg or '(no message)'}"])
@@ -150,8 +152,8 @@ class Session:
     def reload(self) -> dict:
         """Re-read the file (after a user edited it by hand or in another tool)."""
         before = self.result
-        self.doc = S.Document.model_validate_json(self.path.read_text())
-        self.result = self.regen.run(self.doc)
+        doc = S.Document.model_validate_json(self.path.read_text())
+        self.doc, self.result = doc, self.regen.run(doc)
         self._stamp = self._file_stamp()
         return self._report(before, ["reloaded from disk"])
 
