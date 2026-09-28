@@ -373,6 +373,41 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   await idle();
   check("rounded plate: 30 × 20 less the corner", near(await vol(), (600 - 16 * (1 - Math.PI / 4)) * 2, 0.01), `${await vol()}`);
 
+  // ── offset an outline inward: select one edge, K, a negative distance; the ring extrudes ──
+  await newPart("offset_test");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.evaluate(() => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops: [{ op: "add_rectangle", sketch: "sketch1", id: "box", width: 30, height: 20, center: [0, 0] }], message: "box" }) }));
+  await idle();
+  await at(0, -10);  // the bottom edge
+  check("an edge selected enables Offset", !(await page.isDisabled("#sketchTools [data-act=offset]")));
+  await page.keyboard.press("k");
+  await page.waitForSelector("#dimEdit:not([hidden])");
+  await page.fill("#dimEdit input", "-2");
+  await page.press("#dimEdit input", "Enter");
+  await idle();
+  d = await skf((s) => s.data());
+  const pieces = d.entities.filter((e) => e.offset === "offset1");
+  check("the whole loop was offset inward, 0 DOF", pieces.length === 4 && d.dof === 0, `${pieces.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "3");
+  await page.click("#ffGo");
+  await idle();
+  check("a 2 mm wall: the ring between outline and offset", near(await vol(), (600 - 26 * 16) * 3, 0.01), `${await vol()}`);
+  await page.click('#tree li.feat[data-id="sketch1"] .fid');
+  await page.waitForSelector("#sketchBar:not([hidden])");
+  await idle();
+  await at(0, -8);  // a piece of the offset
+  await page.keyboard.press("Delete");
+  await idle();
+  check("deleting a piece removes the offset", !(await skf((s) => s.data().entities.some((e) => e.offset))));
+  await page.keyboard.press("Control+z");
+  await idle();
+  await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
+
   // ── part properties: a material gives Measure a mass ──
   await page.click("#propsBtn");
   await page.fill("#ppMat", "PETG");

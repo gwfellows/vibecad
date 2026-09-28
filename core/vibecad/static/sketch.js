@@ -633,6 +633,44 @@ export function createSketchEditor(ctx) {
       inp.onblur = () => done(null);
     });
   }
+  // offset: the selected curves, or the whole connected chain of a single selected curve, copied at a distance
+  function chainOf(id) {
+    const geo = D.entities.filter((e) => ["line", "arc"].includes(e.type) && !e.offset);
+    const ends = (e) => (e.type === "line" ? [e.p1, e.p2] : [0, 1].map((k) => {
+      const a = ((k ? e.end_angle : e.start_angle) * Math.PI) / 180;
+      return [e.center[0] + e.r * Math.cos(a), e.center[1] + e.r * Math.sin(a)];
+    }));
+    const tol = 1e-5 * Math.max(1, ...geo.flatMap((e) => ends(e).flat().map(Math.abs)));
+    const out = [id], todo = [ent(id)];
+    while (todo.length) {
+      const e = todo.pop();
+      for (const f of geo) {
+        if (out.includes(f.id)) continue;
+        if (ends(e).some((p) => ends(f).some((q) => dist(p, q) < tol))) { out.push(f.id); todo.push(f); }
+      }
+    }
+    return out;
+  }
+  function canOffset() {
+    const ids = [...sel].filter((k) => !k.startsWith("#") && !k.includes(".") && ["line", "arc", "circle"].includes(ent(k)?.type) && !ent(k)?.offset);
+    return ids.length > 0 && ids.length === [...sel].length;
+  }
+  async function offsetSel() {
+    if (!canOffset()) return ctx.note("Offset: select a line, arc or circle (its whole connected outline is offset)", "err");
+    let ids = [...sel];
+    if (ids.length === 1 && ent(ids[0]).type !== "circle") ids = chainOf(ids[0]);
+    const el = ctx.labelsBox.querySelector(".sel") || null;
+    const text = await askValue(el, "2", "offset (− for inside) =");
+    if (text == null) return;
+    const inside = text.trim().startsWith("-"), v = parseValue(inside ? text.trim().slice(1) : text);
+    if (v.error) return ctx.note(v.error, "err");
+    const closed = ids.length > 1 || ent(ids[0]).type === "circle";
+    const loop = closed && (ent(ids[0]).type === "circle" || chainOf(ids[0]).length === ids.length);
+    const id = newId("offset");
+    sel = new Set();
+    await commit([{ op: "add_entity", sketch: sid, entity: { id, type: "offset", of: ids, distance: v.value,
+      side: loop ? (inside ? "inside" : "outside") : (inside ? "right" : "left") } }], `offset ${ids.length} curve(s) in ${sid}`);
+  }
   // round the corner where two lines meet (the selected point): the server trims them and adds a tangent arc
   function canRound() {
     if (sel.size !== 1) return false;
@@ -688,7 +726,9 @@ export function createSketchEditor(ctx) {
     const pts = [...sel].filter((k) => ent(k)?.type === "point");
     if (!cons.length && !curves.length && !pts.length) return;
     const ops = cons.map((c) => c.index).sort((a, b) => b - a).map((i) => ({ op: "remove_constraint", sketch: sid, match: { index: i } }));
-    for (const id of [...curves.map((e) => e.id), ...pts]) ops.push({ op: "remove_entity", sketch: sid, id });
+    // an offset's pieces are removed as the offset; projected pieces as their entity
+    const ids = [...new Set([...curves.map((e) => e.offset || e.id), ...pts])];
+    for (const id of ids) ops.push({ op: "remove_entity", sketch: sid, id });
     sel = new Set();
     await commit(ops, `delete ${ops.length} item(s) in ${sid}`);
   }
@@ -912,6 +952,7 @@ export function createSketchEditor(ctx) {
     if (c) { constrain(c.id); return true; }
     if (k === "g") { toggleConstruction(); return true; }
     if (k === "f" && canRound()) { roundCorner(); return true; }
+    if (k === "k" && canOffset()) { offsetSel(); return true; }
     return false;
   }
 
@@ -961,7 +1002,7 @@ export function createSketchEditor(ctx) {
 
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
-    rename, toParam, canRename, canParam, projectOutline, roundCorner, canRound,
+    rename, toParam, canRename, canParam, projectOutline, roundCorner, canRound, offsetSel, canOffset,
     marks: () => marks.map((m) => m.map(([u, v]) => [+u.toFixed(2), +v.toFixed(2)])),
     clearMarks: () => { marks = []; stroke = null; render(); ctx.onChange?.(); },
     active: () => sid,

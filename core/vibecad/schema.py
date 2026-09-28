@@ -140,7 +140,21 @@ class External(_M):
     construction: Literal[True] = True
 
 
-Entity = Annotated[Union[Point, Line, Circle, Arc, External], Field(discriminator="type")]
+class Offset(_M):
+    """Derived geometry: the chain of lines and arcs `of` (they may be projected edges) copied at `distance`, on
+    `side` (closed loops: outside / inside; open chains: left / right of the chain's direction). Sharp corners are
+    mitred, arcs grow or shrink. Rebuilt from the solved source on every build, so it follows it; fixed, so it
+    adds no DOF. Its pieces are `<id>_1`, `<id>_2`, ... in chain order, referenced like ordinary lines and arcs."""
+    id: str
+    type: Literal["offset"] = "offset"
+    of: list[str]
+    distance: Num
+    side: Literal["outside", "inside", "left", "right"] = "outside"
+    construction: bool = False
+    note: str | None = None
+
+
+Entity = Annotated[Union[Point, Line, Circle, Arc, External, Offset], Field(discriminator="type")]
 
 
 # ── Planes ──────────────────────────────────────────────────────────

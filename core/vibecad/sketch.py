@@ -120,8 +120,8 @@ def solve_sketch(sk: S.Sketch, env: dict[str, float]) -> SolvedSketch:
         return ev(v[0]), ev(v[1])
 
     for e in sk.entities:
-        if isinstance(e, S.External):
-            raise SketchError(f"sketch {sk.id!r}: external {e.id!r} must be projected from the part before solving")
+        if isinstance(e, (S.External, S.Offset)):
+            raise SketchError(f"sketch {sk.id!r}: {e.type} {e.id!r} must be resolved before solving")
         if isinstance(e, S.Point):
             p = g.add_point(*xy(e.at))
             refs[e.id] = ("point", p)

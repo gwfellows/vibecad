@@ -25,8 +25,9 @@ Entities (non-construction geometry forms profiles; set `"construction": true` f
 | circle | `center`, `r` | `id.center` |
 | arc | `center`, `r`, `start_angle`, `end_angle` (CCW, degrees) | `id.center`, `id.start`, `id.end` |
 | external | `edge: EdgeRef` naming one edge of the part built so far | as the projected line (`id.p1`, `id.p2`), circle or arc; a point if the edge is perpendicular to the plane |
+| offset | `of: [entity ids]` (a connected chain of lines / arcs, or one circle; projected edges allowed), `distance`, `side: outside / inside` (closed) or `left / right` (open), `construction` | pieces `id_1`, `id_2`, ... in chain order, as lines and arcs |
 
-Built-in references: `origin`, `x_axis`, `y_axis`. `external` entities are re-projected on every build: fixed construction geometry that follows the part, so constraints to them (a hole centred on a projected corner, a slot a set distance from a projected edge) stay attached when upstream params change. The edge ref must match exactly one edge (usually `between` two faces).
+Built-in references: `origin`, `x_axis`, `y_axis`. An `offset` is derived geometry: rebuilt from the solved chain it copies on every build (sharp corners mitred, arcs grown or shrunk about their centres), fixed, so it adds no DOF and follows the source and its `distance` param. A wall of thickness `t` inside an outline is the outline plus an `offset` of it with `side: inside`, extruded. `external` entities are re-projected on every build: fixed construction geometry that follows the part, so constraints to them (a hole centred on a projected corner, a slot a set distance from a projected edge) stay attached when upstream params change. The edge ref must match exactly one edge (usually `between` two faces).
 
 Constraints: `{"type": ..., "on": [refs], "value": Num, "name": "shown_to_user", "note": "..."}`
 

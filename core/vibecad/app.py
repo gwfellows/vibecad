@@ -404,7 +404,13 @@ class App:
         solved, frame = r.sketches[sid]
         feat = s.doc.feature(sid)
         fixed = freedom(solved.source or feat, r.env, solved)
-        ents = sketch_entities(solved, fixed, {e.id for e in feat.entities if e.type == "external"})
+        offs = {e.id for e in feat.entities if e.type == "offset"}
+        derived = {e.id for e in feat.entities if e.type == "external"} | {x for x in solved.entities if x.rsplit("_", 1)[0] in offs}
+        ents = sketch_entities(solved, fixed, derived)
+        for e in ents:  # an offset's pieces: the editor deletes / renames the offset itself
+            parent = e["id"].rsplit("_", 1)[0]
+            if parent in offs:
+                e["offset"] = parent
         anchors = _anchors(solved)
         cons = []
         for i, c in enumerate(feat.constraints):

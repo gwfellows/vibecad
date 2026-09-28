@@ -227,6 +227,9 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
         sk["entities"] = [e for e in sk["entities"] if e["id"] != op["id"]]
         if len(sk["entities"]) == before:
             raise OpError(f"no entity {op['id']!r} in sketch {op['sketch']!r}")
+        users = [e["id"] for e in sk["entities"] if e.get("type") == "offset" and op["id"] in e.get("of", [])]
+        if users:
+            raise OpError(f"{op['id']!r} is copied by offset {', '.join(users)}; remove or change the offset first")
         pre = op["id"] + "."
         dropped = [c for c in sk["constraints"] if any(r == op["id"] or r.startswith(pre) for r in c["on"])]
         sk["constraints"] = [c for c in sk["constraints"] if c not in dropped]
@@ -429,6 +432,10 @@ def _rename_entity(raw: dict, sid: str, old: str, new: str) -> int:
         refs = [new + r[len(old):] if r == old or r.startswith(old + ".") else r for r in c["on"]]
         n += refs != c["on"]
         c["on"] = refs
+    for e in sk["entities"]:  # offsets name the chain they copy
+        if e.get("type") == "offset" and old in e.get("of", []):
+            e["of"] = [new if x == old else x for x in e["of"]]
+            n += 1
     makers = set()  # extrudes/revolves built from this sketch: their side faces are labelled with its entities
     for g in raw["features"]:
         prof = g.get("profile", {})

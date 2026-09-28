@@ -99,6 +99,19 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
                 raise FeatureError(f"sketch plane face ref matched {len(faces)} faces that are not coplanar; "
                                    "add `entity`, or `pick: largest|smallest|nearest`")
     src = _resolve_externals(ctx, f, frame)
+    if any(isinstance(e, S.Offset) for e in src.entities):
+        from .offset import OffsetError, resolve_offsets
+
+        def solve_base(sk):
+            base = solve_sketch(sk, ctx.env)
+            if not base.report.ok:
+                raise FeatureError(f"the geometry an offset copies did not solve ({base.report.status}); "
+                                   f"conflicting: {base.report.conflicting or 'none reported'}")
+            return base
+        try:
+            src = resolve_offsets(src, ctx.env, solve_base)
+        except OffsetError as e:
+            raise FeatureError(str(e)) from None
     solved = solve_sketch(src, ctx.env)
     solved.source = src
     ctx.sketches[f.id] = (solved, frame)
