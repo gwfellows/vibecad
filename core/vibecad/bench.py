@@ -74,6 +74,9 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
     before that turn."""
     import math
 
+    if chk["kind"] == "file_glob":  # an output the task asked for (an export, a drawing)
+        hits = list(workdir.rglob(chk["pattern"]))
+        return None if hits else f"no file matching {chk['pattern']}"
     target = workdir / chk["file"] if "file" in chk else (parts[0] if parts else None)
     if target is None or not target.exists():
         return f"check {chk['kind']}: part file {chk.get('file')} missing"
@@ -139,9 +142,12 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
             if gap is None or not chk.get("gap_min", 0) - 1e-6 <= gap <= chk.get("gap_max", 1e9) + 1e-6:
                 return f"gap to {rid} is {gap}, expected {chk.get('gap_min', 0)}-{chk.get('gap_max', 'any')}"
         return None
-    if kind == "feature_type":
-        types = [f.type for f in res.doc.features]
-        return None if chk["type"] in types else f"no {chk['type']} feature"
+    if kind == "feature_type":  # with "field": one of them sets that field to something non-zero
+        feats = [f for f in res.doc.features if f.type == chk["type"]]
+        if "field" in chk:
+            feats = [f for f in feats if getattr(f, chk["field"], None) not in (None, 0, 0.0, "0", False)]
+            return None if feats else f"no {chk['type']} feature with {chk['field']}"
+        return None if feats else f"no {chk['type']} feature"
     return f"unknown check {kind}"
 
 

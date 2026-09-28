@@ -343,5 +343,132 @@
     "min": 4
    }
   ]
+ },
+ {
+  "id": "motor_bracket_step",
+  "prompt": "nema17.step is a NEMA 17 stepper motor. Design a 3D printed L bracket that bolts to a table and holds this motor horizontally by its front face with four M3 screws; the pilot boss and shaft pass through the bracket.",
+  "setup_files": [
+   "bench/fixtures/nema17.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.01,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 3.1,
+    "d_max": 3.7,
+    "min": 4
+   },
+   {
+    "kind": "holes",
+    "d_min": 22.2,
+    "d_max": 26,
+    "min": 1
+   }
+  ]
+ },
+ {
+  "id": "phone_stand_step",
+  "prompt": "phone.step is a phone. Design a 3D printed desk stand that holds it in landscape, leaning back about 20 degrees from vertical, with a lip in front of its bottom edge.",
+  "setup_files": [
+   "bench/fixtures/phone.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.5,
+    "gap_min": 0,
+    "gap_max": 1.0
+   }
+  ]
+ },
+ {
+  "id": "two_part_enclosure_step",
+  "prompt": "pcb.step is a circuit board and battery_pack.step its battery. Design a 3D printed open-top tray that holds both side by side: the board on four M3 standoffs, the battery in a pocket with 0.5 mm clearance, 2 mm walls.",
+  "setup_files": [
+   "bench/fixtures/pcb.step",
+   "bench/fixtures/battery_pack.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "min_refs": 2,
+    "overlap_max": 0.5
+   }
+  ]
+ },
+ {
+  "id": "fan_duct_loft",
+  "prompt": "Design a 3D printed duct that adapts a 40 x 40 mm fan outlet to a 25 mm diameter round hose, 30 mm long, with 1.5 mm walls, open at both ends.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "feature_type",
+    "type": "loft"
+   },
+   {
+    "kind": "bbox_max",
+    "size": [
+     45,
+     45,
+     35
+    ]
+   }
+  ]
+ },
+ {
+  "id": "bent_rod_sweep",
+  "prompt": "Design a towel rail: a 12 mm diameter aluminium tube (1.5 mm wall) that goes 60 mm out from the wall, bends 90 degrees with a 20 mm bend radius, and runs 300 mm along the wall.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "feature_type",
+    "type": "sweep"
+   }
+  ]
+ },
+ {
+  "id": "drawing_export_edit",
+  "setup_copy": "examples/mounting_plate.vcad.json",
+  "prompt": "Open mounting_plate.vcad.json. Make the plate 90 mm wide instead of 80, then export a 2D drawing of it for the machinist.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "param_any",
+    "value": 90,
+    "why": "plate width 90"
+   },
+   {
+    "kind": "file_glob",
+    "pattern": "*.svg"
+   }
+  ]
+ },
+ {
+  "id": "drafted_molded_boss",
+  "prompt": "Design an injection-molded ABS knob: a 30 mm diameter round cap 15 mm tall with 1.5 degree draft on its outside, a 6 mm D-shaft hole (flat 0.5 mm deep) 12 mm deep in its underside.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "bbox_max",
+    "size": [
+     30.5,
+     30.5,
+     16
+    ]
+   },
+   {
+    "kind": "feature_type",
+    "type": "extrude",
+    "field": "draft"
+   }
+  ]
  }
 ]
