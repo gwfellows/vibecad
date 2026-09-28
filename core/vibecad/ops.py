@@ -22,6 +22,9 @@ transaction: all apply and the result validates against the schema, or nothing c
     {"op": "fillet_corner", "sketch": "<id>", "corner": "<line>.p1|p2", "radius": "r", "id": "<arc id>"?}
           rounds the corner where two lines meet (joined by a coincident): the lines are trimmed to the tangent
           points and a tangent arc with a named radius dimension joins them
+    {"op": "mirror_entities", "sketch": "<id>", "entities": ["<id>", ...], "axis": "<line id>|x_axis|y_axis"}
+          mirrored copies (ids <id>_mirror) held to the originals by symmetric constraints (coincident where a
+          point is on the axis), so they add no degrees of freedom and follow every change to the originals
 """
 from __future__ import annotations
 
@@ -47,7 +50,7 @@ OP_KINDS = {
     "set_param", "remove_param", "set_meta", "add_feature", "update_feature", "remove_feature", "move_feature",
     "add_entity", "update_entity", "remove_entity", "add_constraint", "update_constraint", "remove_constraint",
     "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon",
-    "rename_feature", "rename_entity", "fillet_corner",
+    "rename_feature", "rename_entity", "fillet_corner", "mirror_entities",
 }
 ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 META_FIELDS = {"name", "design_notes", "material", "process"}
@@ -271,6 +274,8 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
         notes.append(f"renamed {op['sketch']}.{op['id']} to {op['to']!r}; updated {n} reference(s)")
     elif kind == "fillet_corner":
         notes.append(_fillet_corner(raw, op))
+    elif kind == "mirror_entities":
+        notes.append(_mirror_entities(raw, op))
     elif kind == "set_dimension":
         sk = _sketch(raw, op["sketch"])
         c = sk["constraints"][_match_constraint(sk, {"name": op["name"]})]
@@ -281,6 +286,88 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
             notes.append(f"dimension {op['name']!r} is driven by param {cur.strip()!r}; set that param to {op['value']!r}")
         else:
             c["value"] = op["value"]
+
+
+def _mirror_entities(raw: dict, op: dict) -> str:
+    import math
+
+    from .expr import evaluate
+    sk = _sketch(raw, op["sketch"])
+    env = evaluate_params(raw.get("params", {}))
+    ents = {e["id"]: e for e in sk["entities"]}
+    xy = lambda p: (evaluate(p[0], env), evaluate(p[1], env))
+    axis = op.get("axis")
+    if axis in ("x_axis", "y_axis"):
+        o, d = (0.0, 0.0), ((1.0, 0.0) if axis == "x_axis" else (0.0, 1.0))
+    elif ents.get(axis, {}).get("type") == "line":
+        a, b = xy(ents[axis]["p1"]), xy(ents[axis]["p2"])
+        L = math.dist(a, b)
+        if L < 1e-9:
+            raise OpError(f"mirror axis {axis!r} has no length")
+        o, d = a, ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+    else:
+        raise OpError(f"mirror axis must be a line in sketch {op['sketch']!r}, x_axis or y_axis; got {axis!r}")
+    todo = op.get("entities") or []
+    if not todo:
+        raise OpError("mirror_entities needs entities to mirror")
+
+    def refl(p):
+        v = (p[0] - o[0], p[1] - o[1])
+        t = v[0] * d[0] + v[1] * d[1]
+        f = (o[0] + t * d[0], o[1] + t * d[1])
+        return [round(2 * f[0] - p[0], 9), round(2 * f[1] - p[1], 9)]
+
+    def on_axis(p):
+        return abs((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0]) < 1e-6
+
+    def hold(old_ref, new_ref, p):  # the copy's point mirrors the original's; on the axis they are one point
+        if on_axis(p):
+            return {"type": "coincident", "on": [new_ref, old_ref]}
+        return {"type": "symmetric", "on": [old_ref, new_ref, axis]}
+
+    theta = math.degrees(math.atan2(d[1], d[0]))
+    taken = set(ents)
+    made, cons = [], []
+    for eid in todo:
+        e = ents.get(eid)
+        if e is None:
+            raise OpError(f"no entity {eid!r} in sketch {op['sketch']!r}")
+        if eid == axis:
+            raise OpError(f"{eid!r} is the mirror axis; it can't be mirrored across itself")
+        if e["type"] not in ("line", "arc", "circle", "point"):
+            raise OpError(f"can't mirror {e['type']} {eid!r}; mirror lines, arcs, circles and points")
+        nid = f"{eid}_mirror"
+        k = 2
+        while nid in taken:
+            nid, k = f"{eid}_mirror{k}", k + 1
+        taken.add(nid)
+        n = {"id": nid, "type": e["type"]}
+        if e.get("construction"):
+            n["construction"] = True
+        if e["type"] == "line":
+            p1, p2 = xy(e["p1"]), xy(e["p2"])
+            n.update(p1=refl(p1), p2=refl(p2))
+            cons += [hold(f"{eid}.p1", f"{nid}.p1", p1), hold(f"{eid}.p2", f"{nid}.p2", p2)]
+        elif e["type"] == "point":
+            p = xy(e["at"])
+            n["at"] = refl(p)
+            cons.append(hold(eid, nid, p))
+        elif e["type"] == "circle":
+            c = xy(e["center"])
+            n.update(center=refl(c), r=evaluate(e["r"], env))
+            cons += [hold(f"{eid}.center", f"{nid}.center", c), {"type": "equal", "on": [eid, nid]}]
+        else:  # arc: mirroring reverses its direction, so the copy runs from the image of the end to that of the start
+            c, r = xy(e["center"]), evaluate(e["r"], env)
+            a0, a1 = evaluate(e["start_angle"], env), evaluate(e["end_angle"], env)
+            n.update(center=refl(c), r=r, start_angle=round((2 * theta - a1) % 360, 9), end_angle=round((2 * theta - a0) % 360, 9))
+            end = (c[0] + r * math.cos(math.radians(a1)), c[1] + r * math.sin(math.radians(a1)))
+            start = (c[0] + r * math.cos(math.radians(a0)), c[1] + r * math.sin(math.radians(a0)))
+            cons += [hold(f"{eid}.end", f"{nid}.start", end), hold(f"{eid}.start", f"{nid}.end", start),
+                     {"type": "equal", "on": [eid, nid]}]
+        made.append(n)
+    sk["entities"].extend(made)
+    sk["constraints"].extend(cons)
+    return f"mirrored {', '.join(todo)} across {axis}: added {', '.join(m['id'] for m in made)}"
 
 
 def _fillet_corner(raw: dict, op: dict) -> str:

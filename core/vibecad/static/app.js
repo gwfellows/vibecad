@@ -913,6 +913,7 @@ function ghostPart(on) {
          btn("construction", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
          btn("roundcorner", "Round corner: select the point where two lines meet, then give the radius (F)", () => SK.roundCorner(), { act: "roundcorner" }),
          btn("offset", "Offset: select a line, arc or circle; its whole outline is copied at a distance (− for inside). Follows the original (K)", () => SK.offsetSel(), { act: "offset" }),
+         btn("mirror", "Mirror: select curves (and a construction line as the axis, or choose X or Y next); the copies follow the originals (I)", () => SK.mirrorSel(), { act: "mirror" }),
          btn("rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
          btn("param", "Drive the selected dimension from a new part parameter", () => SK.toParam(), { act: "param" }),
          btn("clearmarks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
@@ -961,6 +962,7 @@ function sketchBarUpdate() {
   $("#sketchTools [data-act=param]").disabled = !SK.canParam();
   $("#sketchTools [data-act=roundcorner]").disabled = !SK.canRound();
   $("#sketchTools [data-act=offset]").disabled = !SK.canOffset();
+  $("#sketchTools [data-act=mirror]").disabled = !SK.canMirror();
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;
 }

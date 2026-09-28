@@ -115,6 +115,9 @@ Parts are edited through ops, applied in batches as one undoable transaction (`a
 {"op": "fillet_corner", "sketch": "<id>", "corner": "<line>.p2", "radius": "corner_r"}
       (rounds the corner where two lines meet: trims them, adds a tangent arc with a named radius; dimensions to
        the corner and the lines' lengths move to a construction point at the sharp corner, so sizes are kept)
+{"op": "mirror_entities", "sketch": "<id>", "entities": ["half_1", "half_2"], "axis": "y_axis"}
+      (mirrored copies <id>_mirror of lines, arcs, circles and points across a sketch line, x_axis or y_axis; held by
+       symmetric constraints, coincident where a point is on the axis: no new DOF, and they follow the originals)
 ```
 
 Sketch shortcuts (expand into fully constrained primitives, stored as ordinary entities and constraints):

@@ -129,6 +129,10 @@ GUI (Playwright, `scripts/gui_smoke.sh`, 66 checks; the agent panel is driven by
 
 **Don't run `vibecad-bench` from inside a Claude Code on the web session.** The nested agent reported the parent session's id and the CLI logged "message history mutated" on it, despite `agent.py` clearing the session env vars; the account also returned a five-hour rate-limit event. Run the benchmark from a local terminal.
 
+## 2026-09-28: new features, guide lines not yet measured
+
+The agent gained extrude `draft` / `up_to_face`, `loft`, `sweep`, the SVG drawing export and the `mirror_entities` op. The guide got two small changes: patterns and mirrors now name every replayable feature type, and one line tells the agent to draw half a symmetric profile and mirror it. Neither was benched. Worth a run: does `mirror_entities` cut output tokens and rejected batches on symmetric parts (a T-slot nut, a bracket with a symmetric gusset) against drawing the whole outline with `add_polygon`?
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?

@@ -487,6 +487,39 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const drafted = await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json()));
   check("the draft is stored on the feature and nothing else changed", drafted.draft === 5 && drafted.extent === "up_to_face" && (drafted.distance ?? 0) === 0, JSON.stringify(drafted));
 
+  // ── mirror half a profile across the Y axis in the sketch editor: select its lines, I, Enter (Y is the default) ──
+  await newPart("mirror_test");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.evaluate((ops) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ops, message: "half a tee" }) }),
+    [{ op: "add_polygon", sketch: "sketch1", id: "half", closed: false, points: [[0, 0], [20, 0], [20, 5], [5, 5], [5, 30], [0, 30]] }]);
+  await idle();
+  await page.waitForFunction(() => window.vibecadSketch.data()?.entities.length === 5);
+  check("Mirror is off with nothing selected", await page.isDisabled("#sketchTools [data-act=mirror]"));
+  const mids = [[10, 0], [20, 2.5], [12.5, 5], [5, 17.5], [2.5, 30]];
+  for (const [k, [u, v]] of mids.entries()) {
+    const [x, y] = await skf((s, a) => s.toScreen(a[0], a[1]), [u, v]);
+    if (k) await page.keyboard.down("Shift");
+    await page.mouse.click(x, y);
+    if (k) await page.keyboard.up("Shift");
+    await page.waitForTimeout(250);
+  }
+  check("Mirror is on with the half's lines selected", !(await page.isDisabled("#sketchTools [data-act=mirror]")));
+  await page.keyboard.press("i");
+  await page.waitForSelector("#dimEdit:not([hidden])");
+  await shot("sketch_mirror_prompt");
+  await page.press("#dimEdit input", "Enter");
+  await idle();
+  d = await skf((s) => s.data());
+  check("mirrored across Y: ten lines, still 0 DOF", d.entities.length === 10 && d.dof === 0, `${d.entities.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "4");
+  await page.click("#ffGo");
+  await idle();
+  check("the mirrored tee extrudes whole", near(await vol(), 2 * (20 * 5 + 5 * 25) * 4, 1e-6), `${await vol()}`);
+
   // ── loft a square into a circle; sweep a round bar along a bent path ──
   await newPart("loft_test");
   const postOps = (ops, message) => page.evaluate(([ops, message]) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },

@@ -671,6 +671,29 @@ export function createSketchEditor(ctx) {
     await commit([{ op: "add_entity", sketch: sid, entity: { id, type: "offset", of: ids, distance: v.value,
       side: loop ? (inside ? "inside" : "outside") : (inside ? "right" : "left") } }], `offset ${ids.length} curve(s) in ${sid}`);
   }
+  // mirror the selected curves and points; a selected construction line is the axis, otherwise ask (x, y or a line)
+  function mirrorParts() {
+    const ids = [...sel].filter((k) => !k.startsWith("#") && !k.includes(".") && ["line", "arc", "circle", "point"].includes(ent(k)?.type) && !ent(k)?.offset);
+    const axes = ids.filter((k) => ent(k).type === "line" && ent(k).construction);
+    const axis = axes.length === 1 && ids.length > 1 ? axes[0] : null;
+    return { ids: ids.filter((k) => k !== axis), axis };
+  }
+  function canMirror() { return mirrorParts().ids.length > 0; }
+  async function mirrorSel() {
+    const { ids, axis: picked } = mirrorParts();
+    if (!ids.length) return ctx.note("Mirror: select the curves to mirror, and a construction line as the axis (or pick the X or Y axis next)", "err");
+    let axis = picked;
+    if (!axis) {
+      const el = ctx.labelsBox.querySelector(".sel") || null;
+      const text = await askValue(el, "y", "mirror across (x, y or a line) =");
+      if (text == null) return;
+      const t = text.trim().toLowerCase();
+      axis = t === "x" || t === "x_axis" ? "x_axis" : t === "y" || t === "y_axis" ? "y_axis" : text.trim();
+      if (!["x_axis", "y_axis"].includes(axis) && ent(axis)?.type !== "line") return ctx.note(`Mirror: ${text.trim()} is not x, y or a line in this sketch`, "err");
+    }
+    sel = new Set();
+    await commit([{ op: "mirror_entities", sketch: sid, entities: ids, axis }], `mirror ${ids.length} entit${ids.length > 1 ? "ies" : "y"} across ${axis} in ${sid}`);
+  }
   // round the corner where two lines meet (the selected point): the server trims them and adds a tangent arc
   function canRound() {
     if (sel.size !== 1) return false;
@@ -953,6 +976,7 @@ export function createSketchEditor(ctx) {
     if (k === "g") { toggleConstruction(); return true; }
     if (k === "f" && canRound()) { roundCorner(); return true; }
     if (k === "k" && canOffset()) { offsetSel(); return true; }
+    if (k === "i" && canMirror()) { mirrorSel(); return true; }
     return false;
   }
 
@@ -1002,7 +1026,7 @@ export function createSketchEditor(ctx) {
 
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
-    rename, toParam, canRename, canParam, projectOutline, roundCorner, canRound, offsetSel, canOffset,
+    rename, toParam, canRename, canParam, projectOutline, roundCorner, canRound, offsetSel, canOffset, mirrorSel, canMirror,
     marks: () => marks.map((m) => m.map(([u, v]) => [+u.toFixed(2), +v.toFixed(2)])),
     clearMarks: () => { marks = []; stroke = null; render(); ctx.onChange?.(); },
     active: () => sid,

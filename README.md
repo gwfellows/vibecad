@@ -49,6 +49,7 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 - **Status:** the bar at the top shows the degrees of freedom (DOF) left. Conflicting or redundant constraints turn red and are named.
 - **Project:** projects the outline of the face under a face sketch as fixed construction geometry that follows the part when upstream sizes change.
 - **Round corner** (`F`): select the point where two lines meet and type a radius. The lines are trimmed and joined by a tangent arc; dimensions to the corner keep measuring to the sharp corner, so a rounded rectangle keeps its size.
+- **Mirror** (`I`): select curves, and a construction line as the axis (or choose X or Y); the mirrored copies are held symmetric, so they follow the originals and add no degrees of freedom.
 - **Offset** (`K`): select an edge; its whole connected outline is copied at a distance (a negative one for inside). The copy follows the original and its distance can be a parameter, so "a 2 mm wall inside this outline" or "a 0.3 mm clearance around the projected phone" stay right when sizes change.
 - **Other actions:** rename, → Param (turn a dimension into a named parameter), construction, delete, and Ask agent. Ask agent sends the selected entities and the constraints on them.
 
