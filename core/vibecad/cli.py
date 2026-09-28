@@ -36,6 +36,10 @@ def tree_text(res: RegenResult) -> str:
         if f.type == "sketch":
             plane = f.plane.datum + (f"+{f.plane.offset}" if getattr(f.plane, "offset", 0) not in (0, 0.0, "0") else "") \
                 if hasattr(f.plane, "datum") else f"face {f.plane.face.feature}.{f.plane.face.role}"
+            fr = r.info.get("frame")
+            if fr and hasattr(f.plane, "datum"):  # where the plane really is: XZ's normal is -Y, so an offset goes to -Y
+                k = {"XY": 2, "XZ": 1, "YZ": 0}[f.plane.datum]
+                plane += f" (world {'xyz'[k]} = {fr['origin'][k] + 0:g})"
             dims = [c.name for c in f.constraints if c.name]
             extra = f"on {plane}; {len(f.entities)} entities; dof {r.info.get('dof', '?')}" + \
                 (f"; dims {', '.join(dims)}" if dims else "")

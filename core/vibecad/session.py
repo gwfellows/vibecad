@@ -18,6 +18,37 @@ from .ops import OpError, apply_ops, touched_features
 from .regen import Regenerator, RegenResult, _strings
 
 
+def _ref_overlaps(r: RegenResult, max_faces: int = 3000) -> list[str]:
+    """Reference bodies the part runs into, shown in every edit report: designs around an import went wrong
+    silently when this waited for a check_fit call. Cheap: bounding boxes first, big meshes skipped."""
+    import build123d as bd
+
+    part = r.part
+    if part is None or not r.refs:
+        return []
+    out = []
+    pb = part.bounding_box()
+    for rid, rb in r.refs.items():
+        other = bd.Shape.cast(rb.shape)
+        if not other.solids() or len(other.faces()) > max_faces:
+            continue
+        ob = other.bounding_box()
+        if (pb.max.X < ob.min.X or ob.max.X < pb.min.X or pb.max.Y < ob.min.Y or ob.max.Y < pb.min.Y
+                or pb.max.Z < ob.min.Z or ob.max.Z < pb.min.Z):
+            continue  # boxes apart: no overlap
+        try:
+            common = part & other
+            ov = common.volume if common is not None else 0.0
+        except Exception:
+            continue
+        if ov > 1e-3:
+            out.append(f"the part overlaps reference {rid} by {ov:.1f} mm³: in the assembly (and in the user's view) {rid} runs "
+                       "through the part. Fine mid-build if the cut for it is still to come; before you report, make it 0: put "
+                       f"the geometry where {rid} is, or move {rid} to where you designed for it (translate, place_import). Keep the "
+                       "import: it ties the part to the real body; don't remove it to clear this")
+    return out
+
+
 def dump_doc(doc: S.Document) -> str:
     """Compact, human-readable JSON: defaults omitted, discriminator `type` fields kept."""
     raw = doc.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
@@ -176,6 +207,9 @@ class Session:
             out["ok"] = False
         if underconstrained:
             out["underconstrained_sketches"] = underconstrained
+        fit = _ref_overlaps(r)
+        if fit:
+            out["fit"] = fit
         a, b = before.summary(), r.summary()
         if "volume_mm3" in a or "volume_mm3" in b:
             out["change"] = {

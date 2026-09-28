@@ -310,7 +310,7 @@
    {
     "kind": "ref_fit",
     "overlap_max": 0.01,
-    "gap_min": 0.2,
+    "gap_min": 0,
     "gap_max": 0.5
    },
    {

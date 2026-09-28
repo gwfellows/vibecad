@@ -261,9 +261,13 @@ class Workspace:
             out[p] = {"overlap_mm3": round(ov, 4), "min_gap_mm": gap,
                       "touching": ov < 1e-6 and gap is not None and gap < 1e-4}
         bad = [k for k, v in out.items() if isinstance(v, dict) and v.get("overlap_mm3", 0) > 1e-3]
+        apart = [f"{k} ({v['min_gap_mm']:g} mm away)" for k, v in out.items()
+                 if isinstance(v, dict) and v.get("min_gap_mm") is not None and v["min_gap_mm"] > 1e-4]
         out["verdict"] = (f"OVERLAP with {', '.join(bad)}: the part runs into it. Fix this before reporting: move the "
                           "geometry or the import (place_import), or cut a nest for it (boolean, mode cut, clearance)"
-                          if bad else "no overlaps")
+                          if bad else "no overlaps") + (
+            f". Not touching: {', '.join(apart)}; if it should rest on or mount to the part, that gap is a mistake"
+            if apart else "")
         return json.dumps(out, indent=1)
 
     def render(self, views: list[str] | None = None, highlight: list[str] | None = None, size: int = 520) -> bytes:
@@ -309,7 +313,9 @@ class Workspace:
         out.parent.mkdir(parents=True, exist_ok=True)
         with self.lock:
             write_part(s.result, fmt, out)
-        return f"wrote {out}"
+        from .session import _ref_overlaps
+        fit = _ref_overlaps(s.result)
+        return f"wrote {out}" + "".join(f"\nNOT READY: {w}" for w in fit)
 
 
 def _ref_faces(rid: str, body, limit: int = 80) -> list[str]:

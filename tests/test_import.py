@@ -319,3 +319,19 @@ def test_reference_import_is_described_to_the_agent(tmp_path):
     fit = json.loads(ws.check_fit([]))
     assert fit["verdict"].startswith("OVERLAP with reference rod"), fit
     assert "reference imports" in ws.face_labels()
+
+
+def test_edit_reports_say_when_the_part_runs_into_a_reference(tmp_path):
+    import json
+
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Box(10, 10, 10, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    ws = Workspace(tmp_path)
+    ws.new_part(path="t.vcad.json", name="t")
+    ws.apply_ops([{"op": "add_feature", "feature": {"id": "cube", "type": "import", "file": "cube.step", "mode": "reference"}}], "ref")
+    rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+                                   {"op": "add_rectangle", "sketch": "sk", "id": "b", "width": 20, "height": 20, "center": [5, 5]},
+                                   {"op": "add_feature", "feature": {"id": "block", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 4}}], "b"))
+    assert rep["ok"] and "overlaps reference cube by 400.0" in rep["fit"][0], rep
+    rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "nest", "type": "boolean", "tool": "cube"}}], "nest"))
+    assert "fit" not in rep, rep
