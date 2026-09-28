@@ -151,6 +151,20 @@ Causes, and the changes made:
 - A cut or add that changes nothing now says where the tool and the body are, in world mm.
 - Guide: a four-step "Designing around an imported part" recipe (import as reference and read it, decide where it sits, take sizes from it with `boolean` + `clearance` for nests, `check_fit` must show no overlap), replacing one long bullet.
 
+Measured after the changes (same variant):
+
+| task | before | after |
+|---|---|---|
+| cell_holder_step | 0 of 2 pass | 3 of 3 pass, about 47 s and $0.12 each (after the fixes below) |
+| pcb_base | 1 of 1 pass, 311 s, 47 calls, $0.66 | 2 of 2 pass, about 123 s, 10 to 15 calls, $0.25 |
+| tube_corner_bracket | 215 s, 29 calls | 71 s and 56 s, 9 and 5 calls |
+
+Two more fixes came out of the re-runs:
+- The agent still ignored overlaps (never called `check_fit`, or read its OVERLAP verdict and exported anyway), and one run left a 36 mm gap because an XZ sketch offset went to −Y. Now every edit report has a `fit` line when the part runs into a reference, `export` answers `NOT READY: ...`, `check_fit` names references the part doesn't touch, and datum sketches show their world plane in the tree (`on XZ+o (world y = -5)`).
+- With the `fit` line, the agent then deleted the reference to clear it (in 3 of 3 runs: "used only for measuring"). The line and the guide now say to keep the import, and for several copies to place it once and pattern.
+
+A full re-run of the suite after these changes got through 9 of 15 tasks before the account's usage limit stopped it: all 9 passed. The other 6 are still to run. Wall time on the 9 is mixed: tube_corner_bracket 215 → 56 s and tube_bracket 196 → 94 s, but vbelt_pulley 316 → 347 s, shelf_bracket 198 → 296 s and battery_mount 236 → 299 s. These are single runs, so treat that as variance until repeated.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
