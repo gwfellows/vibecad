@@ -340,3 +340,22 @@ def test_measure_faces_edges_and_mass(tmp_path):
     i = next(k for k, e in enumerate(list_edges(body.shape)) if a.edge_ref(k)["label"] in ("base.side[base_front] | base.start", "base.start | base.side[base_front]"))
     e = a.measure([{"edge": i}])
     assert e["picks"][0]["curve"] == "line" and e["picks"][0]["length"] == pytest.approx(60)
+
+
+def test_project_the_outline_of_a_reference_face(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    bd.export_step(bd.Box(30, 20, 5, align=bd.Align.MIN), str(tmp_path / "pcb.step"))
+    ops = [{"op": "add_feature", "feature": {"id": "pcb", "type": "import", "file": "pcb.step", "mode": "reference", "translate": [0, 0, 50]}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "pcb", "user")
+    top = next(l.entity for f, l in a.view_result().refs["pcb"].labels if abs(__import__("vibecad.topo", fromlist=["x"]).face_center(f).Z - 55) < 1e-6)
+    ops = [{"op": "add_feature", "feature": {"id": "on_pcb", "type": "sketch", "plane": {"face": {"feature": "pcb", "role": "face", "entity": top}}}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "sketch on the pcb", "user")
+    out = a.face_outline("on_pcb")
+    assert len(out["entities"]) == 4 and not out["skipped"]
+    rep = a.ws.apply_ops([{"op": "add_entity", "sketch": "on_pcb", "entity": e} for e in out["entities"]], "project", "user")
+    assert '"ok": true' in rep, rep
+    solved = a.ws.session().result.sketches["on_pcb"][0]
+    xs = sorted({round(p[0], 6) for e in (solved.entities[x["id"]] for x in out["entities"]) for p in (e.p1, e.p2)})
+    assert xs == [0, 30] and solved.report.dof == 0

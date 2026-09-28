@@ -481,7 +481,8 @@ class App:
         if not isinstance(feat.plane, S.FacePlane):
             raise ToolError("only a sketch on a face can project that face's outline")
         i = s.doc.features.index(feat)
-        body = s.regen.run(s.doc.model_copy(update={"features": s.doc.features[:i]})).body  # the part as the sketch sees it
+        upto = s.regen.run(s.doc.model_copy(update={"features": s.doc.features[:i]}))  # the part as the sketch sees it
+        body = upto.refs.get(feat.plane.face.feature, upto.body)  # a sketch on a reference import projects its edges
         plane_ref = feat.plane.face.model_dump(exclude_none=True, exclude={"note"})
         if plane_ref.get("pick") == "all":
             plane_ref.pop("pick")

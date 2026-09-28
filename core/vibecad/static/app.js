@@ -1294,13 +1294,15 @@ $("#shellBtn").onclick = () => {
   m.innerHTML = `<div class="ttl">Shell</div>
     <div class="muted">${faces.length ? `Opens ${faces.map((p) => esc(p.labels[0])).join(", ")}` : "Hollows the part closed. Click a face first (shift-click more) to leave it open."}</div>
     <div class="row"><label>wall</label><input id="shT" value="2"></div>
+    <div class="row"><label>grows</label><select id="shDir"><option value="in">inward (hollow the part)</option><option value="out">outward (a skin around it)</option></select></div>
     <button class="go" id="shGo">Shell</button>`;
   popup(m, $("#shellBtn"));
   $("#shGo").onclick = async () => {
     const id = nextId("shell"), refs = faces.map((p) => faceRef(p.labels[0], p.point));
     m.hidden = true;
-    if (await addFeature({ id, type: "shell", remove_faces: refs, thickness: numOrExpr($("#shT").value),
-      intent: `Hollow to a ${$("#shT").value} mm wall${faces.length ? `, open at ${faces.map((p) => p.labels[0]).join(", ")}` : ""}` }, `shell ${id}`)) {
+    const out = $("#shDir").value === "out";
+    if (await addFeature({ id, type: "shell", remove_faces: refs, thickness: numOrExpr($("#shT").value), ...(out ? { outward: true } : {}),
+      intent: `${out ? "A skin" : "Hollow to a"} ${$("#shT").value} mm wall${out ? " around it" : ""}${faces.length ? `, open at ${faces.map((p) => p.labels[0]).join(", ")}` : ""}` }, `shell ${id}`)) {
       pickedFaces = []; pickUpdate(); select(id);
     }
   };
@@ -1540,8 +1542,10 @@ async function editFeature(fid, anchor) {
     body = `<div class="row"><label>${key}</label><input id="efSize" value="${val(j[key])}"></div><div class="muted">${(j.edges || []).length} edge reference(s): change them with Edit edges…</div>`;
     read = () => ({ [key]: numOrExpr($("#efSize").value) });
   } else if (j.type === "shell") {
-    body = `<div class="row"><label>wall</label><input id="efT" value="${val(j.thickness)}"></div><div class="muted">Open faces: ${(j.remove_faces || []).map((r) => esc(faceTxt(r))).join(", ") || "none"}</div>`;
-    read = () => ({ thickness: numOrExpr($("#efT").value) });
+    body = `<div class="row"><label>wall</label><input id="efT" value="${val(j.thickness)}"></div>
+      <div class="row"><label>grows</label><select id="efOut">${opt([["false", "inward"], ["true", "outward"]], String(!!j.outward))}</select></div>
+      <div class="muted">Open faces: ${(j.remove_faces || []).map((r) => esc(faceTxt(r))).join(", ") || "none"}</div>`;
+    read = () => ({ thickness: numOrExpr($("#efT").value), outward: $("#efOut").value === "true" });
   } else if (j.type === "linear_pattern" || j.type === "circular_pattern") {
     const ids = [...new Set([...replayable(), ...j.features])];
     const checks = `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.features.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>`;

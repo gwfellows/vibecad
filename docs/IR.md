@@ -56,7 +56,7 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 | extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind or through_all`, `mode: add / cut / intersect / new` |
 | revolve | `profile`, `axis` (a sketch line id, `x_axis` or `y_axis`), `angle` |
 | fillet / chamfer | `edges: [EdgeRef]`, `radius` / `distance` |
-| shell | `remove_faces: [FaceRef]`, `thickness` (inward) |
+| shell | `remove_faces: [FaceRef]`, `thickness` (inward; `outward: true` grows the wall outside: a skin around an imported body) |
 | linear_pattern | `features: [extrude/revolve ids]`, `direction: X, Y, Z or [x,y,z]`, `spacing`, `count` |
 | circular_pattern | `features`, `axis`, `origin`, `count`, `angle` (360 = full circle, evenly spaced) |
 | mirror | `features`, `plane: {datum, offset}` |
@@ -79,7 +79,7 @@ EdgeRef: {"between": [FaceRef, FaceRef], "note": "..."}
        | {"of": FaceRef, "filter": {"type": "line", "parallel_to": "Z"}, "note": "..."}
 ```
 
-- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner`; hole `wall`, `cbore_wall`, `cbore_floor`, `csk`, `tip`, `bottom` (entity = the point's id); import `face` (entity `f0`, `f1`, ... in the file's face order) or `mesh` for an STL reference; `new` for faces with no better origin.
+- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner` (`outer` when outward); hole `wall`, `cbore_wall`, `cbore_floor`, `csk`, `tip`, `bottom` (entity = the point's id); import `face` (entity `f0`, `f1`, ... in the file's face order) or `mesh` for an STL reference; `new` for faces with no better origin.
 - `instance`: omitted = the original only; `"*"` = original and all copies; `"<pattern_id>#<n>"` = one copy.
 - `pick`: `largest`, `smallest`, or `nearest` (with `near: [x, y, z]`) when one face is required.
 - EdgeRef `pick: "nearest"` with `near: [x, y, z]` keeps the one edge closest to that point, for two faces that meet along more than one edge.

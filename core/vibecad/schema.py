@@ -216,6 +216,7 @@ class Shell(_Feature):
     type: Literal["shell"] = "shell"
     remove_faces: list[FaceRef]
     thickness: Num
+    outward: bool = False  # the wall grows outside the surfaces: a skin around an imported body (a case around a phone)
 
 
 class LinearPattern(_Feature):

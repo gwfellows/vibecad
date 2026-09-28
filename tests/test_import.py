@@ -216,3 +216,25 @@ def test_open_surfaces_can_only_be_a_reference(tmp_path):
     res = _run(tmp_path, [{"id": "b", "type": "import", "file": "open.igs"}])
     assert not res.ok and "no closed solid" in res.features[0].message
     assert _run(tmp_path, [{"id": "b", "type": "import", "file": "open.igs", "mode": "reference"}]).ok
+
+
+def test_outward_shell_of_an_imported_phone_is_a_case(tmp_path):
+    """Import a phone as a solid, shell it outward with the screen open: the case skin, the phone gone."""
+    with bd.BuildPart() as p:
+        with bd.BuildSketch():
+            bd.Rectangle(70, 140)
+        bd.extrude(amount=8)
+    bd.export_step(p.part, str(tmp_path / "phone.step"))
+    first = _run(tmp_path, [{"id": "phone", "type": "import", "file": "phone.step"}])
+    screen = next(l.entity for f, l in first.body.labels if abs(_center(f).Z - 8) < 1e-6)
+    res = _run(tmp_path, [
+        {"id": "phone", "type": "import", "file": "phone.step"},
+        {"id": "case", "type": "shell", "thickness": 2, "outward": True,
+         "remove_faces": [{"feature": "phone", "role": "face", "entity": screen}]},
+    ])
+    assert res.ok, [(f.id, f.message) for f in res.features]
+    bb = res.part.bounding_box()
+    assert [round(v, 6) for v in (bb.size.X, bb.size.Y, bb.size.Z)] == [74, 144, 10]
+    # walls grow outward with rounded outer edges (the offset of a sharp box): between the sharp and rounded bounds
+    sharp = 74 * 144 * 10 - 70 * 140 * 8
+    assert sharp * 0.9 < res.part.volume < sharp

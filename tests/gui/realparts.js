@@ -120,6 +120,29 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   check("STL imports as a solid body", stl.type === "import" && stl.status === "ok" && !stl.warnings?.length, JSON.stringify([stl.status, stl.message, stl.warnings]));
   check("its volume matches the STEP's within the mesh tolerance", near((await vol()) - 14400, 82046.4, 82046.4 * 0.01), `${(await vol()) - 14400}`);
 
+  // ── a phone case in two steps: import the phone as a solid, shell it outward with the screen open ──
+  await newPart("phone_case");
+  await importFile("phone.step", { mode: "new", place: "origin" });
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(300);
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");  // look up at the screen (the flat side; the camera bump is on the back)
+  await page.waitForTimeout(400);
+  await click3d(-20, -40, 0);
+  await page.click("#shellBtn");
+  await page.selectOption("#shDir", "out");
+  await page.fill("#shT", "1.6");
+  await page.click("#shGo");
+  await idle();
+  st = await state();
+  check("outward shell builds the case skin", st.features.at(-1).status === "ok" && st.features.at(-1).type === "shell", JSON.stringify(st.features.at(-1).message));
+  // walls round the sides and over the back (the camera bump included); open where the screen was
+  check("the case is the phone plus a 1.6 mm wall", st.bbox && near(st.bbox[0], 71.5 + 3.2, 1e-3) && near(st.bbox[1], 146.7 + 3.2, 1e-3) && near(st.bbox[2], 9 + 1.6, 1e-3),
+    JSON.stringify(st.bbox));
+  check("and hollow: far less than the phone's volume", st.volume < 82046 * 0.4, `${st.volume}`);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("5_phone_case");
+
   // ── units: an inch model comes in at the right size ──
   await newPart("inch_test");
   const inSize = await importFile("block_inches.step", { units: "in" });

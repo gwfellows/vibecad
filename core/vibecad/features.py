@@ -416,15 +416,26 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
     for x in faces:
         lst.Append(x)
     t = _positive(ctx.num(f.thickness), "shell thickness")
-    mk = BRepOffsetAPI_MakeThickSolid()
-    mk.MakeThickSolidByJoin(ctx.body.shape, lst, -t, 1e-4)
-    mk.Build()
-    if not mk.IsDone():
-        raise FeatureError("shell failed; thickness may exceed a local feature size")
+    from OCP.BRepOffset import BRepOffset_Skin
+    from OCP.GeomAbs import GeomAbs_Arc, GeomAbs_Intersection
+    # rounded joins first (offset corners follow the part's edges); OCCT often can't build them around a bump or
+    # a boss next to the opening, where sharp (intersection) joins still work
+    for join, name in ((GeomAbs_Arc, "rounded"), (GeomAbs_Intersection, "sharp")):
+        mk = BRepOffsetAPI_MakeThickSolid()
+        try:
+            mk.MakeThickSolidByJoin(ctx.body.shape, lst, t if f.outward else -t, 1e-4, BRepOffset_Skin, False, False, join)
+            mk.Build()
+        except Exception:
+            continue
+        if mk.IsDone() and _is_valid(mk.Shape()):
+            break
+    else:
+        raise FeatureError("shell failed; the wall may be thicker than a local feature (a thin rib, a small boss, a "
+                           "hole near the wall), or a removed face carries other features (remove the face they sit on too)")
     result = mk.Shape()
-    pairs = propagate(mk, ctx.body.labels, result, Label(f.id, "inner"))
+    pairs = propagate(mk, ctx.body.labels, result, Label(f.id, "outer" if f.outward else "inner"))
     ctx.body = Body(result, pairs)
-    return {"removed_faces": len(faces), "thickness": t}
+    return {"removed_faces": len(faces), "thickness": t, "corners": name}
 
 
 # ── Patterns / mirror ──────────────────────────────────────────────
