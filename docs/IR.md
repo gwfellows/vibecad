@@ -61,13 +61,13 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 | circular_pattern | `features`, `axis`, `origin`, `count`, `angle` (360 = full circle, evenly spaced) |
 | mirror | `features`, `plane: {datum, offset}` |
 | hole | `sketch` (its points, and circle/arc centres, are the hole positions; `points` picks some), `kind: simple / counterbore / countersink`, `diameter`, `extent: through_all` (default) or `blind` with `depth`, `direction: reverse` (default, into the solid from a face sketch) or `normal`, `tip_angle` (blind: 118, 0 = flat), `cbore_diameter` + `cbore_depth`, `csk_diameter` + `csk_angle` (90), `thread` (e.g. `"M3x0.5"`: tapped; `diameter` is the tap drill) |
-| import | `file` (STEP / IGES / BREP / STL, relative to the part file), `mode: new / add / cut / intersect / reference`, `scale` (25.4 for inches), `rotate: [x, y, z]` degrees about the world axes in that order, `translate: [x, y, z]` after rotating |
+| import | `file` (STEP / IGES / BREP / STL, or another part `*.vcad.json`, relative to the part file), `mode: new / add / cut / intersect / reference`, `scale` (25.4 for inches), `rotate: [x, y, z]` degrees about the world axes in that order, `translate: [x, y, z]` after rotating |
 
 All features take `id`, optional `name`, `intent` (one line: why it exists), `suppressed`.
 
 Holes: `depth` is to the end of the full diameter; a blind hole's drill point is extra. A construction circle is not a hole position unless it is named in `points`. Patterns and mirrors can repeat holes and (solid) imports.
 
-Imports: `mode: reference` keeps the body out of the part: it is shown ghosted, and its faces and edges can be sketch planes, `external` projections and fit checks (a phone to fit a case around, a motor to mount). An STL is sewn into a solid for the other modes (up to 20,000 triangles; bigger meshes can only be references). The build re-reads the file when it changes on disk.
+Imports: `mode: reference` keeps the body out of the part: it is shown ghosted, and its faces and edges can be sketch planes, `external` projections and fit checks (a phone to fit a case around, a motor to mount). An STL is sewn into a solid for the other modes (up to 20,000 triangles; bigger meshes can only be references), and so are IGES surfaces that close. The build re-reads the file when it changes on disk. Another part (`*.vcad.json`) is regenerated live, and its faces keep that part's own labels as the entity, with `(` `)` for brackets and `~` for `@`: `{"feature": "enc", "role": "face", "entity": "box.side(box_top)"}`. So references to it survive edits to that part. A part can't import itself, even through other parts.
 
 ## References to faces and edges
 

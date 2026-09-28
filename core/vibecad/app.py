@@ -289,6 +289,32 @@ class App:
         out["units_hint"] = "m" if 0 < big < 1.0 else "in" if big < 12 else "µm" if big > 5000 else "mm"
         return out
 
+    def import_part_info(self, rel: str) -> dict:
+        """Another part of this folder, for importing into the open one: its path relative to the open part, and
+        what the import form shows (size, solids)."""
+        import os
+
+        import build123d as bd
+
+        from .importer import ImportError_, load_part
+        if self.ws.active is None:
+            raise ToolError("open or create a part first")
+        p = (self.ws.root / rel).resolve()
+        if not p.name.endswith(".vcad.json") or not p.exists():
+            raise ToolError(f"no part {rel!r}")
+        if p == Path(self.ws.active).resolve():
+            raise ToolError("a part can't import itself")
+        try:
+            shape, _, info = load_part(p)
+        except ImportError_ as e:
+            raise ToolError(str(e)) from None
+        sh = bd.Shape.cast(shape)
+        bb, solids = sh.bounding_box(), sh.solids()
+        return {"file": os.path.relpath(p, Path(self.ws.active).parent), "name": p.name, "format": "part", "mesh": False,
+                "faces": len(sh.faces()), "solids": len(solids), "volume": round(sum(x.volume for x in solids), 3), "sewn": False,
+                "bbox_min": [round(v, 3) for v in (bb.min.X, bb.min.Y, bb.min.Z)],
+                "bbox_size": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)], "units_hint": "mm", "part": True}
+
     def face_point(self, ref: dict, point: list[float]) -> dict:
         """Where a point clicked on a face lands in a sketch on that face: sketch coordinates (u, v), for placing
         a hole or a sketch point where the user clicked."""
@@ -954,6 +980,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     async def import_cad(request: Request, name: str):
         data = await request.body()
         return await asyncio.to_thread(guard, A.import_file, name, data)
+
+    @api.post("/api/import_part")
+    async def import_part(body: dict = Body(...)):
+        return await asyncio.to_thread(guard, A.import_part_info, body["path"])
 
     @api.post("/api/face_point")
     async def face_point(body: dict = Body(...)):

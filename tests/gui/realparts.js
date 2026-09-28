@@ -144,6 +144,23 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   await page.waitForTimeout(500);
   await shot("5_phone_case");
 
+  // ── another part of the folder as a live reference: a lid designed on the enclosure's top ──
+  await newPart("lid_test");
+  await page.click("#importBtn");
+  await page.click('#featMenu [data-part="enclosure_lid.vcad.json"]');
+  await page.waitForSelector("#imGo", { timeout: 30000 });
+  check("a part imports as a reference by default", (await page.inputValue("#imMode")) === "reference" && (await page.textContent("#featMenu")).includes("kept live"));
+  await page.click("#imGo");
+  await idle();
+  st = await state();
+  const encF = await page.evaluate(() => fetch(`/api/feature/enclosure_lid1`).then((r) => r.json()));
+  check("its file is relative to this part", encF.file === "../enclosure_lid.vcad.json", JSON.stringify(encF.file));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(400);
+  await click3d(-20, 0, 20);  // the enclosure's top, clear of the vent slots
+  const top = await page.evaluate(() => window.vibecadView.pickedFace());
+  check("its faces carry the part's own labels", top?.labels?.[0] === "enclosure_lid1.face[box.end]", JSON.stringify(top));
+
   // ── units: an inch model comes in at the right size ──
   await newPart("inch_test");
   const inSize = await importFile("block_inches.step", { units: "in" });

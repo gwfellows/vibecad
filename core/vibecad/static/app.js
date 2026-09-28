@@ -1604,10 +1604,23 @@ async function editFeature(fid, anchor) {
 
 // ── import a CAD file: upload it next to the part, then choose how it joins the model ──
 const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, "µm": 0.001 };
-$("#importBtn").onclick = () => {
+$("#importBtn").onclick = async () => {
   if (!S) return note("Open or create a part first.", "err");
-  $("#importFile").value = "";
-  $("#importFile").click();
+  const others = (await api("/api/parts")).parts.filter((p) => p !== S.rel);
+  const m = $("#featMenu");
+  m.classList.remove("wide");
+  m.innerHTML = `<div class="ttl">Import</div>
+    <a class="menuitem" id="imFromFile"><b>A CAD file…</b><span>STEP, IGES, BREP or STL</span></a>
+    ${others.length ? `<div class="muted" style="margin-top:4px">Another part of this folder (it stays live):</div>
+      <div class="checks partlist">${others.map((p) => `<a class="menuitem" data-part="${esc(p)}"><b>${esc(p)}</b></a>`).join("")}</div>` : ""}`;
+  popup(m, $("#importBtn"));
+  $("#imFromFile").onclick = () => { m.hidden = true; $("#importFile").value = ""; $("#importFile").click(); };
+  m.querySelectorAll("[data-part]").forEach((a) => (a.onclick = async () => {
+    m.hidden = true;
+    let info;
+    try { info = await busyDo(`Reading ${a.dataset.part}`, () => api("/api/import_part", { path: a.dataset.part })); } catch { return; }
+    importForm(info);
+  }));
 };
 $("#importFile").onchange = async () => {
   const f = $("#importFile").files[0];
@@ -1629,11 +1642,11 @@ function importForm(info) {
   const m = $("#featMenu"), hasBody = S.volume != null, solid = info.solids > 0;
   const modes = [["reference", "Reference: design around it (not part of the solid)"], ["new", hasBody ? "New body" : "Base solid of this part"],
     ["add", "Add to the part"], ["cut", "Cut from the part"], ["intersect", "Keep only the overlap"]];
-  const def = !solid ? "reference" : hasBody ? "reference" : "new";
+  const def = !solid || info.part ? "reference" : hasBody ? "reference" : "new";
   const sz = info.bbox_size.map((v) => fmt(v, 2)).join(" × ");
-  const stem = (info.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "imported").slice(0, 28);
+  const stem = (info.name.replace(/\.vcad\.json$/, "").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "imported").slice(0, 28);
   m.innerHTML = `<div class="ttl">Import ${esc(info.name)}</div>
-    <div class="muted">${esc(info.format.toUpperCase())} · ${info.mesh ? `mesh, ${info.triangles} triangles` : `${info.faces} faces`} · ${info.solids ? `${info.solids} solid${info.solids === 1 ? "" : "s"}${info.sewn ? " (sewn from its surfaces)" : ""}` : "surfaces only: import it as a reference"} · ${sz} (file units)</div>
+    <div class="muted">${info.part ? "VibeCAD part, kept live: its changes show here · " : ""}${esc(info.format.toUpperCase())} · ${info.mesh ? `mesh, ${info.triangles} triangles` : `${info.faces} faces`} · ${info.solids ? `${info.solids} solid${info.solids === 1 ? "" : "s"}${info.sewn ? " (sewn from its surfaces)" : ""}` : "surfaces only: import it as a reference"} · ${sz} (file units)</div>
     <div class="row"><label>name</label><input id="imId" value="${esc(nextId(stem))}"></div>
     <div class="row"><label>as</label><select id="imMode">${modes.map(([v, t]) => `<option value="${v}" ${v === def ? "selected" : ""} ${!solid && v !== "reference" ? "disabled" : ""}>${esc(t)}</option>`).join("")}</select></div>
     <div class="row"><label>units</label><select id="imUnits">${Object.keys(UNITS).map((u) => `<option ${u === info.units_hint ? "selected" : ""}>${u}</option>`).join("")}</select>

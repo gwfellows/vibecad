@@ -629,18 +629,25 @@ def import_transform(ctx: Ctx, f: S.Import) -> gp_Trsf:
 
 
 def do_import(ctx: Ctx, f: S.Import) -> dict:
-    from .importer import ImportError_, load
+    from .importer import ImportError_, is_part, load, load_part, part_label
 
     path = Path(f.file) if Path(f.file).is_absolute() else ctx.base_dir / f.file
+    part_labels = None
     try:
-        shape, info = load(path, as_solid=f.mode != "reference")
+        if is_part(path):
+            shape, part_labels, info = load_part(path)
+        else:
+            shape, info = load(path, as_solid=f.mode != "reference")
     except ImportError_ as e:
         raise FeatureError(str(e)) from None
     tr = BRepBuilderAPI_Transform(shape, import_transform(ctx, f), True)
     tr.Build()
     shape = tr.Shape()
     faces = list_faces(shape)
-    if info.get("mesh"):
+    if part_labels is not None:  # another part: its own labels, carried onto the moved copy
+        labels = [(m, Label(f.id, "face", part_label(l))) for x, l in part_labels for m in tr.Modified(x)]
+        labels += [(x, Label(f.id, "face", f"f{i}")) for i, x in enumerate(faces) if not any(x.IsSame(y) for y, _ in labels)]
+    elif info.get("mesh"):
         labels = [(x, Label(f.id, "mesh")) for x in faces]
     else:
         labels = [(x, Label(f.id, "face", f"f{i}")) for i, x in enumerate(faces)]

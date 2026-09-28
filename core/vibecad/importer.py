@@ -25,6 +25,38 @@ class ImportError_(ValueError):
     pass
 
 
+_loading: set[str] = set()  # parts being regenerated for an import: a part can't import itself, even indirectly
+
+
+def is_part(path: Path) -> bool:
+    return path.name.endswith(".vcad.json")
+
+
+def part_label(label) -> str:
+    """Another part's face label as an import entity: brackets and @ would clash with our own label syntax."""
+    return str(label).replace("[", "(").replace("]", ")").replace("@", "~")
+
+
+def load_part(path: Path) -> tuple[TopoDS_Shape, list, dict]:
+    """Another VibeCAD part, regenerated: its solid and its face labels, so references to it read like
+    `{"feature": "enclosure", "role": "face", "entity": "box.end"}` and survive edits to that part."""
+    from .regen import Regenerator, load as load_doc
+    if not path.exists():
+        raise ImportError_(f"import file {path} not found")
+    key = str(path.resolve())
+    if key in _loading:
+        raise ImportError_(f"{path.name} imports itself (directly or through other parts)")
+    _loading.add(key)
+    try:
+        res = Regenerator(path.parent).run(load_doc(path))
+    finally:
+        _loading.discard(key)
+    if res.body.shape is None:
+        first = next((f for f in res.features if f.status == "error"), None)
+        raise ImportError_(f"part {path.name} has no solid" + (f"; its {first.id}: {first.message}" if first else ""))
+    return res.body.shape, res.body.labels, {"format": "part", "mesh": False, "part_ok": res.ok}
+
+
 def file_stamp(path: Path) -> str:
     try:
         st = path.stat()

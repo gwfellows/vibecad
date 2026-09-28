@@ -263,3 +263,37 @@ def test_agent_check_fit_includes_reference_imports_and_measure_gives_mass(tmp_p
     ws.apply_ops([{"op": "update_feature", "id": "sk", "set": {"plane": {"datum": "XY", "offset": 8}}}], "sink it", "agent")
     fit = json.loads(ws.check_fit([]))
     assert fit["reference motor"]["overlap_mm3"] == pytest.approx(20 * 20 * 2)  # the plate now dips 2 mm into the motor
+
+
+def test_import_another_part_with_its_face_labels(tmp_path):
+    """A lid designed against the enclosure: the enclosure is imported live, faces named by its own labels."""
+    import json
+    shutil.copy(EX / "enclosure_lid.vcad.json", tmp_path / "enclosure.vcad.json")
+    ref = lambda e: {"feature": "enc", "role": "face", "entity": e}
+    feats = [
+        {"id": "enc", "type": "import", "file": "enclosure.vcad.json", "mode": "reference"},
+        {"id": "pad_sk", "type": "sketch", "plane": {"face": ref("box.end")}, "entities": [
+            {"id": "c", "type": "circle", "center": [0, 0], "r": 3}],
+         "constraints": [{"type": "coincident", "on": ["c.center", "origin"]}, {"type": "radius", "on": ["c"], "value": 3}]},
+        {"id": "pad", "type": "extrude", "profile": {"sketch": "pad_sk"}, "distance": 2, "mode": "new"},
+    ]
+    res = _run(tmp_path, feats)
+    assert res.ok, [(f.id, f.message) for f in res.features]
+    labels = {l.entity for _, l in res.refs["enc"].labels}
+    assert "box.end" in labels and "hollow.inner" in labels and any(e.startswith("box.side(") for e in labels)
+    bb = res.part.bounding_box()
+    assert round(bb.min.Z, 6) == 20 and round(bb.max.Z, 6) == 22  # on the enclosure's top (height 20)
+    # the enclosure gets taller: the pad follows, the reference still resolves
+    doc = json.loads((tmp_path / "enclosure.vcad.json").read_text())
+    doc["params"]["height"] = 30
+    (tmp_path / "enclosure.vcad.json").write_text(json.dumps(doc))
+    res = _run(tmp_path, feats)
+    assert res.ok and round(res.part.bounding_box().min.Z, 6) == 30
+
+
+def test_a_part_cannot_import_itself(tmp_path):
+    import json
+    (tmp_path / "loop.vcad.json").write_text(json.dumps({"name": "loop", "features": [
+        {"id": "me", "type": "import", "file": "loop.vcad.json", "mode": "reference"}]}))
+    res = Regenerator(tmp_path).run(load(tmp_path / "loop.vcad.json"))
+    assert not res.ok and "imports itself" in res.features[0].message
