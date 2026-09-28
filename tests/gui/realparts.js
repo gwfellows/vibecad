@@ -69,6 +69,21 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
     last = [...r.querySelectorAll("button.rb")].at(-1).getBoundingClientRect();
     return { scroll: r.scrollWidth - r.clientWidth, lastRight: last.right, centerRight: c.right, width: c.width }; });
   check("the whole ribbon fits in the view (no button cut off)", fits.scroll <= 1 && fits.lastRight <= fits.centerRight, JSON.stringify(fits));
+  for (const [w, labelled] of [[1440, true], [1100, false]]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(300);
+    const f = await page.evaluate(() => { const r = document.querySelector("#modelTools"), c = document.querySelector("#center").getBoundingClientRect(),
+      b = [...r.querySelectorAll("button.rb")]; return { scroll: r.scrollWidth - r.clientWidth, lastRight: b.at(-1).getBoundingClientRect().right,
+      centerRight: c.right, labels: getComputedStyle(b[0].querySelector("span")).display !== "none" }; });
+    if (!labelled) await shot("ribbon_narrow");
+    if (!labelled) {
+      const ov = await page.evaluate(() => { const g = document.querySelector("#gizmo").getBoundingClientRect(), v = document.querySelector(".vtools.viewbar").getBoundingClientRect();
+        return { gizmoRight: g.right, viewbarLeft: v.left }; });
+      check(`at ${w} px the view bar clears the gizmo`, ov.viewbarLeft >= ov.gizmoRight, JSON.stringify(ov));
+    }
+    check(`at ${w} px the ribbon fits${labelled ? " with its labels" : ", icons only"}`, f.scroll <= 1 && f.lastRight <= f.centerRight && f.labels === labelled, JSON.stringify(f));
+  }
+  await page.setViewportSize({ width: 1500, height: 900 });
 
   // ── import a phone as a reference body, then design a case plate on it ──
   await newPart("case_test");

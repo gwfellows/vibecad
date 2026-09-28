@@ -52,7 +52,13 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 - **Offset** (`K`): select an edge; its whole connected outline is copied at a distance (a negative one for inside). The copy follows the original and its distance can be a parameter, so "a 2 mm wall inside this outline" or "a 0.3 mm clearance around the projected phone" stay right when sizes change.
 - **Other actions:** rename, → Param (turn a dimension into a named parameter), construction, delete, and Ask agent. Ask agent sends the selected entities and the constraints on them.
 
-**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Loft**, **Sweep**, **Hole**, **Text**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (a distance, through all, or up to a face parallel to the sketch, picked from a list; a draft angle for molded or printed parts; direction; add / cut / new / intersect; revolve axis and angle). **Loft** blends a solid through the profiles of two or more sketches (a square fan duct into a slot, with a second loft through inset sections to hollow it); **Sweep** moves a profile along the lines and arcs of another sketch (a bent tube from a ring and a centreline; sharp corners are mitred). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
+**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Loft**, **Sweep**, **Hole**, **Text**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (a distance, through all, or up to a face parallel to the sketch, picked from a list; a draft angle for molded or printed parts; direction; add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
+
+**Loft** blends a solid through the profiles of two or more sketches (a square fan duct into a slot, with a second loft through inset sections to hollow it); **Sweep** moves a profile along the lines and arcs of another sketch (a bent tube from a ring and a centreline; sharp corners are mitred).
+
+| Loft: a fan duct, hollowed by a second loft through inset sections | Sweep: a ring along a line-arc-line centreline |
+|---|---|
+| ![The duct adapter with its inside loft's form open](docs/img/loft.png) | ![A bent tube swept along its centreline](docs/img/sweep.png) |
 
 ### Working with real parts
 
@@ -91,6 +97,8 @@ This adds a small sketch holding the dimensioned position, and the hole. To dril
 **Text:** click a face, type the text (a part number, a revision, an arrow), and choose engraved or embossed, with height, depth and angle. Like a hole, it gets a dimensioned position sketch.
 
 **Section** cuts the view with a plane along X, Y or Z. It keeps the half away from you, so the cut faces you, and the inside shows in orange. **Export** downloads the part as STEP, STL, 3MF, BREP or glTF, or as a **drawing**: an SVG sheet (A4 or A3, at a standard scale so it prints true to size) with front, top and right views in third-angle projection, hidden lines, an isometric, overall dimensions, a callout for every hole feature (`4× ⌀4.5 THRU, CBORE ⌀8 ↧4.4`) and a title block with material and process.
+
+![The mounting plate's drawing: three views, an isometric, overall dimensions and the hole callouts](docs/img/drawing.png)
 
 ### Pick edges and faces, then fillet or chamfer
 

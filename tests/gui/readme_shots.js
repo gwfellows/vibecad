@@ -143,6 +143,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.mouse.move(1000, 850);
   await sleep(600);
   await shot("measure");
+  await page.keyboard.press("Escape");
+
+  // 8. loft: the duct adapter, with the inside loft's form open on its two inset sections
+  await open(BASE, "duct_adapter.vcad.json");
+  await page.dblclick("#tree li.feat[data-id=bore] .fid");
+  await page.waitForSelector("#efGo");
+  await sleep(800);
+  await page.mouse.move(1000, 850);
+  await shot("loft");
+  await page.keyboard.press("Escape");
+
+  // 9. sweep: a bent tube, a ring along a line-arc-line centreline
+  await open(BASE, "bent_tube.vcad.json");
+  await page.click("#tree li.feat[data-id=tube] .fid");
+  await sleep(1200);
+  await page.mouse.move(1000, 850);
+  await shot("sweep");
+
+  // 10. the SVG drawing export of the mounting plate, rendered on its own
+  await open(BASE, "mounting_plate.vcad.json");
+  const svg = await page.evaluate(() => fetch("/api/export?fmt=svg").then((r) => r.text()));
+  const dp = await browser.newPage({ viewport: { width: 1400, height: 990 } });
+  await dp.setContent(`<body style="margin:0;background:#fff">${svg.replace(/width="[\d.]+mm" height="[\d.]+mm"/, 'width="1400" height="990"')}</body>`);
+  await sleep(400);
+  await dp.screenshot({ path: path.join(OUT, "drawing.png") });
 
   await browser.close();
 })().catch((e) => { console.error("SCRIPT ERROR", e); process.exit(2); });
