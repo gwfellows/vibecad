@@ -1,6 +1,6 @@
 # VibeCAD
 
-AI-assisted parametric CAD. You and the AI edit the same thing: a readable feature tree of named parameters, fully constrained sketches and features (`*.vcad.json`), regenerated into a B-rep solid with OpenCascade. You can talk to the agent, edit by hand, or both in the same session. Either way every change is one undoable step.
+AI-assisted parametric CAD. You and the AI edit the same thing: a readable feature tree of named parameters, fully constrained sketches and features (`*.vcad.json`), regenerated into a B-rep solid with OpenCascade. You can talk to the agent, edit by hand, or both in the same session. Either way every change is one undoable step. It is made for real parts: import the STEP of the phone, motor or board you are designing around, place it by its faces, and cut, sketch and check clearances against it. Then export STEP, STL or 3MF, or a dimensioned drawing.
 
 ![The VibeCAD app: feature tree with per-feature parameters, the modelling toolbar over the 3D view, agent panel](docs/img/overview.png)
 
@@ -12,6 +12,8 @@ Design doc: https://claude.ai/code/artifact/143cbf50-54de-4302-849d-9ac99055b488
 | ![Changing parameters, dragging the rollback bar](docs/img/params.gif) | ![Sketching a plate, dimensioning it, extruding, cutting a hole](docs/img/sketch.gif) |
 | [Fillets and edges](#pick-edges-and-faces-then-fillet-or-chamfer) | [The agent](#talk-to-the-agent-pointing-at-geometry) |
 | ![Changing a fillet's edges, then filleting two picked edges](docs/img/edges.gif) | ![Asking the agent, referencing an edge, attaching an image](docs/img/agent.gif) |
+| [Designing around imported parts](#designing-around-imported-parts) | [Drawings and export](#holes-measuring-sections) |
+| ![A holder built around an imported cell, with Clash showing its clearance](docs/img/clash.png) | ![A drawing exported from the mounting plate](docs/img/drawing.png) |
 
 ## What it looks like
 
@@ -53,7 +55,7 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 - **Offset** (`K`): select an edge; its whole connected outline is copied at a distance (a negative one for inside). The copy follows the original and its distance can be a parameter, so "a 2 mm wall inside this outline" or "a 0.3 mm clearance around the projected phone" stay right when sizes change.
 - **Other actions:** rename, → Param (turn a dimension into a named parameter), construction, delete, and Ask agent. Ask agent sends the selected entities and the constraints on them.
 
-**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Loft**, **Sweep**, **Hole**, **Text**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (a distance, through all, or up to a face parallel to the sketch, picked from a list; a draft angle for molded or printed parts; direction; add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
+**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Loft**, **Sweep**, **Hole**, **Text**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Combine**, **Measure**, **Section**, **Clash** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (a distance, through all, or up to a face parallel to the sketch, picked from a list; a draft angle for molded or printed parts; direction; add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
 
 **Loft** blends a solid through the profiles of two or more sketches (a square fan duct into a slot, with a second loft through inset sections to hollow it); **Sweep** moves a profile along the lines and arcs of another sketch (a bent tube from a ring and a centreline; sharp corners are mitred).
 
@@ -61,17 +63,34 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 |---|---|
 | ![The duct adapter with its inside loft's form open](docs/img/loft.png) | ![A bent tube swept along its centreline](docs/img/sweep.png) |
 
-### Working with real parts
+### Designing around imported parts
+
+Most real parts exist to hold, mount or enclose something else: a phone, a motor, a board, a battery. VibeCAD is built for that. Import the parts you design around, put them where they go, then shape your part against them. It follows them when they move or change.
 
 ![Importing a STEP file: format, size in the part, units, placement](docs/img/import.png)
 
-**Import** (or drop a file on the view) brings in STEP, IGES, BREP or STL. The form shows what is in the file and its size once scaled. The units are guessed from the size, and you can type your own scale. You can keep the file's position or centre it on the origin. Choose how it joins the model:
-- **Reference:** a mating part to design around (a phone, a motor, a board). It is drawn in violet and is not part of the solid, but you can sketch on its faces, **Project** its edges into a sketch, and measure to it.
-- **Base solid, add, cut, intersect:** it becomes part of the model. IGES and STL surfaces are sewn into a solid when they close.
+1. **Import** STEP, IGES, BREP or STL, or another VibeCAD part (`.vcad.json`, kept live). Choose several files at once, or drop them on the view, and their forms open one after another. The form shows what is in the file and its size once scaled; the units are guessed from the size, and you can type your own scale. Keep the file's position or centre it on the origin.
+   - **Reference** (the default once the part has a solid): a body to design around. It isn't part of your solid. Each reference gets its own colour, and an eye in the tree hides it.
+   - **Base solid, add, cut, intersect:** it becomes part of the model. IGES and STL surfaces are sewn into a solid when they close.
 
-The file is copied next to the part (`imports/`) and re-read when it changes on disk.
+   The file is copied next to the part (`imports/`) and re-read when it changes on disk.
+2. **Place it by its faces.** Select the import, click **Place by faces…**, then click a flat face of it and the face it should sit against. Choose a gap, and whether to centre it on that face or slide it straight in. No rotation angles to work out: this rewrites the import's rotation and position for you.
+3. **Shape your part against it.**
+   - Sketch on its faces, or **Project** its edges into a sketch; **Offset** them for a wall or a clearance.
+   - Extrude **up to** one of its faces (the extrude form lists the faces parallel to the sketch, the imports' too).
+   - **Measure** to it.
+4. **Cut a nest for it.** **Combine** (or **Cut a nest for it…** on a selected reference) cuts the body out of your part, grown by a clearance all round, with rounded corners so the gap is the same everywhere. That gives a battery holder, a phone cradle or a case pocket. The nest follows the import, and can be patterned like any feature. Combine can also add the body, or keep only the overlap.
+5. **Check the fit.** **Clash** lists every reference with its overlap volume (drawn in red where your part runs into it) or its smallest gap (drawn as a line). It checks again after every edit.
+
+| Clash: the cell holder's nest leaves 0.3 mm round the imported cell | Place by faces: the cell's top against the block's top |
+|---|---|
+| ![The cell holder with Clash on: the cell ghosted in violet, 0.3 mm clear](docs/img/clash.png) | ![Placing the cell by clicking two faces: gap and centring](docs/img/place.png) |
+
+`examples/cell_holder.vcad.json` is a worked example: it imports `cell_18650.vcad.json` as a live reference and cuts two nests with a clearance parameter. Change the cell's diameter in its own file and the holder's nests follow.
 
 For a phone case, import the phone as a solid, click its screen, and **Shell** it outward by the wall thickness: the case skin, open where the screen is.
+
+### Holes, measuring, sections
 
 ![Adding a counterbored hole where the face was clicked: ISO screw presets](docs/img/holes.png)
 
@@ -145,7 +164,7 @@ uv run vibecad tree examples/enclosure_lid.vcad.json         # feature tree with
 
 ### Designing parts with Claude Code
 
-Register the MCP server once: `claude mcp add --scope project vibecad -- uv run --quiet vibecad-mcp`. Then ask Claude Code for a part in this folder. `CLAUDE.md` loads the design guide (`agent/GUIDE.md`).
+Register the MCP server once: `claude mcp add --scope project vibecad -- uv run --quiet vibecad-mcp`. Then ask Claude Code for a part in this folder. `CLAUDE.md` loads the design guide (`agent/GUIDE.md`). The agent works the same way around imports: `import` with mode `reference`, `place_import` by faces, a `boolean` cut with `clearance`, and `check_fit`.
 
 ## How it works
 
@@ -160,15 +179,20 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 
 ## Status
 
-- **Reference parts:** 11 in `examples/`, including a bracket, pillow block, enclosure lid, NEMA 17 mount, battery tray and strap, hex standoff, and a mounting plate with counterbored, countersunk and tapped holes. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
-- **Tests:** `uv run pytest` runs 332 tests. They include imports of STEP, IGES, BREP and STL (exact round trips, units, placement, sewing surfaces), and every hole type against its volume formula.
-- **Browser tests:** `scripts/gui_smoke.sh` runs about 280 Playwright checks. They cover:
+- **Reference parts:** 17 in `examples/`, including a bracket, pillow block, enclosure lid and its gasket, NEMA 17 mount, battery tray and strap, hex standoff, a mounting plate with counterbored, countersunk and tapped holes, a drafted molded boss, a lofted fan duct, a bent tube, and a cell holder built around an imported cell. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
+- **Tests:** `uv run pytest` runs about 450 tests. They include:
+  - imports of STEP, IGES, BREP and STL (exact round trips, units, placement, sewing surfaces);
+  - every hole type, draft, loft, sweep and clearance nest against its volume formula;
+  - placing imports by their faces;
+  - the drawing export.
+- **Browser tests:** `scripts/gui_smoke.sh` runs about 350 Playwright checks. They cover:
   - the main flows
   - modelling a part by hand from an empty file
   - the sketch editor
   - the agent panel, against a scripted agent
   - editing a fillet's edges, per-part conversations, attachments and the rebuild indicator
-  - real-part work: imports, holes, pattern, mirror, shell (including the phone case), measure, section, export and editing features
+  - real-part work: importing several files, placing them by faces, Clash, clearance nests, holes, pattern, mirror, shell (including the phone case), loft, sweep, draft and up-to-face extrudes, measure, section, export (including drawings) and editing features
+  - the ribbon at three window widths
 
   With `USERPARTS=folder` it also opens your own parts, changes a parameter of each and undoes it.
 

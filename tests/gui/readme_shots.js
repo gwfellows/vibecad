@@ -161,6 +161,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.mouse.move(1000, 850);
   await shot("sweep");
 
+  // 11. designing around an imported part: the cell holder, with Clash showing the 0.3 mm gap to the cell
+  await open(BASE, "cell_holder.vcad.json");
+  await page.click("#clashBtn");
+  await page.waitForSelector("#clashPanel .fitrow", { timeout: 20000 });
+  await page.click("#tree li.feat[data-id=nest] .fid");
+  await sleep(1200);
+  await page.mouse.move(1000, 850);
+  await shot("clash");
+  await page.click("#clashBtn");
+
+  // 12. placing an import by its faces: the cell's top against the block's top (the form, before applying)
+  await page.click("#tree li.feat[data-id=cell] .fid");
+  await page.waitForSelector("#details [data-a=mate]");
+  await page.click("#details [data-a=mate]");
+  [x, y] = await world(-12, 0, 75);
+  await page.mouse.click(x, y); await sleep(700);
+  [x, y] = await world(0, 9, 30);
+  await page.mouse.click(x, y); await sleep(900);
+  await page.mouse.move(1000, 850);
+  await shot("place");
+  await page.keyboard.press("Escape");
+
   // 10. the SVG drawing export of the mounting plate, rendered on its own
   await open(BASE, "mounting_plate.vcad.json");
   const svg = await page.evaluate(() => fetch("/api/export?fmt=svg").then((r) => r.text()));

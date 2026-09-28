@@ -382,3 +382,17 @@ def test_fit_reports_overlap_gap_and_clash_mesh_per_reference(tmp_path):
     assert q[0] - p[0] == pytest.approx(3, abs=1e-6)
     st = a.state()
     assert [f.get("mode") for f in st["features"] if f["type"] == "import"] == ["reference", "reference"]
+
+
+def test_parallel_faces_include_reference_bodies(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    bd.export_step(bd.Box(10, 10, 10, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    ops = [{"op": "add_feature", "feature": {"id": "pcb", "type": "import", "file": "cube.step", "mode": "reference", "translate": [200, 0, 40]}},
+           {"op": "add_feature", "feature": {"id": "post_sk", "type": "sketch", "plane": {"datum": "XY"}}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "a reference above", "user")
+    faces = a.parallel_faces("post_sk")
+    pcb = [f for f in faces if f["label"].startswith("pcb.")]
+    assert sorted(f["distance"] for f in pcb) == [40, 50], pcb  # its underside and its top
+    assert all(f["ref"]["feature"] == "pcb" for f in pcb)

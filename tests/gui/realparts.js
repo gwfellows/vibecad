@@ -487,6 +487,18 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const drafted = await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json()));
   check("the draft is stored on the feature and nothing else changed", drafted.draft === 5 && drafted.extent === "up_to_face" && (drafted.distance ?? 0) === 0, JSON.stringify(drafted));
 
+  // ── two files chosen at once import one after the other ──
+  await newPart("multi_import");
+  await page.setInputFiles("#importFile", [path.join(FIX, "phone.step"), path.join(FIX, "pillow_block.step")]);
+  await page.waitForSelector("#imGo", { timeout: 30000 });
+  check("the first form says another file follows", (await page.textContent("#imGo")).includes("1 more"), await page.textContent("#imGo"));
+  await page.click("#imGo");
+  await page.waitForFunction(() => document.querySelector("#imGo")?.textContent === "Import" && !document.querySelector("#featMenu").hidden, null, { timeout: 30000 });
+  check("then the second file's form opens", (await page.inputValue("#imId")).startsWith("pillow_block"));
+  await page.click("#imGo");
+  await idle();
+  check("both files imported", (await state()).features.filter((f) => f.type === "import").length === 2);
+
   // ── design around two imported parts: each reference has its own colour and an eye; Fit shows clashes and gaps ──
   await newPart("fit_test");
   await importFile("phone.step", { mode: "reference", place: "origin" });

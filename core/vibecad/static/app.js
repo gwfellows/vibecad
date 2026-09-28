@@ -1985,10 +1985,16 @@ $("#importBtn").onclick = async () => {
     importForm(info);
   }));
 };
+// several files (chosen together, or dropped together) import one after another: the next form opens when one is done
+let importQueue = [];
+function importNext() {
+  const f = importQueue.shift();
+  if (f) importFlow(f);
+}
 $("#importFile").onchange = async () => {
-  const f = $("#importFile").files[0];
+  importQueue = [...$("#importFile").files];
   $("#importFile").value = "";  // choosing the same file again must still import it
-  if (f) await importFlow(f);
+  importNext();
 };
 async function importFlow(file) {
   let info;
@@ -2037,16 +2043,19 @@ function importForm(info) {
     }
     m.hidden = true;
     if (await addFeature(f, `import ${info.name}`)) { select(id); fitView("iso"); }
+    importNext();
   };
+  if (importQueue.length) $("#imGo").textContent = `Import, then the next (${importQueue.length} more)`;
 }
 // drop a CAD file anywhere on the 3D view to import it
 $("#center").addEventListener("dragover", (ev) => { if ([...ev.dataTransfer.items].some((i) => i.kind === "file")) ev.preventDefault(); });
 $("#center").addEventListener("drop", (ev) => {
-  const f = [...ev.dataTransfer.files].find((x) => /\.(step|stp|iges|igs|brep|brp|stl)$/i.test(x.name));
-  if (!f) return;
+  const fs = [...ev.dataTransfer.files].filter((x) => /\.(step|stp|iges|igs|brep|brp|stl)$/i.test(x.name));
+  if (!fs.length) return;
   ev.preventDefault();
   if (!S) return note("Open or create a part first.", "err");
-  importFlow(f);
+  importQueue = fs;
+  importNext();
 });
 
 // ── export: download the shown part ──

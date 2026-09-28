@@ -503,7 +503,9 @@ class App:
         later = set(ids[ids.index(before):]) if before in ids else set()
         body = s.result.body
         out, seen = [], set()
-        for face, lab in body.labels:
+        pool = [(face, lab, body) for face, lab in body.labels]  # the part's faces, then the reference bodies'
+        pool += [(face, lab, rb) for rid, rb in s.result.refs.items() if rid not in later for face, lab in rb.labels]
+        for face, lab, owner in pool:
             if lab.feature in later or bd.Face(TopoDS.Face(face)).geom_type != bd.GeomType.PLANE:
                 continue
             F = bd.Face(TopoDS.Face(face))
@@ -515,7 +517,7 @@ class App:
             seen.add((str(lab), t))
             ref = {"feature": lab.feature, "role": lab.role, **({"entity": lab.entity} if lab.entity else {}),
                    **({"instance": lab.instance} if lab.instance else {})}
-            hits = resolve_faces(body, S.FaceRef.model_validate(ref))
+            hits = resolve_faces(owner, S.FaceRef.model_validate(ref))
             heights = {round((bd.Face(TopoDS.Face(h)).center() - frame.origin).dot(frame.n), 6) for h in hits}
             if len(heights) > 1:
                 c = face_center(face)
