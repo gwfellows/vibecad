@@ -138,8 +138,9 @@ function helpers(page) {
 
   // 2. sketching by hand: a plate from an empty part, then a hole on its top face
   await record("sketch", BASE, null, async (page, h) => {
-    page.once("dialog", (d) => d.accept(`demo_plate_${Date.now().toString(36)}`));
-    await h.clickSel("#newBtn", 1200);
+    await h.clickSel("#newBtn", 600);
+    await page.fill("#npName", `demo_plate_${Date.now().toString(36)}`);
+    await h.clickSel("#npCreate", 1200);
     await h.caption("+ Sketch on a plane");
     await h.clickSel("#newSketchBtn", 500);
     await h.clickSel("#newMenu [data-d=XY]", 1200);

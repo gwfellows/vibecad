@@ -98,6 +98,7 @@ const rollIndex = () => (S && S.rollback != null ? S.rollback : S ? S.features.l
 function setState(state, { fit = false, flash = false } = {}) {
   const before = S ? new Map(S.features.map((f) => [f.id, f.status + (f.warnings || []).join()])) : null;
   S = state;
+  welcomeUpdate();
   if (!S) { $("#tree").innerHTML = ""; return; }
   $("#partName").textContent = S.rel;
   const bb = S.bbox ? S.bbox.map((v) => fmt(v, 1)).join(" × ") : "–";
@@ -460,6 +461,7 @@ async function edit(ops, message) {  // true if the batch was applied
 async function loadParts() {
   const r = await api("/api/parts");
   $("#partSelect").innerHTML = `<option value="">— open a part —</option>` + r.parts.map((p) => `<option ${p === r.active ? "selected" : ""}>${esc(p)}</option>`).join("");
+  welcomeUpdate(r.parts);
 }
 
 // ── 3D view ───────────────────────────────────────────────────────
@@ -2035,17 +2037,40 @@ $("#partSelect").onchange = async (ev) => {
   if (!r) return loadParts();
   setState(r.state, { fit: true });
 };
-$("#newBtn").onclick = async () => {
+$("#newBtn").onclick = () => {
   if (busy) return note("The agent is working on this part: stop it (or wait) before starting another.", "err");
-  const name = prompt("New part name (letters, digits, underscores):", "new_part");
-  if (!name) return;
+  $("#npName").value = ""; $("#npMat").value = "";
+  $("#newForm").querySelector("input[value=empty]").checked = true;
+  $("#npWhere").textContent = "Saved as parts/<name>.vcad.json";
+  $("#npName").oninput = () => { $("#npWhere").textContent = `Saved as parts/${$("#npName").value.trim() || "<name>"}.vcad.json`; };
+  $("#newDlg").showModal();
+  $("#npName").focus();
+};
+$("#newDlg").onclose = async () => {
+  if ($("#newDlg").returnValue !== "create") return;
+  const name = $("#npName").value.trim(), mat = $("#npMat").value.trim();
+  const start = $("#newForm").querySelector("input[name=npStart]:checked").value;
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) return note("New part: use letters, digits, - and _ in the name", "err");
   if (EE) await endEdgeEdit(false);
   exitSketch(); selected = null;
   await api("/api/rollback", { index: null }).catch(() => {});
   const r = await api("/api/new", { path: `parts/${name}.vcad.json`, name });
   setState(r.state, { fit: true });
   loadParts();
+  if (mat) await edit([{ op: "set_meta", set: { material: mat } }], "material");
+  if (start === "import") $("#importBtn").click();
 };
+function welcomeUpdate(parts) {  // no part open: a start card instead of an empty view, and nothing to act on
+  $("#welcome").hidden = !!S;
+  for (const b of document.querySelectorAll("#modelTools button.rb, #propsBtn, #historyBtn, #rendersBtn")) b.disabled = !S;
+  if (!S) { $("#undoBtn").disabled = $("#redoBtn").disabled = true; }
+  else { modelToolsUpdate(); pickUpdate(); }
+  if (S || !parts) return;
+  $("#wParts").innerHTML = parts.length ? parts.map((p) => `<button data-p="${esc(p)}">${esc(p)}</button>`).join("") : `<span class="muted small">none yet</span>`;
+  $("#wParts").querySelectorAll("button").forEach((b) => (b.onclick = () => { $("#partSelect").value = b.dataset.p; $("#partSelect").dispatchEvent(new Event("change")); }));
+}
+$("#wNew").onclick = () => $("#newBtn").click();
+$("#wImport").onclick = () => { $("#newBtn").click(); $("#newForm").querySelector("input[value=import]").checked = true; };
 document.addEventListener("keydown", (ev) => {
   if (ev.target.matches("input, textarea, [contenteditable=true]")) return;
   if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }

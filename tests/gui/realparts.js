@@ -33,8 +33,9 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
     await page.waitForTimeout(800);
   };
   const newPart = async (name) => {
-    partName = name;
     await page.click("#newBtn");
+    await page.fill("#npName", name);
+    await page.click("#npCreate");
     await page.waitForFunction((n) => document.querySelector("#partName").textContent.includes(n), name, { timeout: 15000 });
     await page.waitForTimeout(500);
   };

@@ -115,8 +115,9 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR
   await page.goto(AGENT);
   await page.waitForSelector("#conn.live", { timeout: 15000 });
   const newPart = async (name) => {
-    page.once("dialog", (d) => d.accept(name));
     await page.click("#newBtn");
+    await page.fill("#npName", name);
+    await page.click("#npCreate");
     await page.waitForFunction((n) => document.querySelector("#partName").textContent.includes(n), name, { timeout: 10000 });
     await page.waitForTimeout(500);
   };

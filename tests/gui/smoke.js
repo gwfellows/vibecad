@@ -32,8 +32,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const opts = await page.$$eval("#partSelect option", (os) => os.map((o) => o.textContent));
   check("part list loads", opts.length >= 9, `${opts.length - 1} parts`);
 
-  // open a part
-  await page.selectOption("#partSelect", "l_bracket.vcad.json");
+  // no part open yet: a welcome card with the parts to open
+  check("welcome card when no part is open", await page.isVisible("#welcome"));
+  check("it lists the parts", (await page.$$eval("#wParts button", (l) => l.length)) >= 9);
+  await shot("00_welcome");
+
+  // open a part (from the welcome card)
+  await page.click('#wParts button[data-p="l_bracket.vcad.json"]');
   await page.waitForFunction(() => document.querySelectorAll("#tree li.feat").length > 0, null, { timeout: 20000 });
   const nFeat = await page.$$eval("#tree li.feat", (l) => l.length);
   check("open l_bracket: tree shows 10 features", nFeat === 10, `${nFeat}`);
@@ -43,6 +48,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("volume shown", Math.abs(v0 - 24486.6) < 1, `${v0}`);
   const canvasOk = await page.evaluate(() => { const c = document.querySelector("#viewer canvas"); return c && c.width > 100; });
   check("3D canvas present", canvasOk);
+  check("the welcome card is gone", !(await page.isVisible("#welcome")));
   await shot("01_open");
 
   // edit a param through the table
@@ -198,19 +204,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(1500);
   await shot("09_hex");
 
-  // new part via the prompt() dialog
-  page.once("dialog", (d) => d.accept("gui_made"));
+  // new part via the New part dialog
   await page.click("#newBtn");
+  check("New opens the new-part dialog", await page.isVisible("#newDlg"));
+  await page.fill("#npName", "gui_made");
+  await page.fill("#npMat", "PLA");
+  await page.click("#npCreate");
   await sleep(1500);
   check("new part becomes active", (await page.textContent("#partName")).includes("gui_made"), await page.textContent("#partName"));
   const hasNew = (await page.$$eval("#partSelect option", (os) => os.map((o) => o.textContent))).some((o) => o.includes("gui_made"));
   check("new part in part list", hasNew);
   check("empty part status", (await status()) !== null, await status());
+  check("the material given in the dialog is saved", (await page.evaluate(() => fetch("/api/state").then((r) => r.json()))).state.material === "PLA");
   await shot("10_new_part");
 
   // new part with a name that already exists: error, no crash
-  page.once("dialog", (d) => d.accept("gui_made"));
   await page.click("#newBtn");
+  await page.fill("#npName", "gui_made");
+  await page.click("#npCreate");
   await sleep(1000);
   const lastMsg2 = await page.$$eval("#log .msg", (l) => l.at(-1)?.textContent || "");
   check("duplicate new part reports error", /exists/i.test(lastMsg2), lastMsg2.slice(0, 100));
