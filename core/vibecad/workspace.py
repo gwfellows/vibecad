@@ -313,8 +313,8 @@ class Workspace:
         out.parent.mkdir(parents=True, exist_ok=True)
         with self.lock:
             write_part(s.result, fmt, out)
-        from .session import _ref_overlaps
-        fit = _ref_overlaps(s.result)
+        from .session import _ref_apart, _ref_overlaps
+        fit = _ref_overlaps(s.result) + _ref_apart(s.result)
         return f"wrote {out}" + "".join(f"\nNOT READY: {w}" for w in fit)
 
 

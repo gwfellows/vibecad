@@ -49,6 +49,27 @@ def _ref_overlaps(r: RegenResult, max_faces: int = 3000) -> list[str]:
     return out
 
 
+def _ref_apart(r: RegenResult, max_gap: float = 2.0, max_faces: int = 3000) -> list[str]:
+    """Reference bodies the finished part doesn't reach: a holder whose phone floats 80 mm away was built
+    somewhere else than the phone. Checked at export (min_distance is too slow for every edit on big bodies)."""
+    import build123d as bd
+
+    from .measure import min_distance
+    part = r.part
+    if part is None:
+        return []
+    out = []
+    for rid, rb in r.refs.items():
+        if len(bd.Shape.cast(rb.shape).faces()) > max_faces:
+            continue
+        d = min_distance(part.wrapped, rb.shape)
+        if d and d[0] > max_gap:
+            out.append(f"reference {rid} is {d[0]:.1f} mm from the part, so the part doesn't hold or meet it where it "
+                       f"sits. Move {rid} to where it goes in the assembly (place_import onto the face it rests on, or "
+                       "translate/rotate), or build the part around it")
+    return out
+
+
 def dump_doc(doc: S.Document) -> str:
     """Compact, human-readable JSON: defaults omitted, discriminator `type` fields kept."""
     raw = doc.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
