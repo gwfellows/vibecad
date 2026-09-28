@@ -232,3 +232,11 @@ def test_fillet_all_four_corners_keeps_the_rectangle_size():
     doc, _ = apply_ops(doc, [{"op": "set_param", "name": "w", "value": 60}])  # the rounded plate still resizes
     res = Regenerator().run(doc)
     assert round(res.part.bounding_box().size.X, 6) == 60 and res.sketches["sk"][0].report.dof == 0
+
+
+def test_rejected_batches_explain_themselves():
+    from vibecad.ops import OpError, apply_ops
+    doc = S.Document.model_validate({"name": "t", "features": []})
+    with pytest.raises(OpError, match="is an op, not a field"):
+        apply_ops(doc, [{"op": "add_feature", "feature": {"id": "s", "type": "sketch", "plane": {"datum": "XY"},
+                                                         "add_rectangle": {"width": 1}}}])

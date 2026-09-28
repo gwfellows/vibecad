@@ -808,16 +808,18 @@ def hole_points(ctx: Ctx, f: S.Hole) -> list[tuple[str, tuple[float, float]]]:
     if f.sketch not in ctx.sketches:
         raise FeatureError(f"hole sketch {f.sketch!r} is missing, later in the tree, or failed to build")
     solved, _ = ctx.sketches[f.sketch]
+    # `circle.center` names the circle's centre: the same place as the circle itself
+    wanted = f.points if f.points == "all" else [p[:-len(".center")] if p.endswith(".center") else p for p in f.points]
     out = []
     for e in solved.entities.values():
-        if f.points != "all" and e.id not in f.points:
+        if wanted != "all" and e.id not in wanted:
             continue
         if e.type == "point":
             out.append((e.id, tuple(e.p1)))
         elif e.type in ("circle", "arc") and not (f.points == "all" and e.construction):  # construction circles
             out.append((e.id, tuple(e.center)))  # (and projected edges) only when named in `points`
-    if f.points != "all":
-        missing = set(f.points) - {i for i, _ in out}
+    if wanted != "all":
+        missing = set(wanted) - {i for i, _ in out}
         if missing:
             raise FeatureError(f"hole points {sorted(missing)} are not points, circles or arcs in sketch {f.sketch!r}")
     if not out:

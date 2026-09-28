@@ -179,7 +179,8 @@ class Workspace:
             s["area_mm2"] = s.pop("area")
         return json.dumps(s, indent=1)
 
-    def place_import(self, import_id: str, face: dict, target: dict, gap: float = 0.0, align: str = "center") -> str:
+    def place_import(self, import_id: str, face: dict, target: dict, gap: float = 0.0, align: str = "center",
+                     then_face: dict | None = None, then_target: dict | None = None, then_gap: float = 0.0) -> str:
         """Move an import so one of its flat faces lies against a flat face of the part or another import."""
         from . import schema as S
         from .features import FeatureError
@@ -200,10 +201,18 @@ class Workspace:
             return fs[0]
         if ((face.get("feature") != import_id)):
             raise ToolError(f"face must be on {import_id} (its feature is the import id)")
+        second = None
+        if then_face or then_target:
+            if not (then_face and then_target):
+                raise ToolError("then_face and then_target go together: a second face of the import and the face it slides onto")
+            if then_face.get("feature") != import_id:
+                raise ToolError(f"then_face must be on {import_id}")
+            second = (one(then_face, "then_face"), one(then_target, "then_target"), then_gap)
         return json.dumps(self.place_faces(import_id, one(face, "face"), one(target, "target"), gap, align,
-                                           f"place {import_id} against {target.get('feature')}.{target.get('role')}", "agent"))
+                                           f"place {import_id} against {target.get('feature')}.{target.get('role')}", "agent",
+                                           second=second))
 
-    def place_faces(self, import_id: str, fa, fb, gap: float, align: str, message: str, author: str) -> dict:
+    def place_faces(self, import_id: str, fa, fb, gap: float, align: str, message: str, author: str, second=None) -> dict:
         """The shared core of placing an import: two faces (TopoDS) to a new rotate / translate, applied as one edit."""
         import build123d as bd
         from OCP.TopoDS import TopoDS
@@ -222,8 +231,23 @@ class Workspace:
             planes.append((tuple(F.normal_at()), tuple(F.center())))
         (n_a, c_a), (n_b, c_b) = planes
         env = s.result.env
-        rot, tr = mate([evaluate(v, env) for v in f.rotate], [evaluate(v, env) for v in f.translate], n_a, c_a, n_b, c_b,
-                       gap=float(gap), align=align)
+        rot0, tr0 = [evaluate(v, env) for v in f.rotate], [evaluate(v, env) for v in f.translate]
+        rot, tr = mate(rot0, tr0, n_a, c_a, n_b, c_b, gap=float(gap), align=align)
+        if second is not None:  # then slide within the first contact plane until a second pair of faces meets
+            import numpy as np
+
+            from .mate import rot_xyz, slide
+            fa2, fb2, gap2 = second
+            A2, B2 = bd.Face(TopoDS.Face(fa2)), bd.Face(TopoDS.Face(fb2))
+            if A2.geom_type != bd.GeomType.PLANE or B2.geom_type != bd.GeomType.PLANE:
+                raise ToolError("then_face and then_target must be flat")
+            move = rot_xyz(rot) @ rot_xyz(rot0).T  # the mate's turn: where the second face points and sits now
+            c_a2 = move @ (np.array(tuple(A2.center())) - np.array(tr0)) + np.array(tr)
+            n_a2 = move @ np.array(tuple(A2.normal_at()))
+            try:
+                tr = slide(rot, tr, n_b, n_a2, c_a2, tuple(B2.normal_at()), tuple(B2.center()), float(gap2))
+            except ValueError as e:
+                raise ToolError(str(e)) from None
         rep = self.apply_ops([{"op": "update_feature", "id": import_id, "set": {"rotate": rot, "translate": tr}}], message, author)
         out = json.loads(rep) if isinstance(rep, str) else rep
         return {"ok": out.get("ok", False), "rotate": rot, "translate": tr, "report": out}
@@ -394,7 +418,7 @@ def tile(imgs: list) -> bytes:
 
 
 # ── tool specs, shared by every transport ─────────────────────────────
-_OPS_DOC = ("Apply a batch of edit ops as one undoable transaction, regenerate, and report. Op kinds: set_param, "
+_OPS_DOC = ("Apply a batch of edit ops as one undoable transaction (all or nothing), regenerate, and report. Ops are not separate tools: every op goes in `ops` here. Op kinds: set_param, "
             "remove_param, set_meta, add_feature, update_feature, remove_feature, move_feature, add_entity, "
             "update_entity, remove_entity, add_constraint, update_constraint, remove_constraint, set_dimension, "
             "rename_feature, rename_entity, and the sketch shortcuts add_rectangle, add_circle, add_slot, add_polygon, "
@@ -427,9 +451,11 @@ TOOLS: list[dict] = [
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
     {"name": "measure", "desc": "Volume, surface area, bounding box, centre of mass, mass (from the part's material), face count, validity and params of the active part.", "props": {}, "req": []},
-    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). Faces are FaceRefs; the first's feature is the import id.",
+    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target), e.g. a phone leaning on a backrest slid down onto the lip. Faces are FaceRefs; the import's faces have the import id as feature.",
      "props": {"import_id": S_STR, "face": {"type": "object"}, "target": {"type": "object"}, "gap": {"type": "number"},
-               "align": {"type": "string", "enum": ["center", "touch"]}}, "req": ["import_id", "face", "target"]},
+               "align": {"type": "string", "enum": ["center", "touch"]},
+               "then_face": {"type": "object"}, "then_target": {"type": "object"}, "then_gap": {"type": "number"}},
+     "req": ["import_id", "face", "target"]},
     {"name": "check_fit", "desc": "Overlap volume and minimum gap between the active part and other part files that share its world coordinates, and its reference imports (always included). Use for multi-part designs and for parts designed around an imported one.",
      "props": {"other_paths": {"type": "array", "items": S_STR}}, "req": ["other_paths"]},
     {"name": "render", "desc": "Render the active part as one tiled PNG. views: iso, iso_back, iso_below, front, top, right (default iso, iso_back, iso_below, top). highlight: feature ids drawn orange.",

@@ -109,3 +109,9 @@ def test_hole_from_a_datum_sketch_goes_the_chosen_way():
     up = [dict(feats[0]), {**feats[1], "direction": "normal"}]
     res, _ = _plate(up)
     assert res.ok and any("changed no volume" in w for w in res.features[-1].warnings)  # drilled upward into air
+
+
+def test_points_may_name_a_circle_centre():
+    res, v0 = _plate([_hole(diameter=4, points=["c.center", "p1"])])
+    assert res.ok, [f.message for f in res.features]
+    assert res.features[-1].info["holes"] == 2

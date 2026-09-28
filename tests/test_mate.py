@@ -93,3 +93,26 @@ def test_place_import_tool_for_the_agent(tmp_path):
     with pytest.raises(ToolError, match="matched"):
         ws.place_import("cube", {"feature": "cube", "role": "face"}, {"feature": "plate", "role": "end"})
     assert len(labels) >= 6
+
+
+def test_place_then_slide_onto_a_second_face(tmp_path):
+    """A box against a wall, then slid down the wall until it sits on the base: two contacts in one call."""
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Box(10, 20, 30, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    feats = [_rect("sk", 60, 40), {"id": "base", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 5},
+             _rect("wsk", 4, 40, cx=-28), {"id": "wall", "type": "extrude", "profile": {"sketch": "wsk"}, "distance": 60},
+             {"id": "cube", "type": "import", "file": "cube.step", "mode": "reference", "translate": [100, 0, 50]}]
+    (tmp_path / "p.vcad.json").write_text(S.Document.model_validate({"name": "p", "features": feats}).model_dump_json())
+    ws = Workspace(tmp_path)
+    ws.open_part(path="p.vcad.json")
+    refs = ws.session().result.refs["cube"].labels
+    lab = lambda test: next(l for f, l in refs if test(bd.Face(f).normal_at()))
+    minus_x, minus_z = lab(lambda n: n.X < -0.99), lab(lambda n: n.Z < -0.99)
+    ref = lambda l: {"feature": "cube", "role": l.role, "entity": l.entity}
+    out = ws.place_import("cube", ref(minus_x), {"feature": "wall", "role": "side", "entity": "r"},
+                          then_face=ref(minus_z), then_target={"feature": "base", "role": "end"})
+    assert '"ok": true' in out, out
+    bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
+    assert bb.min.X == pytest.approx(-26, abs=1e-6) and bb.min.Z == pytest.approx(5, abs=1e-6), (bb.min, bb.max)
+    with pytest.raises(Exception, match="go together"):
+        ws.place_import("cube", ref(minus_x), {"feature": "wall", "role": "side", "entity": "r"}, then_face=ref(minus_z))

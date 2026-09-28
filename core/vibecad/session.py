@@ -142,7 +142,8 @@ class Session:
             new_doc, notes = apply_ops(self.doc, ops)
         except OpError as e:
             self._log({"author": author, "message": message, "rejected": str(e)[:500], "n_ops": len(ops)})
-            return {"ok": False, "applied": 0, "error": str(e)}
+            return {"ok": False, "applied": 0, "error": str(e) + ("\nNothing in this batch was applied (a batch is all or "
+                    "nothing): send the whole batch again with this fixed." if len(ops) > 1 else "")}
         before = self.result
         result = self.regen.run(new_doc)  # before swapping: readers never see a new doc with an old result
         self.undo_stack.append((self.doc, message))

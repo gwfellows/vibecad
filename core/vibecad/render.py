@@ -69,7 +69,10 @@ def render_view(body: Body, path: Path, view: str = "iso", title: str = "", high
             if nn < 1e-12:
                 continue
             n /= nn
-            out = fn if planar else np.array([*face.normal_at(bd.Vector(*p0.mean(0)))])
+            try:
+                out = fn if planar else np.array([*face.normal_at(bd.Vector(*p0.mean(0)))])
+            except Exception:  # no normal at a singular point (a cone apex): keep the triangle's own winding
+                out = n
             if n @ out < 0:
                 n = -n
             if n @ b < -1e-6:  # back-facing: hidden on a closed solid
@@ -188,7 +191,10 @@ def _visible_edges(shape, b: np.ndarray, diag: float):
         for i in range(1, inter.NbPnt() + 1):
             f = bd.Face(inter.Face(i))
             hit = inter.Pnt(i)
-            n = f.normal_at(bd.Vector(hit.X(), hit.Y(), hit.Z()))
+            try:
+                n = f.normal_at(bd.Vector(hit.X(), hit.Y(), hit.Z()))
+            except Exception:  # no normal at a singular point (a drill tip's cone apex): the face still hides
+                return False
             if abs(n.X * b[0] + n.Y * b[1] + n.Z * b[2]) > 1e-3:  # ignore faces seen exactly edge-on
                 return False
         return True

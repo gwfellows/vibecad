@@ -71,3 +71,17 @@ def mate(rotate, translate, n_a, c_a, n_b, c_b, gap: float = 0.0, align: str = "
         shift = n_b * float(np.dot(c_b - moved, n_b))
     t1 = m @ t0 + shift + gap * n_b
     return xyz_of(r1), [_clean(v) for v in t1]
+
+
+def slide(rotate, translate, n_b, n_a2, c_a2, n_b2, c_b2, gap2: float = 0.0) -> list[float]:
+    """After a mate onto a plane with normal n_b: the translate that slides the import within that plane until its
+    second face (normal n_a2, centre c_a2) meets a second target face (n_b2, c_b2), `gap2` apart; a phone leaning
+    on a backrest slid down onto the lip. Rotation is unchanged."""
+    n_b, n_b2 = (np.asarray(v, float) / np.linalg.norm(v) for v in (n_b, n_b2))
+    u = n_b2 - np.dot(n_b2, n_b) * n_b  # the second target's normal, within the first contact plane
+    if np.linalg.norm(u) < 1e-6:
+        raise ValueError("the second target face is parallel to the first: sliding along the first can't reach it")
+    u /= np.linalg.norm(u)
+    s = float(np.dot(np.asarray(c_a2, float) - np.asarray(c_b2, float), n_b2))  # how far the second faces are apart now
+    t = (gap2 - s) / float(np.dot(u, n_b2))
+    return [_clean(v) for v in np.asarray(translate, float) + t * u]

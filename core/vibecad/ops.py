@@ -98,6 +98,11 @@ def apply_ops(doc: S.Document, ops: list[dict[str, Any]]) -> tuple[S.Document, l
     return new, notes
 
 
+_SHORTCUT_OPS = {"add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon", "fillet_corner",
+                 "mirror_entities"}
+_OP_NAMES = {"add_entity", "add_constraint", "add_feature", "update_feature", "set_param"}
+
+
 def _short_validation(e: ValidationError) -> str:
     lines, hints = [], set()
     for err in e.errors()[:8]:
@@ -108,7 +113,11 @@ def _short_validation(e: ValidationError) -> str:
             hints.add("Sketch coordinates are [x, y] pairs (numbers or expressions), not point ids. Join lines with "
                       "`coincident` constraints on `line.p1` / `line.p2`, or use add_polygon / add_rectangle.")
         if err["type"] == "extra_forbidden":
-            hints.add(f"Unknown field `{last}`; check the field names in the IR reference.")
+            if last in _SHORTCUT_OPS or last in _OP_NAMES:
+                hints.add(f"`{last}` is an op, not a field: send it as its own op in apply_ops, "
+                          f'{{"op": "{last}", "sketch": "<sketch id>", ...}}, after the op that adds the sketch.')
+            else:
+                hints.add(f"Unknown field `{last}`; check the field names in the IR reference.")
     return "\n".join(lines + [f"hint: {h}" for h in sorted(hints)])
 
 
