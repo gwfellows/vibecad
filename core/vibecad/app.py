@@ -374,7 +374,7 @@ class App:
             return out
 
     def export_file(self, fmt: str) -> tuple[str, str]:
-        """The shown part (rolled back, if the bar is up) written as STEP / STL / 3MF / BREP / GLB."""
+        """The shown part (rolled back, if the bar is up) written as STEP / STL / 3MF / BREP / GLB, or an SVG drawing."""
         import tempfile
 
         import build123d as bd
@@ -387,7 +387,7 @@ class App:
         out = Path(tempfile.mkdtemp(prefix="vibecad-export-")) / f"{name}.{fmt}"
         from .workspace import write_part
         with self.ws.lock:
-            write_part(part, fmt, out)
+            write_part(vr, fmt, out)
         return str(out), out.name
 
     def sketch_geometry(self, sid: str) -> dict:

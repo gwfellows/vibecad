@@ -249,17 +249,22 @@ class Workspace:
         out = self._path(path) if path else self.root / "out" / s.doc.name / f"{s.doc.name}.{fmt}"
         out.parent.mkdir(parents=True, exist_ok=True)
         with self.lock:
-            write_part(part, fmt, out)
+            write_part(s.result, fmt, out)
         return f"wrote {out}"
 
 
-EXPORT_FORMATS = ("step", "stl", "3mf", "brep", "glb")
+EXPORT_FORMATS = ("step", "stl", "3mf", "brep", "glb", "svg")
 
 
-def write_part(part, fmt: str, out: Path) -> None:
-    """A solid to a file: STEP (exact), STL / 3MF (meshes for printing), BREP (OpenCascade), GLB (viewers)."""
+def write_part(result, fmt: str, out: Path) -> None:
+    """A regenerated part to a file: STEP (exact), STL / 3MF (meshes for printing), BREP (OpenCascade), GLB
+    (viewers), SVG (a dimensioned 2D drawing with front/top/right/iso views and hole callouts)."""
     import build123d as bd
-    if fmt == "step":
+    part = result.part
+    if fmt == "svg":
+        from .drawing import drawing_svg
+        out.write_text(drawing_svg(result), encoding="utf-8")
+    elif fmt == "step":
         bd.export_step(part, str(out))
     elif fmt == "stl":
         bd.export_stl(part, str(out), tolerance=0.01, angular_tolerance=0.1)
@@ -329,7 +334,7 @@ TOOLS: list[dict] = [
      "props": {"views": {"type": "array", "items": S_STR}, "highlight": {"type": "array", "items": S_STR}}, "req": [], "image": True},
     {"name": "render_sketch_image", "desc": "Plot a sketch in its 2D coordinates with entity ids, dimensions, DOF and frame.",
      "props": {"sketch_id": S_STR}, "req": ["sketch_id"], "image": True},
-    {"name": "export", "desc": "Export the active part as step, stl, 3mf, brep or glb (default out/<name>/<name>.<fmt>).",
+    {"name": "export", "desc": "Export the active part as step, stl, 3mf, brep, glb, or svg (a dimensioned 2D drawing). Default path out/<name>/<name>.<fmt>.",
      "props": {"fmt": {"type": "string", "enum": list(EXPORT_FORMATS)}, "path": S_STR}, "req": []},
 ]
 

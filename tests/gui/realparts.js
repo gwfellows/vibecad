@@ -340,13 +340,13 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   check("section off", (await page.evaluate(() => window.vibecadView.clip())).length === 0);
 
   // ── export ──
-  for (const fmt of ["step", "stl", "3mf"]) {
+  for (const fmt of ["step", "stl", "3mf", "svg"]) {
     await page.click("#exportBtn");
     const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click(`#featMenu a[data-fmt="${fmt}"]`)]);
     const p = await dl.path();
     const size = require("fs").statSync(p).size;
     const head = require("fs").readFileSync(p).slice(0, 20).toString();
-    check(`export ${fmt}`, dl.suggestedFilename() === `inch_test.${fmt}` && size > 1000 && (fmt !== "step" || head.startsWith("ISO-10303-21")), `${dl.suggestedFilename()} ${size} B`);
+    check(`export ${fmt}`, dl.suggestedFilename() === `inch_test.${fmt}` && size > 1000 && (fmt !== "step" || head.startsWith("ISO-10303-21")) && (fmt !== "svg" || head.startsWith("<svg")), `${dl.suggestedFilename()} ${size} B`);
   }
 
   // ── shell an imported block with its top open (shell before drilling: OCCT can't offset through holes) ──

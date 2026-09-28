@@ -90,7 +90,7 @@ This adds a small sketch holding the dimensioned position, and the hole. To dril
 
 **Text:** click a face, type the text (a part number, a revision, an arrow), and choose engraved or embossed, with height, depth and angle. Like a hole, it gets a dimensioned position sketch.
 
-**Section** cuts the view with a plane along X, Y or Z. It keeps the half away from you, so the cut faces you, and the inside shows in orange. **Export** downloads the part as STEP, STL, 3MF, BREP or glTF.
+**Section** cuts the view with a plane along X, Y or Z. It keeps the half away from you, so the cut faces you, and the inside shows in orange. **Export** downloads the part as STEP, STL, 3MF, BREP or glTF, or as a **drawing**: an SVG sheet (A4 or A3, at a standard scale so it prints true to size) with front, top and right views in third-angle projection, hidden lines, an isometric, overall dimensions, a callout for every hole feature (`4× ⌀4.5 THRU, CBORE ⌀8 ↧4.4`) and a title block with material and process.
 
 ### Pick edges and faces, then fillet or chamfer
 

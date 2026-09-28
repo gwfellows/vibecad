@@ -1747,7 +1747,8 @@ $("#exportBtn").onclick = () => {
   if (!S) return;
   const m = $("#featMenu");
   const opts = [["step", "STEP", "exact solid for other CAD tools"], ["stl", "STL", "mesh for 3D printing"], ["3mf", "3MF", "mesh with units, for slicers"],
-    ["brep", "BREP", "OpenCascade's own format"], ["glb", "glTF (GLB)", "for viewers and the web"]];
+    ["brep", "BREP", "OpenCascade's own format"], ["glb", "glTF (GLB)", "for viewers and the web"],
+    ["svg", "Drawing (SVG)", "dimensioned 2D views with hole callouts"]];
   m.innerHTML = `<div class="ttl">Export ${esc(S.name)}${S.rollback != null ? " (as rolled back)" : ""}</div>` +
     opts.map(([f, n, d]) => `<a class="menuitem" data-fmt="${f}" href="/api/export?fmt=${f}" download><b>${n}</b><span>${d}</span></a>`).join("");
   popup(m, $("#exportBtn"));

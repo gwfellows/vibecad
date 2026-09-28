@@ -315,7 +315,7 @@ def test_import_file_saves_next_to_the_part_and_describes_it(tmp_path):
 
 def test_export_formats(tmp_path):
     a = _app(tmp_path)
-    for fmt in ("step", "stl", "3mf", "brep", "glb"):
+    for fmt in ("step", "stl", "3mf", "brep", "glb", "svg"):
         path, name = a.export_file(fmt)
         assert name == f"l_bracket.{fmt}" and Path(path).stat().st_size > 1000, fmt
     with pytest.raises(Exception, match="can't export"):

@@ -134,7 +134,7 @@ The GUI is tested in a real browser (Playwright + Chromium, software WebGL) by `
 | `sketch_editor.js` | drawing, snapping, constraints, dragging, dimension edits, conflicts, box select, construction, delete, ask agent, freehand marks, @ Reference in a sketch |
 | `agent_panel.js` | streamed tool rows, busy state, selection and scope context, clicked face, @ Reference chips for an edge and a face, transcript replay |
 | `workflow.js` | rebuild indicator, editing a fillet's edges, per-part conversations, attachments |
-| `realparts.js` | importing STEP / STL as reference and as solids (units, placement), a sketch on a reference face, holes from a clicked face with screw presets (volumes checked against formulas), pattern / mirror / shell (outward: a phone case), editing features in their forms, measure, section, export downloads, slot / polygon sketch tools, part properties; with `USERPARTS=dir`, opens your own parts and edits a parameter of each |
+| `realparts.js` | importing STEP / STL as reference and as solids (units, placement), a sketch on a reference face, holes from a clicked face with screw presets (volumes checked against formulas), pattern / mirror / shell (outward: a phone case), editing features in their forms, measure, section, export downloads (incl. the SVG drawing), slot / polygon sketch tools, part properties; with `USERPARTS=dir`, opens your own parts and edits a parameter of each |
 
 Rules that keep these tests honest:
 
