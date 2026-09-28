@@ -328,3 +328,47 @@ dialog.formdlg label.opt input { margin-top: 3px; }
 .wlist #wParts { display: flex; flex-direction: column; max-height: 220px; overflow: auto; margin-top: 4px; }
 .wlist #wParts button { text-align: left; border: 0; border-radius: 6px; padding: 5px 8px; font: 12px ui-monospace, Menlo, monospace; background: transparent; }
 .wlist #wParts button:hover { background: var(--accent-soft); color: #1d4ed8; }
+
+/* ── dark theme: html[data-theme=dark] (the header's moon button; follows the system setting until toggled) ── */
+html[data-theme=dark] {
+  --bg: #0f141b; --panel: #151b24; --ink: #e5e9f0; --muted: #8b95a5; --line: #26303d; --line2: #334052;
+  --accent: #4f8cff; --accent-soft: #1b2a44; --sel: #2a2216; --selbar: #f59e0b; --code: #1d2530; --tool: #19202b; --roll: #4f8cff;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  color-scheme: dark;
+}
+html[data-theme=dark] button, html[data-theme=dark] select, html[data-theme=dark] input, html[data-theme=dark] textarea,
+html[data-theme=dark] #prompt, html[data-theme=dark] .tool pre, html[data-theme=dark] .dimedit, html[data-theme=dark] .popmenu,
+html[data-theme=dark] dialog { background: #1a212c; color: var(--ink); border-color: var(--line2); }
+html[data-theme=dark] button:hover:not(:disabled) { background: #222b38; border-color: #3a4759; }
+html[data-theme=dark] button.hb, html[data-theme=dark] button.rb, html[data-theme=dark] button.ico, html[data-theme=dark] .vtools button,
+html[data-theme=dark] .wlist #wParts button { background: transparent; color: #c7cfdb; border-color: transparent; }
+html[data-theme=dark] button.hb:hover:not(:disabled) { background: #222b38; }
+html[data-theme=dark] button.rb:hover:not(:disabled), html[data-theme=dark] button.ico:hover:not(:disabled),
+html[data-theme=dark] .vtools button:hover:not(:disabled), html[data-theme=dark] .wlist #wParts button:hover { background: var(--accent-soft); color: #9cc0ff; }
+html[data-theme=dark] button.rb.on, html[data-theme=dark] button.ico.on { background: #213a66; color: #bcd4ff; box-shadow: inset 0 0 0 1px #3b64ad; }
+html[data-theme=dark] #sendBtn, html[data-theme=dark] .popmenu .go, html[data-theme=dark] dialog.formdlg .go, html[data-theme=dark] .wacts .go {
+  background: var(--accent); border-color: var(--accent); color: #fff; }
+html[data-theme=dark] #center { background: radial-gradient(ellipse at 50% 35%, #1f2733 0%, #151b24 60%, #0f141b 100%); }
+html[data-theme=dark] .ribbon, html[data-theme=dark] .vtools.viewbar, html[data-theme=dark] .floatpanel, html[data-theme=dark] .welcome,
+html[data-theme=dark] .skgroup { background: rgba(24,31,41,.96); border-color: var(--line2); }
+html[data-theme=dark] .gizmo .ring { fill: rgba(24,31,41,.7); stroke: rgba(255,255,255,.06); }
+html[data-theme=dark] .gizmo .ax circle { stroke: #151b24; }
+html[data-theme=dark] #tree li.feat:hover { background: #1c2430; }
+html[data-theme=dark] #tree .ico svg { stroke: #9aa6b8; }
+html[data-theme=dark] .splitter { background: linear-gradient(#1a212c, #151b24); }
+html[data-theme=dark] .msg.user { background: #1b2640; }
+html[data-theme=dark] #labels .dim { background: rgba(15,20,27,.9); color: #8fb6ff; }
+html[data-theme=dark] #labels .glyph { background: rgba(26,33,44,.95); border-color: #3a4759; color: #aeb8c7; }
+html[data-theme=dark] #labels .ent { color: #fdba74; }
+html[data-theme=dark] #labels .sel { background: #3a2a14; color: #fdba74; }
+html[data-theme=dark] .dimedit .what, html[data-theme=dark] .floatpanel .big { color: #8fb6ff; }
+html[data-theme=dark] .skhint { background: rgba(24,31,41,.9); color: #aeb8c7; }
+html[data-theme=dark] .ref { background: #3a2412; color: #fdba74; border-color: #7c4a1c; }
+html[data-theme=dark] .ref.edge { background: #16284a; color: #9cc0ff; border-color: #2f4f8a; }
+html[data-theme=dark] .ref.sketch { background: #10301f; color: #86efac; border-color: #1f6b41; }
+html[data-theme=dark] #keysList kbd { background: #1d2530; border-color: #3a4759; }
+html[data-theme=dark] #details .editbtn { background: var(--accent-soft); border-color: #2f4f8a; color: #9cc0ff; }
+html[data-theme=dark] #params .owner, html[data-theme=dark] .muted { color: var(--muted); }
+html[data-theme=dark] dialog.formdlg label.opt:has(input:checked) { background: var(--accent-soft); border-color: #2f4f8a; }
+html[data-theme=dark] .tool { background: var(--tool); }
+html[data-theme=dark] #tree ol.fparams { border-left-color: var(--line2); }

@@ -3,7 +3,10 @@
 // sketch-local (u, v); the server returns them with the plane's frame and we map them into the scene.
 import * as THREE from "three";
 
-const COLORS = { dim: 0x2563eb, ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const LIGHT = { dim: 0x2563eb, ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const DARK = { dim: 0x6aa2ff, ext: 0xa78bfa, mark: 0xf472b6, fixed: 0x4ade80, free: 0x7cb2ff, sel: 0xf59e0b, hover: 0x93c5fd, bad: 0xf87171, cons: 0x94a3b8, point: 0xcbd5e1 };
+const COLORS = { ...LIGHT };
+export function setSketchTheme(dark) { Object.assign(COLORS, dark ? DARK : LIGHT); }
 const GLYPH = { horizontal: "H", vertical: "V", parallel: "∥", perpendicular: "⊥", equal: "=", tangent: "T", concentric: "◎",
   midpoint: "M", symmetric: "⇔", point_on: "∈", fix: "⚲", coincident: "•" };
 const DIMS = new Set(["distance", "distance_x", "distance_y", "radius", "diameter", "angle"]);

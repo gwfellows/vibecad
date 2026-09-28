@@ -226,6 +226,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const lastMsg2 = await page.$$eval("#log .msg", (l) => l.at(-1)?.textContent || "");
   check("duplicate new part reports error", /exists/i.test(lastMsg2), lastMsg2.slice(0, 100));
 
+  // dark theme: the header toggle switches it and remembers it
+  const before = await page.evaluate(() => document.documentElement.dataset.theme);
+  await page.click("#themeBtn");
+  const after = await page.evaluate(() => [document.documentElement.dataset.theme, localStorage.getItem("vibecad.theme"), getComputedStyle(document.body).backgroundColor]);
+  check("theme toggles and is remembered", after[0] !== before && after[1] === after[0], JSON.stringify([before, ...after]));
+  await page.reload();
+  await page.waitForSelector("#conn.live", { timeout: 15000 });
+  check("the theme survives a reload", (await page.evaluate(() => document.documentElement.dataset.theme)) === after[0]);
+  await page.click("#themeBtn");
+
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   const realConsole = consoleErrors.filter((e) => !/Failed to load resource/.test(e));
   check("no console errors (besides 4xx logs)", realConsole.length === 0, realConsole.join(" | ").slice(0, 300));

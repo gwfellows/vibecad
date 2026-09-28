@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createSketchEditor, TOOLS as SKETCH_TOOLS, CONSTRAINTS as SKETCH_CONSTRAINTS } from "./sketch.js";
+import { createSketchEditor, setSketchTheme, TOOLS as SKETCH_TOOLS, CONSTRAINTS as SKETCH_CONSTRAINTS } from "./sketch.js";
 import { ICON } from "./icons.js";
 
 const $ = (s) => document.querySelector(s);
@@ -496,14 +496,16 @@ scene.add(refGroup);
 const axes = new THREE.AxesHelper(10);  // a short triad at the origin
 axes.material.transparent = true; axes.material.opacity = 0.7;
 scene.add(axes);
-let grid = null;  // ground grid under the part, resized to it on each fit
+let grid = null, gridBox = null;  // ground grid under the part, resized to it on each fit
+const isDark = () => document.documentElement.dataset.theme === "dark";
 function setGrid(box) {
+  gridBox = box;
   if (grid) { scene.remove(grid); grid.geometry.dispose(); }
   const size = box.getSize(new THREE.Vector3());
   const span = Math.max(size.x, size.y, 10) * 2.2;
   const step = 10 ** Math.floor(Math.log10(span / 8));
   const n = Math.max(2, Math.ceil(span / step / 2) * 2);
-  grid = new THREE.GridHelper(n * step, n, 0xcfd5de, 0xe2e6ec);
+  grid = isDark() ? new THREE.GridHelper(n * step, n, 0x334052, 0x222b37) : new THREE.GridHelper(n * step, n, 0xcfd5de, 0xe2e6ec);
   grid.rotation.x = Math.PI / 2;  // three's grid lies in XZ; ours is the XY plane (Z up)
   const c = box.getCenter(new THREE.Vector3());
   grid.position.set(Math.round(c.x / step) * step, Math.round(c.y / step) * step, Math.min(box.min.z, 0) - 1e-3 * span);
@@ -1752,6 +1754,22 @@ $("#propsDlg").onclose = async () => {
   for (const [k, v] of Object.entries(now)) if ((v || null) !== (S[k] || null) && !(k === "name" && !v)) set[k] = v;
   if (Object.keys(set).length) await edit([{ op: "set_meta", set }], "part properties");
 };
+
+// light / dark theme (the page sets it from localStorage or the system before it paints)
+function themeUpdate() {
+  const dark = isDark();
+  $("#themeBtn").innerHTML = ICON[dark ? "sun" : "moon"];
+  $("#themeBtn").title = dark ? "Light theme" : "Dark theme";
+  setSketchTheme(dark);
+  if (gridBox) setGrid(gridBox);
+  if (inSketch()) SK.refresh();
+}
+$("#themeBtn").onclick = () => {
+  document.documentElement.dataset.theme = isDark() ? "light" : "dark";
+  try { localStorage.setItem("vibecad.theme", document.documentElement.dataset.theme); } catch {}
+  themeUpdate();
+};
+themeUpdate();
 
 // keyboard shortcuts: ? shows them
 const KEYS = [["Model", ""], ["M", "Measure"], ["F", "Fit the part in view"], ["Ctrl/⌘ Z", "Undo"], ["Ctrl/⌘ Shift Z", "Redo"], ["Double-click a feature", "Edit it"],
