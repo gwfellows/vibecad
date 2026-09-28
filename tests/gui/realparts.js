@@ -558,6 +558,30 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
     .catch(() => {});
   rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
   check("editing the clearance to 1 mm: a 1 mm gap and a deeper nest", rowsTxt.some((t) => t.includes(refA) && t.includes("clear, 1 mm gap")) && (await vol()) < nested, rowsTxt.join(" | "));
+  // place the pillow block by its faces: its base's underside against the plate's underside (seen from below)
+  await page.click(`#tree li.feat[data-id=${refB}] .fid`);
+  await page.waitForSelector("#details [data-a=mate]");
+  await page.click("#details [data-a=mate]");
+  check("placing asks for a face of the import first", (await page.textContent("#mateText")).includes(`click the flat face of it`));
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");
+  await page.waitForTimeout(600);
+  await click3d(0, 120, 0);
+  check("then for the face it goes against", (await page.textContent("#mateText")).includes("Now click the face"));
+  await click3d(0, -40, -3);
+  await page.waitForSelector("#maGo");
+  await shot("mate_form");
+  await page.click("#maGo");
+  await idle();
+  const placed = (await state()).features.find((f) => f.id === refB);
+  check("the import's rotation and position were rewritten", JSON.stringify(placed) !== "" && (await page.isHidden("#mateBar")),
+    JSON.stringify(await page.evaluate((b) => fetch(`/api/feature/${b}`).then((r) => r.json()), refB)));
+  await page.waitForFunction((b) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(b) && x.textContent.includes("touching")), refB, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("Clash: the pillow block now hangs under the plate, touching it", rowsTxt.some((t) => t.includes(refB) && t.includes("touching")), rowsTxt.join(" | "));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("mated");
   await page.click("#clashBtn");
   check("Clash off hides its panel", await page.isHidden("#clashPanel"));
 

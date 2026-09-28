@@ -131,7 +131,7 @@ GUI (Playwright, `scripts/gui_smoke.sh`, 66 checks; the agent panel is driven by
 
 ## 2026-09-28: new features, guide lines not yet measured
 
-The agent gained extrude `draft` / `up_to_face`, `loft`, `sweep`, the SVG drawing export and the `mirror_entities` op. The guide got two small changes: patterns and mirrors now name every replayable feature type, and one line tells the agent to draw half a symmetric profile and mirror it. Neither was benched. Worth a run: does `mirror_entities` cut output tokens and rejected batches on symmetric parts (a T-slot nut, a bracket with a symmetric gusset) against drawing the whole outline with `add_polygon`?
+The agent gained extrude `draft` / `up_to_face`, `loft`, `sweep`, the SVG drawing export and the `mirror_entities` op. The guide got two small changes: patterns and mirrors now name every replayable feature type, and one line tells the agent to draw half a symmetric profile and mirror it. Neither was benched. Later the same day: the `place_import` tool (placing an import by a face of it and a target face) and the `boolean` feature with `clearance`, each with a guide line; also not benched. A task worth adding to the suite: "a holder for this STEP part" (import, place, nest with clearance, check_fit). Worth a run: does `mirror_entities` cut output tokens and rejected batches on symmetric parts (a T-slot nut, a bracket with a symmetric gusset) against drawing the whole outline with `add_polygon`?
 
 ## Hypotheses to test next
 

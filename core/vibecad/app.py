@@ -364,6 +364,17 @@ class App:
         p = bd.Vector(*pick["point"])
         return min(faces, key=lambda f: bd.Face(TopoDS.Face(f)).distance_to(p))
 
+    def mate(self, import_id: str, face: dict, target: dict, gap: float = 0.0, align: str = "center") -> dict:
+        """Place import `import_id` so its picked face ({"label", "point"}) lies against the target face: opposed,
+        `gap` apart, centred on it or only moved along its normal. Writes the import's rotate and translate."""
+        if not face["label"].startswith(import_id + "."):
+            raise ToolError(f"the first face must be on {import_id}")
+        if target["label"].startswith(import_id + "."):
+            raise ToolError(f"the target face must be on something other than {import_id}")
+        with self.ws.lock:
+            fa, fb = self._pick_shape(face), self._pick_shape(target)
+        return self.ws.place_faces(import_id, fa, fb, gap, align, f"place {import_id} against {target['label']}", "user")
+
     def measure(self, picks: list[dict]) -> dict:
         from .measure import between, describe, mass_properties
         with self.ws.lock:
@@ -1085,6 +1096,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     @api.post("/api/measure")
     async def measure(body: dict = Body(...)):
         return await asyncio.to_thread(guard, A.measure, body.get("picks", []))
+
+    @api.post("/api/mate")
+    async def mate(body: dict = Body(...)):
+        return await asyncio.to_thread(guard, A.mate, body["import"], body["face"], body["target"], body.get("gap", 0), body.get("align", "center"))
 
     @api.get("/api/fit")
     async def fit():

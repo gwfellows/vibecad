@@ -173,6 +173,55 @@ class Workspace:
             s["area_mm2"] = s.pop("area")
         return json.dumps(s, indent=1)
 
+    def place_import(self, import_id: str, face: dict, target: dict, gap: float = 0.0, align: str = "center") -> str:
+        """Move an import so one of its flat faces lies against a flat face of the part or another import."""
+        from . import schema as S
+        from .features import FeatureError
+
+        s = self.session()
+        res = s.result
+
+        def one(ref: dict, what: str):
+            fr = S.FaceRef.model_validate(ref)
+            body = res.refs.get(fr.feature, res.body)
+            from .topo import resolve_faces
+            try:
+                fs = resolve_faces(body, fr)
+            except (FeatureError, ValueError) as e:
+                raise ToolError(f"{what}: {e}") from None
+            if len(fs) != 1:
+                raise ToolError(f"{what} matched {len(fs)} faces; narrow it to one (entity, or pick + near)")
+            return fs[0]
+        if ((face.get("feature") != import_id)):
+            raise ToolError(f"face must be on {import_id} (its feature is the import id)")
+        return json.dumps(self.place_faces(import_id, one(face, "face"), one(target, "target"), gap, align,
+                                           f"place {import_id} against {target.get('feature')}.{target.get('role')}", "agent"))
+
+    def place_faces(self, import_id: str, fa, fb, gap: float, align: str, message: str, author: str) -> dict:
+        """The shared core of placing an import: two faces (TopoDS) to a new rotate / translate, applied as one edit."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from .expr import evaluate
+        from .mate import mate
+        s = self.session()
+        f = next((x for x in s.doc.features if x.id == import_id), None)
+        if f is None or f.type != "import":
+            raise ToolError(f"{import_id!r} is not an import")
+        planes = []
+        for sh in (fa, fb):
+            F = bd.Face(TopoDS.Face(sh))
+            if F.geom_type != bd.GeomType.PLANE:
+                raise ToolError("that face is curved; place imports by flat faces")
+            planes.append((tuple(F.normal_at()), tuple(F.center())))
+        (n_a, c_a), (n_b, c_b) = planes
+        env = s.result.env
+        rot, tr = mate([evaluate(v, env) for v in f.rotate], [evaluate(v, env) for v in f.translate], n_a, c_a, n_b, c_b,
+                       gap=float(gap), align=align)
+        rep = self.apply_ops([{"op": "update_feature", "id": import_id, "set": {"rotate": rot, "translate": tr}}], message, author)
+        out = json.loads(rep) if isinstance(rep, str) else rep
+        return {"ok": out.get("ok", False), "rotate": rot, "translate": tr, "report": out}
+
     def check_fit(self, other_paths: list[str]) -> str:
         """Overlap volume between the active part and other parts (all modeled in shared world coordinates), and
         its reference imports."""
@@ -334,6 +383,9 @@ TOOLS: list[dict] = [
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
     {"name": "measure", "desc": "Volume, surface area, bounding box, centre of mass, mass (from the part's material), face count, validity and params of the active part.", "props": {}, "req": []},
+    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). Faces are FaceRefs; the first's feature is the import id.",
+     "props": {"import_id": S_STR, "face": {"type": "object"}, "target": {"type": "object"}, "gap": {"type": "number"},
+               "align": {"type": "string", "enum": ["center", "touch"]}}, "req": ["import_id", "face", "target"]},
     {"name": "check_fit", "desc": "Overlap volume and minimum gap between the active part and other part files that share its world coordinates, and its reference imports (always included). Use for multi-part designs and for parts designed around an imported one.",
      "props": {"other_paths": {"type": "array", "items": S_STR}}, "req": ["other_paths"]},
     {"name": "render", "desc": "Render the active part as one tiled PNG. views: iso, iso_back, iso_below, front, top, right (default iso, iso_back, iso_below, top). highlight: feature ids drawn orange.",

@@ -333,6 +333,7 @@ async function renderDetails() {
       <button data-a="down" title="Move down the tree" ${i === S.features.length - 1 ? "disabled" : ""}>↓</button>
       <span class="grow"></span><button data-a="delete" class="danger" title="Delete this feature (undo brings it back)">Delete</button></div>
     ${EDITABLE.includes(f.type) ? `<button class="editbtn" data-a="edit" title="Change this ${f.type.replace("_", " ")}'s settings (or double-click it in the tree)">Edit ${esc(f.type.replace("_", " "))}…</button>` : ""}
+    ${f.type === "import" ? `<button class="editbtn" data-a="mate" title="Move this import by its faces: click a flat face of it, then the face it should sit against">Place by faces…</button>` : ""}
     ${f.type === "import" && f.mode === "reference" && S.volume != null ? `<button class="editbtn" data-a="nest" title="Cut this body out of the part, grown by a clearance: a nest, cradle or case for it">Cut a nest for it…</button>` : ""}
     <div class="intent small" title="Click to edit: one line on why this feature exists">${esc(f.intent || "No intent written. Click to add one.")}</div>
     ${f.type === "fillet" || f.type === "chamfer" ? `<div class="edgelist"><div class="row"><b>Edges</b><span class="grow"></span>
@@ -367,6 +368,7 @@ async function renderDetails() {
     edges: () => startEdgeEdit(f.id),
     edit: () => editFeature(f.id, d.querySelector(".editbtn")),
     nest: () => combineForm(f.id, d.querySelector("[data-a=nest]")),
+    mate: () => startMate(f.id),
   };
   d.querySelectorAll(".factions [data-a], .edgelist [data-a], .editbtn[data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
   const intent = d.querySelector(".intent");
@@ -807,6 +809,7 @@ renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
   if (refPick) return void refFromView(ev);
   if (measuring) return void measurePick(ev);
+  if (MT) return void matePick(ev);
   if (EE) { const h = edgeHit(ev); if (h) eeToggle(h.object.userData.i); return; }
   const eh = edgeHit(ev);
   if (eh) return pickEdge(eh.object.userData.i, ev.shiftKey);
@@ -1251,6 +1254,60 @@ async function endEdgeEdit(save) {
 $("#edgeEditDone").onclick = () => endEdgeEdit(true);
 $("#edgeEditCancel").onclick = () => endEdgeEdit(false);
 document.addEventListener("keydown", (ev) => { if (EE && ev.key === "Escape") { ev.stopPropagation(); endEdgeEdit(false); } }, true);
+
+// ── place an import by faces: click a flat face of it, then the face it goes against; gap and centring after ──
+let MT = null;  // {id, face}
+function startMate(id) {
+  if (inSketch()) exitSketch();
+  if (measuring) setMeasuring(false);
+  hiddenRefs.delete(id);
+  for (const m of refMeshes) if (m.userData.ref === id) m.visible = true;
+  MT = { id, face: null };
+  pickedFaces = []; pickedEdges = []; pickUpdate(); colorFaces();
+  $("#mateBar").hidden = false;
+  mateUpdate();
+}
+function mateUpdate() {
+  $("#mateText").textContent = MT.face ? `Now click the face ${MT.id} should sit against · Esc cancels`
+    : `Place ${MT.id}: click the flat face of it that should touch · Esc cancels`;
+}
+function endMate() {
+  MT = null;
+  $("#mateBar").hidden = true;
+  $("#featMenu").hidden = true;
+  pickedFaces = []; pickUpdate(); colorFaces();
+}
+$("#mateCancel").onclick = endMate;
+document.addEventListener("keydown", (ev) => { if (MT && ev.key === "Escape") { ev.stopPropagation(); endMate(); } }, true);
+const onImport = (id, label) => label.startsWith(id + ".") || label.startsWith(id + "(");
+function matePick(ev) {
+  const hit = pickHit(ev), m = hit?.object;
+  if (!m) return;
+  const lab = m.userData.labels.find((l) => (MT.face ? !onImport(MT.id, l) : onImport(MT.id, l)));
+  if (!lab) return note(MT.face ? `Pick a face that isn't on ${MT.id}` : `Pick a face of ${MT.id} (it is ghosted in its colour)`, "err");
+  const pk = { label: lab, point: hit.point.toArray().map((v) => +v.toFixed(4)), mesh: m, labels: m.userData.labels };
+  if (!MT.face) { MT.face = pk; pickedFaces = [pk]; pickUpdate(); colorFaces(); return mateUpdate(); }
+  pickedFaces = [MT.face, pk]; pickUpdate(); colorFaces();
+  const target = pk, mm = $("#featMenu");
+  mm.innerHTML = `<div class="ttl">Place ${esc(MT.id)}</div><div class="muted">${esc(MT.face.label)} against ${esc(target.label)}</div>
+    <div class="row"><label>gap</label><input id="maGap" value="0" title="distance between the two faces, mm"></div>
+    <div class="row"><label>position</label><select id="maAlign"><option value="center">centred on the face</option><option value="touch">slide straight in, keep it across</option></select></div>
+    <button class="go" id="maGo">Place</button><div class="err" id="maErr"></div>`;
+  popup(mm, $("#mateBar"));
+  $("#maGo").onclick = async () => {
+    const gap = parseFloat($("#maGap").value || "0");
+    if (!isFinite(gap)) { $("#maErr").textContent = "the gap is a number of mm"; return; }
+    try {
+      const r = await api("/api/mate", { import: MT.id, face: { label: MT.face.label, point: MT.face.point }, target: { label: target.label, point: target.point },
+        gap, align: $("#maAlign").value });
+      if (!r.ok) { $("#maErr").textContent = "the placement didn't build; see the tree"; return; }
+    } catch (e) { $("#maErr").textContent = e.message; return; }
+    const id = MT.id;
+    endMate();
+    note(`placed ${id}`, "ok");
+    select(id);
+  };
+}
 
 $("#filletBtn").onclick = () => edgeForm("fillet");
 $("#chamferBtn").onclick = () => edgeForm("chamfer");

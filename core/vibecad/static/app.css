@@ -266,7 +266,7 @@ body.rebuilding #viewer { cursor: progress; }
 body.rebuilding #params input, body.rebuilding #tree input { opacity: .6; }
 
 /* picking a fillet / chamfer's edges */
-.edgeedit { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6; background: #ea580c; color: #fff;
+.edgeedit { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); z-index: 6; background: #ea580c; color: #fff;
   padding: 5px 8px 5px 12px; border-radius: 8px; font-size: 12px; display: flex; gap: 8px; align-items: center; }
 .edgeedit button { font-size: 12px; padding: 2px 10px; border: 0; }
 .edgeedit .go { background: #fff; color: #9a3412; font-weight: 600; }
