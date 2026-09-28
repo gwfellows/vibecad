@@ -40,8 +40,16 @@ def tree_text(res: RegenResult) -> str:
             extra = f"on {plane}; {len(f.entities)} entities; dof {r.info.get('dof', '?')}" + \
                 (f"; dims {', '.join(dims)}" if dims else "")
         elif f.type in ("extrude", "revolve"):
-            extra = f"{f.mode} {f.profile.sketch}" + (
-                f" {f.extent if f.extent != 'blind' else f.distance} {f.direction}" if f.type == "extrude" else f" axis {f.axis} {f.angle} deg")
+            if f.type == "extrude":
+                if f.extent == "up_to_face":
+                    t = f.to_face
+                    how = f"up to {t.feature}.{t.role}" + (f"[{t.entity}]" if t.entity else "")
+                    how += f" +{f.distance}" if f.distance not in (0, 0.0, "0") else ""
+                else:
+                    how = f"{f.distance if f.extent == 'blind' else f.extent} {f.direction}"
+                extra = f"{f.mode} {f.profile.sketch} {how}" + (f" draft {f.draft} deg" if f.draft not in (0, 0.0, "0") else "")
+            else:
+                extra = f"{f.mode} {f.profile.sketch} axis {f.axis} {f.angle} deg"
         elif f.type in ("fillet", "chamfer"):
             extra = f"{getattr(f, 'radius', None) or getattr(f, 'distance', None)} on {r.info.get('edges', '?')} edges"
         elif f.type in ("linear_pattern", "circular_pattern", "mirror"):

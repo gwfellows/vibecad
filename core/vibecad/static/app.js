@@ -1025,6 +1025,53 @@ $("#newSketchBtn").onclick = () => {
   };
 };
 
+// extrude extent rows, shared by the new-extrude and edit forms: distance, through all, or up to a face
+// parallel to the sketch (listed by the server, nearest first), plus a draft angle
+function extentRows(p, j = {}) {
+  const ext = j.extent || "blind";
+  return `<div class="row"><label>extent</label><select id="${p}Ext">${[["blind", "distance"], ["through_all", "through all"], ["up_to_face", "up to face"]]
+      .map(([v, t]) => `<option value="${v}" ${v === ext ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+    <div class="row" id="${p}FaceRow" hidden><label>face</label><select id="${p}Face"></select></div>
+    <div class="row" id="${p}DistRow"><label id="${p}DistLbl">distance</label><input id="${p}Dist" value="${esc(String(j.distance ?? (ext === "up_to_face" ? 0 : 10)))}"></div>
+    <div class="row"><label>draft °</label><input id="${p}Draft" value="${esc(String(j.draft ?? 0))}" title="taper the walls: positive leans them inward along the extrusion"></div>`;
+}
+function wireExtent(p, sid, j = {}, before = null) {
+  let faces = null;
+  const sync = async () => {
+    const e = $(`#${p}Ext`).value;
+    $(`#${p}FaceRow`).hidden = e !== "up_to_face";
+    $(`#${p}DistRow`).hidden = e === "through_all";
+    $(`#${p}DistLbl`).textContent = e === "up_to_face" ? "past it by" : "distance";
+    const dir = $(`#${p === "ff" ? "ffDir" : "efDir"}`)?.closest(".row");
+    if (dir) dir.hidden = e === "up_to_face";  // it turns toward the face by itself
+    if (e === "up_to_face" && !faces) {
+      const sel = $(`#${p}Face`);
+      sel.innerHTML = `<option>loading…</option>`;
+      try { faces = await api(`/api/parallel_faces/${encodeURIComponent(sid)}${before ? `?before=${encodeURIComponent(before)}` : ""}`); } catch { faces = []; }
+      const cur = j.to_face ? JSON.stringify([j.to_face.feature, j.to_face.role, j.to_face.entity || null]) : null;
+      sel.innerHTML = faces.length ? faces.map((f, k) => `<option value="${k}" ${cur === JSON.stringify([f.ref.feature, f.ref.role, f.ref.entity || null]) ? "selected" : ""}>${esc(f.label)} · ${Math.abs(f.distance)} ${f.distance > 0 ? "above" : "below"}</option>`).join("")
+        : `<option value="">no parallel faces</option>`;
+      if (j.to_face && !faces.some((f) => cur === JSON.stringify([f.ref.feature, f.ref.role, f.ref.entity || null]))) {
+        sel.insertAdjacentHTML("afterbegin", `<option value="keep" selected>${esc(j.to_face.feature)}.${esc(j.to_face.role)}${j.to_face.entity ? `[${esc(j.to_face.entity)}]` : ""}</option>`);
+      }
+      if ($(`#${p}Dist`).value === "10" && !j.extent) $(`#${p}Dist`).value = "0";
+    }
+  };
+  $(`#${p}Ext`).onchange = sync;
+  sync();
+  return () => {  // the extent fields of the feature, or throws with a message
+    const e = $(`#${p}Ext`).value, out = { extent: e, draft: numOrExpr($(`#${p}Draft`).value || "0") };
+    if (e !== "through_all") out.distance = numOrExpr($(`#${p}Dist`).value || "0");
+    if (e === "up_to_face") {
+      const v = $(`#${p}Face`).value;
+      if (v === "keep") out.to_face = j.to_face;
+      else if (v === "" || !faces?.[+v]) throw new Error("pick a face parallel to the sketch");
+      else out.to_face = faces[+v].ref;
+    } else out.to_face = null;
+    return out;
+  };
+}
+
 function featureForm(kind) {
   const sid = SK.active(), d = SK.data();
   if (!sid || !d) return;
@@ -1034,19 +1081,24 @@ function featureForm(kind) {
     `<option ${x === def ? "selected" : ""}>${x}</option>`).join("")}</select></div>`;
   m.innerHTML = kind === "extrude"
     ? `<div class="ttl">Extrude ${esc(sid)}</div>
-       <div class="row"><label>distance</label><input id="ffDist" value="10"></div>
+       ${extentRows("ff")}
        <div class="row"><label>direction</label><select id="ffDir"><option>normal</option><option>reverse</option><option>symmetric</option></select></div>
-       <div class="row"><label>through all</label><input id="ffThru" type="checkbox" style="flex:0"></div>
        ${mode(hasBody ? "add" : "new")}<button class="go" id="ffGo">Extrude</button><div class="err" id="ffErr"></div>`
     : `<div class="ttl">Revolve ${esc(sid)}</div>
        <div class="row"><label>axis</label><select id="ffAxis">${["x_axis", "y_axis", ...lines].map((a) => `<option>${esc(a)}</option>`).join("")}</select></div>
        <div class="row"><label>angle</label><input id="ffAngle" value="360"></div>
        ${mode(hasBody ? "add" : "new")}<button class="go" id="ffGo">Revolve</button><div class="err" id="ffErr"></div>`;
   popup(m, $(kind === "extrude" ? "#extrudeBtn" : "#revolveBtn"));
+  const readExtent = kind === "extrude" ? wireExtent("ff", sid) : null;
   $("#ffGo").onclick = async () => {
     const id = nextId(kind), f = { id, type: kind, profile: { sketch: sid }, mode: $("#ffMode").value };
     if (kind === "extrude") {
-      if ($("#ffThru").checked) f.extent = "through_all"; else f.distance = numOrExpr($("#ffDist").value);
+      let ex;
+      try { ex = readExtent(); } catch (e) { $("#ffErr").textContent = e.message; return; }
+      if (ex.extent !== "blind") f.extent = ex.extent;
+      if (ex.distance !== undefined) f.distance = ex.distance;
+      if (ex.to_face) f.to_face = ex.to_face;
+      if (ex.draft !== 0) f.draft = ex.draft;
       if ($("#ffDir").value !== "normal") f.direction = $("#ffDir").value;
     } else {
       f.axis = $("#ffAxis").value;
@@ -1523,12 +1575,13 @@ async function editFeature(fid, anchor) {
   try { j = await api(`/api/feature/${encodeURIComponent(fid)}`); } catch { return; }
   const m = $("#featMenu"), opt = (list, cur) => list.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(t ?? v)}</option>`).join("");
   const modes = (cur, extra = []) => `<div class="row"><label>mode</label><select id="efMode">${opt([["add"], ["cut"], ["new"], ["intersect"], ...extra], cur)}</select></div>`;
-  let body = "", read;
+  let body = "", read, after = null;
   if (j.type === "extrude") {
-    body = `<div class="row"><label>distance</label><input id="efDist" value="${val(j.distance)}"></div>
-      <div class="row"><label>direction</label><select id="efDir">${opt([["normal"], ["reverse"], ["symmetric"]], j.direction || "normal")}</select></div>
-      <div class="row"><label>through all</label><input id="efThru" type="checkbox" style="flex:0" ${j.extent === "through_all" ? "checked" : ""}></div>${modes(j.mode || "add")}`;
-    read = () => ({ distance: numOrExpr($("#efDist").value || "0"), direction: $("#efDir").value, extent: $("#efThru").checked ? "through_all" : "blind", mode: $("#efMode").value });
+    body = `${extentRows("ex", j)}
+      <div class="row"><label>direction</label><select id="efDir">${opt([["normal"], ["reverse"], ["symmetric"]], j.direction || "normal")}</select></div>${modes(j.mode || "add")}`;
+    let readExtent;
+    after = () => { readExtent = wireExtent("ex", j.profile.sketch, j, fid); };
+    read = () => ({ ...readExtent(), direction: $("#efDir").value, mode: $("#efMode").value });
   } else if (j.type === "revolve") {
     body = `<div class="row"><label>axis</label><input id="efAxis" value="${val(j.axis)}"></div>
       <div class="row"><label>angle</label><input id="efAng" value="${val(j.angle ?? 360)}"></div>${modes(j.mode || "add")}`;
@@ -1603,15 +1656,18 @@ async function editFeature(fid, anchor) {
     read = () => ({ mode: $("#efMode").value, scale: numOrExpr($("#efSc").value), rotate: [0, 1, 2].map((k) => numOrExpr($(`#efR${k}`).value)),
       translate: [0, 1, 2].map((k) => numOrExpr($(`#efT${k}`).value)) });
   } else return;
-  m.innerHTML = `<div class="ttl">Edit ${esc(j.id)} <span class="muted">(${esc(j.type.replace("_", " "))})</span></div>${body}<button class="go" id="efGo">Apply</button>`;
+  m.innerHTML = `<div class="ttl">Edit ${esc(j.id)} <span class="muted">(${esc(j.type.replace("_", " "))})</span></div>${body}<button class="go" id="efGo">Apply</button><div class="err" id="efErr"></div>`;
   m.classList.add("wide");
   popup(m, anchor || $("#center"));
+  if (after) after();
   const kind = () => m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== $("#efKind")?.value));
   if ($("#efKind")) { $("#efKind").onchange = kind; kind(); }
   if ($("#efExt")) { const t = () => ($("#efDepth").hidden = $("#efExt").value !== "blind"); $("#efExt").onchange = t; t(); }
   $("#efGo").onclick = async () => {
-    const want = read(), set = {};
-    for (const [k, v] of Object.entries(want)) if (JSON.stringify(v ?? null) !== JSON.stringify(j[k] ?? null)) set[k] = v;
+    let want;
+    try { want = read(); } catch (e) { $("#efErr").textContent = e.message; return; }
+    const set = {}, dflt = { draft: 0, distance: 0, extent: "blind", direction: "normal" };
+    for (const [k, v] of Object.entries(want)) if (JSON.stringify(v ?? null) !== JSON.stringify(j[k] ?? dflt[k] ?? null)) set[k] = v;
     m.hidden = true;
     if (Object.keys(set).length) await edit([{ op: "update_feature", id: j.id, set }], `edit ${j.id}`);
   };

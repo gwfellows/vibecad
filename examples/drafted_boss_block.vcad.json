@@ -1,0 +1,390 @@
+{
+  "vibecad": "0.1",
+  "name": "drafted_boss_block",
+  "material": "ABS",
+  "process": "injection molded",
+  "design_notes": "Demonstrates extrude draft and up_to_face. The boss is sketched on the base and grows up to the back wall's top face, so it follows wall_h; its 2\u00b0 draft lets the part release from the mold.",
+  "params": {
+    "base_w": 60.0,
+    "base_d": 40.0,
+    "base_t": 4.0,
+    "wall_t": 6.0,
+    "wall_h": 20.0,
+    "boss_d": 10.0,
+    "boss_y": -5.0,
+    "draft": 2.0
+  },
+  "features": [
+    {
+      "id": "base_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "base_outline_bottom",
+          "p1": [
+            -30.0,
+            -20.0
+          ],
+          "p2": [
+            30.0,
+            -20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_outline_right",
+          "p1": [
+            30.0,
+            -20.0
+          ],
+          "p2": [
+            30.0,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_outline_top",
+          "p1": [
+            30.0,
+            20.0
+          ],
+          "p2": [
+            -30.0,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_outline_left",
+          "p1": [
+            -30.0,
+            20.0
+          ],
+          "p2": [
+            -30.0,
+            -20.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "base_outline_bottom.p2",
+            "base_outline_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_outline_right.p2",
+            "base_outline_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_outline_top.p2",
+            "base_outline_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_outline_left.p2",
+            "base_outline_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_outline_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_outline_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_outline_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_outline_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_outline_bottom"
+          ],
+          "value": "base_w",
+          "name": "base_outline_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_outline_right"
+          ],
+          "value": "base_d",
+          "name": "base_outline_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "base_outline_bottom.p1"
+          ],
+          "value": "(0) - ((base_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "base_outline_bottom.p1"
+          ],
+          "value": "(0) - ((base_d) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "base",
+      "type": "extrude",
+      "intent": "the flat base plate",
+      "profile": {
+        "sketch": "base_sk"
+      },
+      "distance": "base_t"
+    },
+    {
+      "id": "wall_sk",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "base",
+          "role": "end",
+          "note": "top of the base plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "wall_outline_bottom",
+          "p1": [
+            -30.0,
+            14.0
+          ],
+          "p2": [
+            30.0,
+            14.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "wall_outline_right",
+          "p1": [
+            30.0,
+            14.0
+          ],
+          "p2": [
+            30.0,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "wall_outline_top",
+          "p1": [
+            30.0,
+            20.0
+          ],
+          "p2": [
+            -30.0,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "wall_outline_left",
+          "p1": [
+            -30.0,
+            20.0
+          ],
+          "p2": [
+            -30.0,
+            14.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "wall_outline_bottom.p2",
+            "wall_outline_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_outline_right.p2",
+            "wall_outline_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_outline_top.p2",
+            "wall_outline_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "wall_outline_left.p2",
+            "wall_outline_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "wall_outline_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "wall_outline_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "wall_outline_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "wall_outline_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "wall_outline_bottom"
+          ],
+          "value": "base_w",
+          "name": "wall_outline_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "wall_outline_right"
+          ],
+          "value": "wall_t",
+          "name": "wall_outline_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "wall_outline_bottom.p1"
+          ],
+          "value": "(0) - ((base_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "wall_outline_bottom.p1"
+          ],
+          "value": "((base_d - wall_t) / 2) - ((wall_t) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "wall",
+      "type": "extrude",
+      "intent": "back wall along the +Y edge",
+      "profile": {
+        "sketch": "wall_sk"
+      },
+      "distance": "wall_h"
+    },
+    {
+      "id": "boss_sk",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "base",
+          "role": "end",
+          "note": "top of the base plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "boss_circle",
+          "center": [
+            0.0,
+            -5.0
+          ],
+          "r": 5.0,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "boss_circle"
+          ],
+          "value": "boss_d",
+          "name": "boss_circle_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "boss_circle.center"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "boss_circle.center"
+          ],
+          "value": "boss_y"
+        }
+      ]
+    },
+    {
+      "id": "boss",
+      "type": "extrude",
+      "intent": "drafted boss, level with the wall top",
+      "profile": {
+        "sketch": "boss_sk"
+      },
+      "extent": "up_to_face",
+      "to_face": {
+        "feature": "wall",
+        "role": "end",
+        "note": "top of the back wall: the boss stays level with it"
+      },
+      "draft": "draft"
+    }
+  ]
+}

@@ -114,7 +114,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   await atRef(await pt("circle1.center")); await dimTool("dy", 10);
   check("hole sketch fully constrained", /0 DOF/.test(await info()), await info());
   await feature("#extrudeBtn", async () => {
-    await page.check("#ffThru");
+    await page.selectOption("#ffExt", "through_all");
     await page.selectOption("#ffDir", "reverse");
     await page.selectOption("#ffMode", "cut");
   });

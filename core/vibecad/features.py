@@ -300,19 +300,35 @@ def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str, rev
 def do_extrude(ctx: Ctx, f: S.Extrude) -> dict:
     solved, frame, faces = _profile(ctx, f.profile)
     n = frame.n
+    direction = f.direction
+    draft = ctx.num(f.draft)
+    if abs(draft) >= 45:
+        raise FeatureError(f"draft must be between -45 and 45 degrees, got {draft:g}")
+    if draft and direction == "symmetric":
+        raise FeatureError("draft works with direction 'normal' or 'reverse', not 'symmetric'")
     if f.extent == "through_all":
         d = _through_all_length(ctx, faces)
+    elif f.extent == "up_to_face":
+        if direction == "symmetric":
+            raise FeatureError("up_to_face extrudes one way; use direction 'normal' (it turns around by itself)")
+        t = _distance_to_face(ctx, f.to_face, frame)
+        direction = "normal" if t > 0 else "reverse"
+        d = abs(t) + ctx.num(f.distance)
+        if d <= 1e-9:
+            raise FeatureError("the face is on the sketch plane: nothing to extrude up to")
     else:
         d = ctx.num(f.distance)
         if d <= 0:
             raise FeatureError(f"extrude distance must be > 0, got {d:g}")
-    if f.direction == "symmetric":
+    if draft:
+        return _extrude_drafted(ctx, f, solved, frame, faces, d, direction, draft)
+    if direction == "symmetric":
         t = gp_Trsf()
         t.SetTranslation(_vec(n * (-d / 2)))
         faces = [BRepBuilderAPI_Transform(fc, t, True).Shape() for fc in faces]
         vec = n * d
     else:
-        vec = n * (d if f.direction == "normal" else -d)
+        vec = n * (d if direction == "normal" else -d)
     src = _compound(faces)
     prism = BRepPrimAPI_MakePrism(src, _vec(vec))
     prism.Build()
@@ -325,8 +341,78 @@ def do_extrude(ctx: Ctx, f: S.Extrude) -> dict:
     def reversed_tool():
         return BRepPrimAPI_MakePrism(src, _vec(vec * -1)).Shape()
 
-    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool if f.direction != "symmetric" else None)
+    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool if direction != "symmetric" else None)
     return {"length": round(d, 6)}
+
+
+class _Generated:
+    """Generated() history over several LocOpe_DPrism builds (one per profile face)."""
+
+    def __init__(self, builds):
+        self.builds = builds
+
+    def Generated(self, e):
+        for b in self.builds:
+            lst = b.Shapes(e)
+            if lst.Size():
+                return list(lst)
+        return []
+
+
+def _drafted(faces, n: bd.Vector, d: float, draft: float):
+    """Tapered prisms of the faces along n, walls leaning `draft` degrees inward, `d` long along n."""
+    from OCP.LocOpe import LocOpe_DPrism
+    builds = []
+    pinched = FeatureError(f"a draft of {draft:g}° pinches the profile off before {d:g} mm; reduce the draft or the length")
+    for fc in faces:
+        face = TopoDS.Face(fc)
+        # LocOpe extrudes and tapers relative to the surface normal; a negative height and angle go the other way
+        sign = 1 if bd.Face(face).normal_at().dot(n) > 0 else -1
+        b = LocOpe_DPrism(face, sign * d / math.cos(math.radians(draft)), sign * math.radians(draft))
+        if not b.IsDone():
+            raise pinched
+        # a profile that pinches off gives a self-crossing solid that stops short of the full length
+        hs = [bd.Vector(v).dot(n) for v in bd.Shape.cast(b.Shape()).vertices()]
+        if abs(max(hs) - min(hs) - d) > 1e-6 * max(1.0, d):
+            raise pinched
+        builds.append(b)
+    return builds
+
+
+def _extrude_drafted(ctx: Ctx, f: S.Extrude, solved, frame, faces, d: float, direction: str, draft: float) -> dict:
+    n = frame.n * (1 if direction == "normal" else -1)
+    builds = _drafted(faces, n, d, draft)
+    tool = builds[0].Shape() if len(builds) == 1 else _compound([b.Shape() for b in builds])
+    labels = [(x, Label(f.id, "start")) for b in builds for x in list_faces(b.FirstShape())]
+    labels += [(x, Label(f.id, "end")) for b in builds for x in list_faces(b.LastShape())]
+    labels += _side_labels(_Generated(builds), tool, faces, solved, frame, f.id, labels)
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+
+    def reversed_tool():
+        bs = _drafted(faces, n * -1, d, draft)
+        return _compound([b.Shape() for b in bs])
+
+    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool)
+    return {"length": round(d, 6), "draft": draft}
+
+
+def _distance_to_face(ctx: Ctx, ref: S.FaceRef, frame) -> float:
+    """Signed distance along the sketch normal from the sketch plane to a planar face parallel to it."""
+    fs = faces_of(ctx, ref)
+    if not fs:
+        raise FeatureError("up_to_face: the face reference matched no face")
+    ts = []
+    for fc in fs:
+        F = bd.Face(TopoDS.Face(fc))
+        if F.geom_type != bd.GeomType.PLANE:
+            raise FeatureError("up_to_face needs a planar face")
+        m = F.normal_at()
+        if abs(abs(m.dot(frame.n)) - 1) > 1e-6:
+            raise FeatureError("up_to_face needs a face parallel to the sketch plane")
+        ts.append((F.center() - frame.origin).dot(frame.n))
+    if max(ts) - min(ts) > 1e-6:
+        raise FeatureError("up_to_face matched faces at different heights; make the reference pick one")
+    return ts[0]
 
 
 def _through_all_length(ctx: Ctx, faces) -> float:

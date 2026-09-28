@@ -202,8 +202,16 @@ class Extrude(_Feature):
     profile: Profile
     distance: Num = 0.0
     direction: Literal["normal", "reverse", "symmetric"] = "normal"
-    extent: Literal["blind", "through_all"] = "blind"
+    extent: Literal["blind", "through_all", "up_to_face"] = "blind"
+    to_face: FaceRef | None = None  # up_to_face: a planar face parallel to the sketch; `distance` goes past it
+    draft: Num = 0.0  # degrees; positive tapers the walls inward along the extrusion (a molded boss, a pocket)
     mode: Mode = "add"
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.extent == "up_to_face" and self.to_face is None:
+            raise ValueError("extent 'up_to_face' needs to_face")
+        return self
 
 
 class Revolve(_Feature):

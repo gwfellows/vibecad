@@ -79,6 +79,12 @@ def expected_volume(name, p):
         outer = (W - 2 * m) * (D - 2 * m) - 4 * fillet_corner_area(r - m)
         inner = (W - 2 * t + 2 * m) * (D - 2 * t + 2 * m) - 4 * fillet_corner_area(r - t + m)
         return (outer - inner) * p["seal_t"]
+    if name == "drafted_boss_block":  # plate + back wall + a boss up to the wall's top, a cone frustum from its draft
+        from math import radians
+        h = p["wall_h"]
+        r1 = p["boss_d"] / 2
+        r2 = r1 - h * tan(radians(p["draft"]))
+        return p["base_w"] * p["base_d"] * p["base_t"] + p["base_w"] * p["wall_t"] * h + pi * h / 3 * (r1**2 + r1 * r2 + r2**2)
     if name == "mounting_plate":
         t = p["plate_t"]
         v = p["plate_w"] * p["plate_d"] * t

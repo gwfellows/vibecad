@@ -183,7 +183,7 @@ function helpers(page) {
     await page.keyboard.press("Escape");
     await h.caption("Cut through");
     await h.clickSel("#extrudeBtn", 500);
-    await h.clickSel("#ffThru", 200);
+    await page.selectOption("#ffExt", "through_all"); await sleep(250);
     await page.selectOption("#ffDir", "reverse"); await sleep(250);
     await page.selectOption("#ffMode", "cut"); await sleep(250);
     await h.clickSel("#ffGo", 400);

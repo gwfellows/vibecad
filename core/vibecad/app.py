@@ -434,6 +434,46 @@ class App:
                 "conflicting_idx": rep.conflicting_idx, "redundant_idx": rep.redundant_idx,
                 "params": sorted(s.doc.params), "on_face": feat.plane.__class__.__name__ == "FacePlane"}
 
+    def parallel_faces(self, sid: str, before: str | None = None) -> list[dict]:
+        """Planar faces of the body parallel to sketch `sid`, for an extrude's "up to face": a FaceRef each,
+        checked to resolve to faces at one height, with its signed distance along the sketch normal. Faces made
+        by `before` or later features are left out (they don't exist yet when that feature builds)."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
+        from . import schema as S
+        from .topo import face_center, resolve_faces
+
+        s = self.ws.session()
+        if sid not in s.result.sketches:
+            raise ToolError(f"sketch {sid!r} has no solved frame")
+        frame = s.result.sketches[sid][1]
+        ids = [f.id for f in s.doc.features]
+        later = set(ids[ids.index(before):]) if before in ids else set()
+        body = s.result.body
+        out, seen = [], set()
+        for face, lab in body.labels:
+            if lab.feature in later or bd.Face(TopoDS.Face(face)).geom_type != bd.GeomType.PLANE:
+                continue
+            F = bd.Face(TopoDS.Face(face))
+            if abs(abs(F.normal_at().dot(frame.n)) - 1) > 1e-6:
+                continue
+            t = round((F.center() - frame.origin).dot(frame.n), 6)
+            if abs(t) < 1e-6 or (str(lab), t) in seen:
+                continue
+            seen.add((str(lab), t))
+            ref = {"feature": lab.feature, "role": lab.role, **({"entity": lab.entity} if lab.entity else {}),
+                   **({"instance": lab.instance} if lab.instance else {})}
+            hits = resolve_faces(body, S.FaceRef.model_validate(ref))
+            heights = {round((bd.Face(TopoDS.Face(h)).center() - frame.origin).dot(frame.n), 6) for h in hits}
+            if len(heights) > 1:
+                c = face_center(face)
+                ref.update(pick="nearest", near=[round(c.X, 4), round(c.Y, 4), round(c.Z, 4)])
+            ref["note"] = f"face {lab}, {abs(t):g} mm {'above' if t > 0 else 'below'} sketch {sid}"
+            out.append({"label": str(lab), "distance": t, "ref": ref})
+        out.sort(key=lambda r: (abs(r["distance"]), r["label"]))
+        return out
+
     def edge_ref(self, i: int) -> dict:
         """A semantic EdgeRef for edge `i` of the shown body (the index the mesh uses), checked to resolve
         to exactly that edge: the edge between its two faces, narrowed by pick/filter when needed."""
@@ -803,7 +843,7 @@ def face_context(face: dict) -> str:
 
 _TEXT_KEYS = {"intent", "note", "name", "id", "type", "feature", "role", "entity", "sketch", "instance", "on", "features",
               "regions", "axis", "mode", "direction", "extent", "pick", "datum", "construction", "filter"}
-_FIELDS = {"extrude": ["distance"], "revolve": ["angle"], "fillet": ["radius"], "chamfer": ["distance"], "shell": ["thickness"],
+_FIELDS = {"extrude": ["distance", "draft"], "revolve": ["angle"], "fillet": ["radius"], "chamfer": ["distance"], "shell": ["thickness"],
            "linear_pattern": ["spacing", "count"], "circular_pattern": ["count", "angle"]}
 
 
@@ -854,7 +894,8 @@ def param_usage(doc, env: dict[str, float]) -> tuple[dict[str, list[str]], dict[
         for p in closure(_param_names(raw, names)):
             users[p].append(f.id)
         fields = [{"key": k, "expr": raw[k], "value": val(raw[k])} for k in _FIELDS.get(f.type, [])
-                  if k in raw and not (k == "distance" and raw.get("extent") == "through_all")]
+                  if k in raw and not (k == "distance" and raw.get("extent") == "through_all")
+                  and not (k in ("draft", "distance") and raw[k] == 0)]
         dims = []
         if f.type == "sketch":
             dims = [{"name": c.name, "expr": c.value, "value": val(c.value)} for c in f.constraints
@@ -1014,6 +1055,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     def upload_file(fid: str):
         from . import uploads
         return FileResponse(guard(uploads.resolve, A.ws.root, fid))
+
+    @api.get("/api/parallel_faces/{sid}")
+    async def parallel_faces(sid: str, before: str | None = None):
+        return await asyncio.to_thread(guard, A.parallel_faces, sid, before)
 
     @api.get("/api/feature/{fid}/edges")
     async def feature_edges(fid: str):

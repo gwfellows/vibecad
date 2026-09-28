@@ -429,6 +429,45 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   await idle();
   check("rounded plate: 30 × 20 less the corner", near(await vol(), (600 - 16 * (1 - Math.PI / 4)) * 2, 0.01), `${await vol()}`);
 
+  // ── extrude up to a face: a post sketched 12 above the plate grows down to the plate's top; then draft it ──
+  const plateVol = await vol();
+  await page.click("#newSketchBtn");
+  await page.fill("#nsOffset", "12");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.keyboard.press("r");
+  await at(8, 6); await at(16, 12);
+  await page.waitForTimeout(500);
+  await page.click("#extrudeBtn");
+  check("extrude offers distance / through all / up to face", (await page.$$eval("#ffExt option", (o) => o.map((x) => x.value))).join() === "blind,through_all,up_to_face");
+  await page.selectOption("#ffExt", "up_to_face");
+  await page.waitForFunction(() => document.querySelector("#ffFace option")?.textContent !== "loading…");
+  const faceOpts = await page.$$eval("#ffFace option", (o) => o.map((x) => x.textContent));
+  check("up to face lists the plate's top, 10 below the sketch", faceOpts[0] === "extrude1.end · 10 below", faceOpts.join(" | "));
+  check("the distance field becomes 'past it by' 0", (await page.textContent("#ffDistLbl")) === "past it by" && (await page.inputValue("#ffDist")) === "0");
+  check("direction is hidden for up to face", await page.$eval("#ffDir", (e) => e.closest(".row").hidden));
+  await shot("extrude_up_to_face");
+  await page.click("#ffGo");
+  await idle();
+  let pst = await state();
+  const postA = (await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json())));
+  check("post extruded down to the plate", postA.extent === "up_to_face" && postA.to_face.feature === "extrude1" && near(pst.bbox[2], 12, 1e-6) && pst.volume > plateVol + 100,
+    `${JSON.stringify(postA.to_face)} bbox ${JSON.stringify(pst.bbox)} vol ${pst.volume}`);
+  const postVol = pst.volume;
+  await page.dblclick("#tree li.feat[data-id=extrude2] .fid");
+  await page.waitForSelector("#efGo");
+  await page.waitForFunction(() => !document.querySelector("#exFaceRow").hidden && document.querySelector("#exFace option")?.textContent !== "loading…");
+  check("the edit form reopens on up to face, with the face chosen", (await page.inputValue("#exExt")) === "up_to_face" &&
+    (await page.$eval("#exFace", (s) => s.selectedOptions[0].textContent)).startsWith("extrude1.end"));
+  await page.fill("#exDraft", "5");
+  await page.click("#efGo");
+  await idle();
+  pst = await state();
+  check("a 5° draft tapers the post (less volume, same height)", pst.volume < postVol - 1 && pst.volume > plateVol, `${postVol} -> ${pst.volume}`);
+  const drafted = await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json()));
+  check("the draft is stored on the feature and nothing else changed", drafted.draft === 5 && drafted.extent === "up_to_face" && (drafted.distance ?? 0) === 0, JSON.stringify(drafted));
+
   // ── offset an outline inward: select one edge, K, a negative distance; the ring extrudes ──
   await newPart("offset_test");
   await page.click("#newSketchBtn");

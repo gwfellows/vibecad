@@ -54,7 +54,7 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 
 | type | key fields |
 |---|---|
-| extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind or through_all`, `mode: add / cut / intersect / new` |
+| extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind / through_all / up_to_face`, `to_face` (up_to_face: a planar face parallel to the sketch; the extrude turns toward it by itself and `distance` goes past it), `draft` (degrees, default 0; positive tapers the walls inward along the extrusion, for molded or printed bosses and pockets; not with `symmetric`), `mode: add / cut / intersect / new` |
 | revolve | `profile`, `axis` (a sketch line id, `x_axis` or `y_axis`), `angle` |
 | fillet / chamfer | `edges: [EdgeRef]`, `radius` / `distance` |
 | shell | `remove_faces: [FaceRef]`, `thickness` (inward; `outward: true` grows the wall outside: a skin around an imported body) |
