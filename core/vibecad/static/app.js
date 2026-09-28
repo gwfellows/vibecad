@@ -30,6 +30,7 @@ const ICONS = {
   import: '<path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5"/>',
   hole: '<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0"/>',
   text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+  boolean: '<rect x="3" y="9" width="18" height="11" rx="1.5"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9" stroke-dasharray="2 1.6"/><path d="M9 9v3a3 3 0 0 0 6 0V9"/>',
   loft: '<path d="M4 20h10l6-4H10z"/><ellipse cx="13" cy="5.5" rx="4" ry="2"/><path d="M6.5 18.5L9 5.5M17.5 17L17 5.5"/>',
   sweep: '<circle cx="6" cy="18.5" r="2.5"/><path d="M8.5 18.5V12a5 5 0 0 1 5-5H21M3.5 18.5V12a10 10 0 0 1 10-10H21"/>',
 };
@@ -177,8 +178,13 @@ function renderTree(before) {
     const meta = f.status === "error" ? "error" : f.warnings?.length ? "warning" : f.status === "suppressed" ? "suppressed"
       : f.type === "sketch" ? `${f.dof ?? "?"} DOF` : "";
     const rows = featureRows(f), open = expanded.has(f.id) && rows.length;
+    const isRef = f.type === "import" && f.mode === "reference";
     li.innerHTML = `<span class="caret" title="${rows.length ? `${open ? "Hide" : "Show"} this feature's parameters` : ""}">${rows.length ? (open ? "▾" : "▸") : ""}</span>`
-      + `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}</span><span class="meta ${st}">${esc(meta)}</span>`
+      + `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}`
+      + (isRef ? `<span class="refsw" style="background:#${refColor(f.id).getHexString()}" title="reference body: shown ghosted, never part of the solid"></span>` : "")
+      + `</span><span class="meta ${st}">${esc(meta)}`
+      + (isRef ? `<button class="eye ${hiddenRefs.has(f.id) ? "off" : ""}" title="${hiddenRefs.has(f.id) ? "Show" : "Hide"} this reference body">${ICON[hiddenRefs.has(f.id) ? "eyeoff" : "eye"]}</button>` : "")
+      + `</span>`
       + (f.status === "error" ? `<span class="err-msg">${esc(f.message)}</span>` : "")
       + (f.warnings || []).map((w) => `<span class="warn-msg">${esc(w)}</span>`).join("");
     if (before && before.get(f.id) !== f.status + (f.warnings || []).join()) li.classList.add("flash");
@@ -188,6 +194,14 @@ function renderTree(before) {
     if (f.type === "fillet" || f.type === "chamfer") {  // double-click: change which edges it rounds
       li.title = "Double-click to change which edges it acts on";
     }
+    const eye = li.querySelector(".eye");
+    if (eye) eye.onclick = (ev) => {
+      ev.stopPropagation();
+      hiddenRefs.has(f.id) ? hiddenRefs.delete(f.id) : hiddenRefs.add(f.id);
+      for (const m of refMeshes) if (m.userData.ref === f.id) m.visible = !hiddenRefs.has(f.id);
+      for (const o of fitGroup.children) if (o.userData.ref === f.id) o.visible = !hiddenRefs.has(f.id);
+      renderTree(null);
+    };
     const caret = li.querySelector(".caret");
     if (rows.length) caret.onclick = (ev) => {
       ev.stopPropagation();
@@ -319,6 +333,7 @@ async function renderDetails() {
       <button data-a="down" title="Move down the tree" ${i === S.features.length - 1 ? "disabled" : ""}>↓</button>
       <span class="grow"></span><button data-a="delete" class="danger" title="Delete this feature (undo brings it back)">Delete</button></div>
     ${EDITABLE.includes(f.type) ? `<button class="editbtn" data-a="edit" title="Change this ${f.type.replace("_", " ")}'s settings (or double-click it in the tree)">Edit ${esc(f.type.replace("_", " "))}…</button>` : ""}
+    ${f.type === "import" && f.mode === "reference" && S.volume != null ? `<button class="editbtn" data-a="nest" title="Cut this body out of the part, grown by a clearance: a nest, cradle or case for it">Cut a nest for it…</button>` : ""}
     <div class="intent small" title="Click to edit: one line on why this feature exists">${esc(f.intent || "No intent written. Click to add one.")}</div>
     ${f.type === "fillet" || f.type === "chamfer" ? `<div class="edgelist"><div class="row"><b>Edges</b><span class="grow"></span>
       <button data-a="edges" title="Show the part just before this ${f.type} and click edges to add or remove them">Edit edges…</button></div>
@@ -351,6 +366,7 @@ async function renderDetails() {
     },
     edges: () => startEdgeEdit(f.id),
     edit: () => editFeature(f.id, d.querySelector(".editbtn")),
+    nest: () => combineForm(f.id, d.querySelector("[data-a=nest]")),
   };
   d.querySelectorAll(".factions [data-a], .edgelist [data-a], .editbtn[data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
   const intent = d.querySelector(".intent");
@@ -520,7 +536,11 @@ const BASE = new THREE.Color(0xb7c2d1), HI = new THREE.Color(0xf08a24), HOVER = 
 let pickedFaces = [];  // faces clicked in the 3D view, shift-click adds: {mesh, labels, point}
 const lastPicked = () => pickedFaces.at(-1) || null;
 let faceMeshes = [], edgeObjs = [], refMeshes = [], meshRev = null, hovered = null, hoveredEdge = null;
-const REF_COLOR = new THREE.Color(0x8b5cf6), REF_HOVER = new THREE.Color(0x6d28d9);
+// reference bodies each get their own colour (in tree order), so several imports stay apart in the view and the tree
+const REF_PALETTE = [0x8b5cf6, 0x0ea5a4, 0xf59e0b, 0xec4899, 0x3b82f6, 0x84cc16].map((c) => new THREE.Color(c));
+const refIds = () => (S ? S.features.filter((f) => f.type === "import" && f.mode === "reference").map((f) => f.id) : []);
+const refColor = (id) => REF_PALETTE[Math.max(0, refIds().indexOf(id)) % REF_PALETTE.length];
+const hiddenRefs = new Set();
 const clipPlanes = [];  // the section view's plane, when on (shared by every part material)
 let pickedEdges = [];  // edges clicked in the 3D view: {i, ref, label, point}; fillet/chamfer act on them
 const EDGE = new THREE.Color(0x1b1f27), EDGE_HOVER = new THREE.Color(0x2f6fe0), EDGE_PICKED = new THREE.Color(0xea580c);
@@ -580,6 +600,7 @@ async function loadMesh(fit) {
   try { m = await req.p; } finally { if (meshReq === req) meshReq = null; }
   if (S && m.rev !== S.rev && meshReq) return;  // an older revision arrived while a newer one is loading
   meshRev = m.rev;
+  if (fitOn) setTimeout(runFit, 0);  // the part or a reference changed: check the fit again
   partGroup.clear();
   faceMeshes = [];
   for (const f of m.faces) {
@@ -602,9 +623,10 @@ async function loadMesh(fit) {
       g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
       g.setIndex(f.i);
       g.computeVertexNormals();
-      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: REF_COLOR.clone(), transparent: true, opacity: 0.32,
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: refColor(rb.id).clone(), transparent: true, opacity: 0.32,
         depthWrite: false, side: THREE.DoubleSide, roughness: 0.8, clippingPlanes: clipPlanes }));
       mesh.userData = { features: f.features, labels: f.labels, ref: rb.id };
+      mesh.visible = !hiddenRefs.has(rb.id);
       mesh.renderOrder = 2;
       refGroup.add(mesh);
       refMeshes.push(mesh);
@@ -629,7 +651,7 @@ async function loadMesh(fit) {
   }).filter(Boolean);
   pickUpdate();
   colorFaces();
-  if (inSketch()) ghostPart(true);
+  if (inSketch() || fitOn) ghostPart(true);
   if (fit) pendingFit = !fitView("iso");
   if (section) applySection();
   if (measuring) {  // the new mesh has new face objects: keep face picks whose label still exists (edge indices may change)
@@ -672,7 +694,8 @@ function colorFaces() {
     : selected && m.userData.features.includes(selected) ? HI : BASE);
   for (const m of refMeshes) {
     const on = m === hovered || pickedFaces.some((p) => p.mesh === m) || (selected && m.userData.ref === selected);
-    m.material.color.copy(on ? REF_HOVER : REF_COLOR);
+    const c = refColor(m.userData.ref);
+    m.material.color.copy(on ? c.clone().offsetHSL(0, 0, -0.14) : c);
     m.material.opacity = on ? 0.5 : 0.32;
   }
 }
@@ -749,7 +772,7 @@ function pickHit(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  return ray.intersectObjects([...faceMeshes, ...refMeshes]).find((h) => !clipped(h.point)) || null;
+  return ray.intersectObjects([...faceMeshes, ...refMeshes.filter((m) => m.visible)]).find((h) => !clipped(h.point)) || null;
 }
 const clipped = (p) => clipPlanes.some((pl) => pl.distanceToPoint(p) < 0);
 function unitsPerPixel() {
@@ -1252,6 +1275,14 @@ function modelToolsUpdate() {
   $("#patternBtn").title = rep.length ? "Pattern: repeat features in a row or around an axis" : "Pattern: make an extrude, revolve or hole to repeat first";
   $("#mirrorBtn").title = rep.length ? "Mirror: copy features across a datum plane" : "Mirror: make an extrude, revolve or hole to mirror first";
   $("#exportBtn").disabled = !hasBody;
+  const nref = refIds().length;
+  $("#clashBtn").disabled = !hasBody || !nref;
+  $("#combineBtn").disabled = !hasBody || !nref;
+  $("#combineBtn").title = !nref ? "Combine: import a part as a reference first" : !hasBody ? "Combine: the part needs a solid first"
+    : "Combine with a reference body: cut a nest for it with a clearance gap, add it, or keep the overlap";
+  $("#clashBtn").title = !nref ? "Clash: import a part as a reference first, then check how this part sits against it"
+    : !hasBody ? "Clash: the part needs a solid first" : "Clash and clearance: where the part runs into each reference body (red), and the smallest gap to it";
+  if (fitOn && $("#clashBtn").disabled) setFit(false);
   const sks = sketchesOk();
   $("#loftBtn").disabled = $("#sweepBtn").disabled = sks.length < 2;
   $("#loftBtn").title = sks.length < 2 ? "Loft: needs two or more sketches (the sections), on different planes"
@@ -1430,7 +1461,29 @@ $("#sweepBtn").onclick = () => {
     if (await addFeature({ id, type: "sweep", profile: { sketch: pr }, path: pa, mode: $("#swMode").value, intent: `Sweep ${pr} along ${pa}` }, `sweep ${id}`)) select(id);
   };
 };
-const REPLAYABLE = ["extrude", "revolve", "loft", "sweep", "hole", "import"];
+// combine the part with a reference body: cut a nest for it (with a clearance gap), add it, or keep the overlap
+function combineForm(pre, anchor) {
+  const refs = refIds();
+  if (!refs.length) return note("Combine: import a part as a reference first", "err");
+  if (S.volume == null) return note("Combine: the part needs a solid first", "err");
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Combine with a reference body</div>
+    <div class="row"><label>body</label><select id="coTool">${refs.map((id) => `<option ${id === pre ? "selected" : ""}>${esc(id)}</option>`).join("")}</select></div>
+    <div class="row"><label>mode</label><select id="coMode"><option value="cut">cut it out (a nest)</option><option value="add">add it</option><option value="intersect">keep the overlap</option></select></div>
+    <div class="row"><label>clearance</label><input id="coC" value="0.3" title="gap all round, in mm: the body is grown by this much first"></div>
+    <div class="muted">The nest follows the body: move or change the import and it updates.</div>
+    <button class="go" id="coGo">Combine</button>`;
+  popup(m, anchor || $("#combineBtn"));
+  $("#coGo").onclick = async () => {
+    const tool = $("#coTool").value, mode = $("#coMode").value, c = numOrExpr($("#coC").value || "0");
+    const id = nextId(mode === "cut" ? "nest" : "combine");
+    m.hidden = true;
+    if (await addFeature({ id, type: "boolean", tool, mode, ...(c !== 0 ? { clearance: c } : {}),
+      intent: mode === "cut" ? `A nest for ${tool}${c ? ` with ${c} mm clearance` : ""}` : `${mode === "add" ? "Add" : "Keep the overlap with"} ${tool}` }, `${mode} ${tool}`)) select(id);
+  };
+}
+$("#combineBtn").onclick = () => combineForm(selected && refIds().includes(selected) ? selected : refIds().at(-1));
+const REPLAYABLE = ["extrude", "revolve", "loft", "sweep", "boolean", "hole", "import"];
 function replayable() {
   return S.features.slice(0, rollIndex()).filter((f) => REPLAYABLE.includes(f.type) && f.status === "ok").map((f) => f.id);
 }
@@ -1494,12 +1547,72 @@ $("#mirrorBtn").onclick = () => {
   };
 };
 
+// ── fit: how the part sits against each reference body: clashes in red, the smallest gap as a line ──
+let fitOn = false, fitSeq = 0;
+const fitGroup = new THREE.Group();
+scene.add(fitGroup);
+const CLASH = new THREE.Color(0xef4444);
+function setFit(on) {
+  if (on && measuring) setMeasuring(false);  // they share the corner of the view
+  if (on && inSketch()) exitSketch();
+  fitOn = on;
+  $("#clashBtn").classList.toggle("on", on);
+  $("#clashPanel").hidden = !on;
+  fitGroup.clear();
+  ghostPart(on);
+  if (on) runFit();
+}
+$("#clashBtn").onclick = () => setFit(!fitOn);
+async function runFit() {
+  if (!fitOn) return;
+  const seq = ++fitSeq, panel = $("#clashPanel");
+  if (!panel.innerHTML) panel.innerHTML = `<h4>Clash</h4><div class="muted">checking…</div>`;
+  let r;
+  try { r = await api("/api/fit"); } catch { return; }
+  if (seq !== fitSeq || !fitOn) return;
+  fitGroup.clear();
+  const u = unitsPerPixel();
+  for (const row of r.refs) {
+    const vis = !hiddenRefs.has(row.id);
+    for (const f of row.clash || []) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
+      g.setIndex(f.i);
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: CLASH, emissive: 0x7f1d1d, roughness: 0.6, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, clippingPlanes: clipPlanes }));
+      m.renderOrder = 4; m.userData.ref = row.id; m.visible = vis;
+      fitGroup.add(m);
+    }
+    if (row.points && row.gap > 1e-4) {
+      const [a, b] = row.points.map((p) => new THREE.Vector3(...p));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0x0f766e, depthTest: false }));
+      line.renderOrder = 6; line.userData.ref = row.id; line.visible = vis;
+      fitGroup.add(line);
+      for (const p of [a, b]) {
+        const s = new THREE.Mesh(new THREE.SphereGeometry(u * 3.5, 12, 8), new THREE.MeshBasicMaterial({ color: 0x0f766e, depthTest: false }));
+        s.position.copy(p); s.renderOrder = 6; s.userData.ref = row.id; s.visible = vis;
+        fitGroup.add(s);
+      }
+    }
+  }
+  const fmt = (v) => (+v).toFixed(v < 10 ? 3 : 1).replace(/\.?0+$/, "");
+  panel.innerHTML = `<h4>Clash <span class="muted">against the reference bodies</span></h4>` + (r.refs.length ? r.refs.map((row) => {
+    const [cls, txt] = row.overlap > 1e-6 ? ["bad", `overlaps ${fmt(row.overlap)} mm³`] : row.touching ? ["good", "touching"]
+      : row.gap != null ? ["", `clear, ${fmt(row.gap)} mm gap`] : ["", "—"];
+    return `<div class="fitrow" data-ref="${esc(row.id)}"><span class="refsw" style="background:#${refColor(row.id).getHexString()}"></span>`
+      + `<b>${esc(row.id)}</b><span class="fitst ${cls}">${txt}</span>${row.note ? `<div class="muted">${esc(row.note)}</div>` : ""}</div>`;
+  }).join("") + `<div class="muted">Red: where the part runs into a reference. The green line is the smallest gap.</div>`
+    : `<div class="muted">No reference bodies. Import a part as a reference to design around it.</div>`);
+}
+
 // ── measure: click faces or edges (two for a distance and angle); the panel also shows the part's mass ──
 let measuring = false, mPicks = [];  // [{label, point, mesh} | {edge: i}]
 const measureGroup = new THREE.Group();
 scene.add(measureGroup);
 function setMeasuring(on) {
   if (on && inSketch()) exitSketch();
+  if (on && fitOn) setFit(false);
   if (on && sectionOn()) {}  // both can be on
   measuring = on;
   mPicks = [];
@@ -1629,7 +1742,7 @@ $("#sectionBtn").onclick = () => {
 };
 
 // ── editing a feature's settings in the form that made it ──
-const EDITABLE = ["extrude", "revolve", "loft", "sweep", "hole", "text", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
+const EDITABLE = ["extrude", "revolve", "loft", "sweep", "boolean", "hole", "text", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
 const val = (v) => (v == null ? "" : esc(String(v)));
 async function editFeature(fid, anchor) {
   let j;
@@ -1643,6 +1756,11 @@ async function editFeature(fid, anchor) {
     let readExtent;
     after = () => { readExtent = wireExtent("ex", j.profile.sketch, j, fid); };
     read = () => ({ ...readExtent(), direction: $("#efDir").value, mode: $("#efMode").value });
+  } else if (j.type === "boolean") {
+    body = `<div class="row"><label>body</label><select id="efTool">${refIds().map((id) => `<option ${id === j.tool ? "selected" : ""}>${esc(id)}</option>`).join("")}</select></div>
+      <div class="row"><label>mode</label><select id="efMode">${opt([["cut", "cut it out (a nest)"], ["add", "add it"], ["intersect", "keep the overlap"]], j.mode || "cut")}</select></div>
+      <div class="row"><label>clearance</label><input id="efClr" value="${val(j.clearance ?? 0)}"></div>`;
+    read = () => ({ tool: $("#efTool").value, mode: $("#efMode").value, clearance: numOrExpr($("#efClr").value || "0") });
   } else if (j.type === "loft") {
     const before = S.features.findIndex((f) => f.id === j.id), ids = sketchesOk().filter((id) => S.features.findIndex((f) => f.id === id) < before);
     body = `<div class="muted">Sections, first to last (tree order):</div>
@@ -1742,7 +1860,7 @@ async function editFeature(fid, anchor) {
   $("#efGo").onclick = async () => {
     let want;
     try { want = read(); } catch (e) { $("#efErr").textContent = e.message; return; }
-    const set = {}, dflt = { draft: 0, distance: 0, extent: "blind", direction: "normal", ruled: false };
+    const set = {}, dflt = { draft: 0, distance: 0, extent: "blind", direction: "normal", ruled: false, clearance: 0 };
     for (const [k, v] of Object.entries(want)) if (JSON.stringify(v ?? null) !== JSON.stringify(j[k] ?? dflt[k] ?? null)) set[k] = v;
     m.hidden = true;
     if (Object.keys(set).length) await edit([{ op: "update_feature", id: j.id, set }], `edit ${j.id}`);
@@ -1906,6 +2024,9 @@ window.vibecadView = {  // for browser tests and the devtools console
   },
   edgeIds: () => edgeObjs.map((o) => o.userData.i),
   refs: () => [...new Set(refMeshes.map((m) => m.userData.ref))],
+  refVisible: (id) => refMeshes.filter((m) => m.userData.ref === id).every((m) => m.visible),
+  refColorOf: (id) => "#" + refColor(id).getHexString(),
+  fitObjects: () => fitGroup.children.map((o) => ({ ref: o.userData.ref, type: o.type, visible: o.visible })),
   clip: () => clipPlanes.map((p) => ({ normal: p.normal.toArray(), constant: p.constant })),
   viewDir: () => controls.target.clone().sub(camera.position).normalize().toArray().map((v) => +v.toFixed(4)),
   measuring: () => measuring,

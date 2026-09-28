@@ -181,6 +181,8 @@ class App:
             if used:
                 d["sketch"] = used[0]  # extrude / revolve / sweep: the sketch it consumes
                 d["sketches"] = used
+            if f.type == "import":
+                d["mode"] = f.mode
             if f.type == "sketch":
                 d["dof"] = fr.info.get("dof")
                 d["plane"] = f.plane.model_dump(exclude_none=True)
@@ -375,6 +377,41 @@ class App:
             if vr.body.shape is not None:
                 out["part"] = mass_properties(vr.body.shape, vr.doc.material)
             return out
+
+    def fit(self) -> dict:
+        """How the shown part sits against each reference body: overlap volume (with its solid, meshed, to draw in
+        red), the smallest gap and the two closest points, and whether they just touch."""
+        with self.ws.lock:
+            return self._fit()
+
+    def _fit(self) -> dict:
+        import build123d as bd
+
+        from .measure import min_distance
+        vr = self.view_result()
+        me = vr.part
+        if me is None:
+            raise ToolError("the part has no solid yet")
+        out = []
+        for rid, rb in vr.refs.items():
+            other = bd.Shape.cast(rb.shape)
+            row = {"id": rid}
+            md = min_distance(me.wrapped, other.wrapped)
+            if md:
+                row["gap"] = round(md[0], 4)
+                row["points"] = [[round(v, 4) for v in md[1]], [round(v, 4) for v in md[2]]]
+            if other.solids():
+                common = me & other
+                ov = common.volume if common is not None else 0.0
+                row["overlap"] = round(ov, 4)
+                if ov > 1e-6:
+                    diag = max(common.bounding_box().diagonal, 1e-3)
+                    row["clash"] = [m for m in (_face_mesh(f.wrapped, diag) for f in common.faces()) if m]
+                row["touching"] = ov <= 1e-6 and row.get("gap", 1) < 1e-4
+            else:
+                row["note"] = "surfaces or a mesh: no volume to overlap; only the gap is measured"
+            out.append(row)
+        return {"refs": out}
 
     def export_file(self, fmt: str) -> tuple[str, str]:
         """The shown part (rolled back, if the bar is up) written as STEP / STL / 3MF / BREP / GLB, or an SVG drawing."""
@@ -1048,6 +1085,10 @@ def create_app(root: Path, model: str = "sonnet", effort: str = "low") -> FastAP
     @api.post("/api/measure")
     async def measure(body: dict = Body(...)):
         return await asyncio.to_thread(guard, A.measure, body.get("picks", []))
+
+    @api.get("/api/fit")
+    async def fit():
+        return await asyncio.to_thread(guard, A.fit)
 
     @api.get("/api/export")
     async def export_cad(fmt: str = "step"):

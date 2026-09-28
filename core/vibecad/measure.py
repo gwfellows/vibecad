@@ -128,3 +128,63 @@ def mass_properties(shape, material: str | None) -> dict:
     if rho:
         out.update(density=rho, density_from=matched, mass_g=round(g.Mass() / 1000 * rho, 3))
     return out
+
+
+def _dist(a, b):
+    """(distance, point on a, point on b) by OCCT, or None when its extrema fail (parallel or concentric surfaces,
+    which have a whole family of closest points)."""
+    try:
+        e = BRepExtrema_DistShapeShape(a, b)
+        if e.IsDone() and e.NbSolution():
+            return e.Value(), e.PointOnShape1(1), e.PointOnShape2(1)
+    except Exception:
+        pass
+    return None
+
+
+def _sampled(fa, fb):
+    """Face-to-face distance from points of each face's mesh projected onto the other (point-to-surface
+    projection is robust where surface-to-surface extrema are not)."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+    from OCP.gp import gp_Pnt
+    best = None
+    for src, dst, flip in ((fa, fb, False), (fb, fa, True)):
+        F = bd.Face(TopoDS.Face(src))
+        verts, _ = F.tessellate(max(F.bounding_box().diagonal / 40, 1e-3), 0.3)
+        for v in verts:
+            r = _dist(BRepBuilderAPI_MakeVertex(gp_Pnt(v.X, v.Y, v.Z)).Vertex(), dst)
+            if r and (best is None or r[0] < best[0]):
+                best = (r[0], r[2], r[1]) if flip else r
+    return best
+
+
+def min_distance(a, b):
+    """Smallest distance between two shapes, with the closest points: (d, (x, y, z), (x, y, z)) or None. Tries OCCT on
+    the whole shapes; when that fails, goes face by face (nearest bounding boxes first, stopping once no pair can
+    beat the best), sampling the pairs OCCT can't solve."""
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
+    from .topo import list_faces
+
+    def out(r):
+        return r[0], (r[1].X(), r[1].Y(), r[1].Z()), (r[2].X(), r[2].Y(), r[2].Z())
+
+    r = _dist(a, b)
+    if r:
+        return out(r)
+
+    def box(f):
+        bx = Bnd_Box()
+        BRepBndLib.Add_s(f, bx)
+        return bx
+
+    fa, fb = [(f, box(f)) for f in list_faces(a)], [(f, box(f)) for f in list_faces(b)]
+    pairs = sorted(((ba.Distance(bb), x, y) for x, ba in fa for y, bb in fb), key=lambda t: t[0])
+    best = None
+    for lower, x, y in pairs:
+        if best and lower > best[0]:
+            break
+        r = _dist(x, y) or _sampled(x, y)
+        if r and (best is None or r[0] < best[0]):
+            best = r
+    return out(best) if best else None

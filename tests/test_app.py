@@ -359,3 +359,26 @@ def test_project_the_outline_of_a_reference_face(tmp_path):
     solved = a.ws.session().result.sketches["on_pcb"][0]
     xs = sorted({round(p[0], 6) for e in (solved.entities[x["id"]] for x in out["entities"]) for p in (e.p1, e.p2)})
     assert xs == [0, 30] and solved.report.dof == 0
+
+
+def test_fit_reports_overlap_gap_and_clash_mesh_per_reference(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    part = a.view_result().part
+    bb = part.bounding_box()
+    bd.export_step(bd.Box(10, 10, 10, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    ops = [{"op": "add_feature", "feature": {"id": "clash", "type": "import", "file": "cube.step", "mode": "reference",
+                                             "translate": [bb.min.X - 5, bb.min.Y - 5, bb.min.Z - 5]}},
+           {"op": "add_feature", "feature": {"id": "clear", "type": "import", "file": "cube.step", "mode": "reference",
+                                             "translate": [bb.max.X + 3, bb.min.Y, bb.min.Z]}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "two refs", "user")
+    rows = {r["id"]: r for r in a.fit()["refs"]}
+    want = (part & bd.Pos(bb.min.X - 5, bb.min.Y - 5, bb.min.Z - 5) * bd.Box(10, 10, 10, align=bd.Align.MIN)).volume
+    assert want > 1 and rows["clash"]["overlap"] == pytest.approx(want, rel=1e-6) and rows["clash"]["clash"]
+    assert rows["clash"]["gap"] == 0 and not rows["clash"]["touching"]
+    assert rows["clear"]["overlap"] == 0 and rows["clear"]["gap"] == pytest.approx(3, abs=1e-6) and "clash" not in rows["clear"]
+    p, q = rows["clear"]["points"]
+    assert q[0] - p[0] == pytest.approx(3, abs=1e-6)
+    st = a.state()
+    assert [f.get("mode") for f in st["features"] if f["type"] == "import"] == ["reference", "reference"]

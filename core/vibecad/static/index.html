@@ -72,9 +72,11 @@
         <button id="shellBtn" class="rb" data-icon="shell" data-label="Shell"></button></div>
       <div class="rgroup"><button id="patternBtn" class="rb" data-icon="pattern" data-label="Pattern"></button>
         <button id="mirrorBtn" class="rb" data-icon="mirror" data-label="Mirror"></button></div>
-      <div class="rgroup"><button id="importBtn" class="rb" data-icon="import" data-label="Import" title="Import a STEP, IGES, BREP or STL file: as the part's base solid, added or cut, or as a reference body to design around"></button></div>
+      <div class="rgroup"><button id="importBtn" class="rb" data-icon="import" data-label="Import" title="Import a STEP, IGES, BREP or STL file: as the part's base solid, added or cut, or as a reference body to design around"></button>
+        <button id="combineBtn" class="rb" data-icon="combine" data-label="Combine"></button></div>
       <div class="rgroup"><button id="measureBtn" class="rb" data-icon="measure" data-label="Measure" title="Measure: click faces, edges or points (M)"></button>
-        <button id="sectionBtn" class="rb" data-icon="section" data-label="Section" title="Section view: cut the view with a plane"></button></div>
+        <button id="sectionBtn" class="rb" data-icon="section" data-label="Section" title="Section view: cut the view with a plane"></button>
+        <button id="clashBtn" class="rb" data-icon="fit" data-label="Clash"></button></div>
       <div class="rgroup"><button id="exportBtn" class="rb" data-icon="export" data-label="Export" title="Download the part as STEP, STL, 3MF, BREP or glTF"></button></div>
       <input id="importFile" type="file" accept=".step,.stp,.iges,.igs,.brep,.brp,.stl" hidden>
     </div>
@@ -88,6 +90,7 @@
     <svg id="gizmo" class="gizmo" viewBox="-50 -50 100 100" aria-label="View orientation: click an axis to look along it"></svg>
     <div id="measurePanel" class="floatpanel" hidden></div>
     <div id="sectionPanel" class="floatpanel" hidden></div>
+    <div id="clashPanel" class="floatpanel" hidden></div>
     <div id="sketchBar" class="sketchbar" hidden>
       <div class="skhead"><span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
         <span class="skacts"><button id="extrudeBtn" class="ico" data-icon="extrude" title="Extrude this sketch's closed profiles: add, cut or a new body"></button>

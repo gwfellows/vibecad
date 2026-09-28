@@ -1,0 +1,199 @@
+{
+  "vibecad": "0.1",
+  "name": "cell_holder",
+  "material": "PETG",
+  "process": "FDM 3D print",
+  "design_notes": "A holder for two 18650 cells. The cell is imported from cell_18650.vcad.json as a live reference; the nest is that body grown by `clearance` and cut sink deep into the block, then patterned. Change the cell file and the nests follow.",
+  "params": {
+    "holder_w": 52.0,
+    "holder_d": 26.0,
+    "holder_h": 30.0,
+    "sink": 20.0,
+    "pitch": 24.0,
+    "clearance": 0.3
+  },
+  "features": [
+    {
+      "id": "block_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "block_bottom",
+          "p1": [
+            -26.0,
+            -13.0
+          ],
+          "p2": [
+            26.0,
+            -13.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "block_right",
+          "p1": [
+            26.0,
+            -13.0
+          ],
+          "p2": [
+            26.0,
+            13.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "block_top",
+          "p1": [
+            26.0,
+            13.0
+          ],
+          "p2": [
+            -26.0,
+            13.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "block_left",
+          "p1": [
+            -26.0,
+            13.0
+          ],
+          "p2": [
+            -26.0,
+            -13.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "block_bottom.p2",
+            "block_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "block_right.p2",
+            "block_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "block_top.p2",
+            "block_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "block_left.p2",
+            "block_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "block_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "block_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "block_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "block_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "block_bottom"
+          ],
+          "value": "holder_w",
+          "name": "block_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "block_right"
+          ],
+          "value": "holder_d",
+          "name": "block_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "block_bottom.p1"
+          ],
+          "value": "(0) - ((holder_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "block_bottom.p1"
+          ],
+          "value": "(0) - ((holder_d) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "block",
+      "type": "extrude",
+      "intent": "the holder block",
+      "profile": {
+        "sketch": "block_sk"
+      },
+      "distance": "holder_h"
+    },
+    {
+      "id": "cell",
+      "type": "import",
+      "intent": "the first cell, sunk `sink` into the block",
+      "file": "cell_18650.vcad.json",
+      "mode": "reference",
+      "translate": [
+        "-pitch / 2",
+        0.0,
+        "holder_h - sink"
+      ]
+    },
+    {
+      "id": "nest",
+      "type": "boolean",
+      "intent": "a nest for the cell with a clearance gap all round",
+      "tool": "cell",
+      "clearance": "clearance"
+    },
+    {
+      "id": "nests",
+      "type": "linear_pattern",
+      "intent": "the second cell's nest",
+      "features": [
+        "nest"
+      ],
+      "direction": "X",
+      "spacing": "pitch",
+      "count": 2.0
+    }
+  ]
+}

@@ -188,11 +188,11 @@ class Workspace:
         for rid, rb in res.refs.items():  # reference imports (the phone, the motor): always checked
             other = bd.Shape.cast(rb.shape)
             if not other.solids():
-                out[f"reference {rid}"] = {"min_gap_mm": round(me.distance_to(other), 4), "note": "surfaces or mesh only: no overlap volume"}
+                out[f"reference {rid}"] = {"min_gap_mm": _gap(me, other), "note": "surfaces or mesh only: no overlap volume"}
                 continue
             ov = (me & other).volume
-            gap = me.distance_to(other)
-            out[f"reference {rid}"] = {"overlap_mm3": round(ov, 4), "min_gap_mm": round(gap, 4), "touching": ov < 1e-6 and gap < 1e-4}
+            gap = _gap(me, other)
+            out[f"reference {rid}"] = {"overlap_mm3": round(ov, 4), "min_gap_mm": gap, "touching": ov < 1e-6 and gap is not None and gap < 1e-4}
         for p in other_paths:
             key = str(self._path(p))
             if key not in self.sessions and not Path(key).exists():
@@ -202,9 +202,9 @@ class Workspace:
                 out[p] = "no solid"
                 continue
             ov = (me & other).volume
-            gap = me.distance_to(other)
-            out[p] = {"overlap_mm3": round(ov, 4), "min_gap_mm": round(gap, 4),
-                      "touching": ov < 1e-6 and gap < 1e-4}
+            gap = _gap(me, other)
+            out[p] = {"overlap_mm3": round(ov, 4), "min_gap_mm": gap,
+                      "touching": ov < 1e-6 and gap is not None and gap < 1e-4}
         return json.dumps(out, indent=1)
 
     def render(self, views: list[str] | None = None, highlight: list[str] | None = None, size: int = 520) -> bytes:
@@ -251,6 +251,12 @@ class Workspace:
         with self.lock:
             write_part(s.result, fmt, out)
         return f"wrote {out}"
+
+
+def _gap(a, b) -> float | None:
+    from .measure import min_distance
+    d = min_distance(a.wrapped, b.wrapped)
+    return round(d[0], 4) if d else None
 
 
 EXPORT_FORMATS = ("step", "stl", "3mf", "brep", "glb", "svg")

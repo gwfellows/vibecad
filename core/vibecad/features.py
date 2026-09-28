@@ -505,6 +505,69 @@ def do_sweep(ctx: Ctx, f: S.Sweep) -> dict:
     return {"path_length": round(path.length, 6)}
 
 
+def do_boolean(ctx: Ctx, f: S.Boolean) -> dict:
+    """Cut, add or intersect a reference body, grown by `clearance`. Faces made by the body are named after the
+    reference face they came from: `nest.wall[phone.face:f3]`, and `nest.wall`."""
+    if f.tool not in ctx.refs:
+        raise FeatureError(f"tool {f.tool!r} is not a reference import built before this feature; import the part with "
+                           "mode 'reference' first")
+    rb = ctx.refs[f.tool]
+    if not bd.Shape.cast(rb.shape).solids():
+        raise FeatureError(f"{f.tool!r} has no solid (open surfaces or a mesh that didn't close); a boolean needs a "
+                           "closed body. Re-import it as a solid, or sketch around it instead")
+    c = ctx.num(f.clearance)
+    if c < 0:
+        raise FeatureError(f"clearance must be >= 0, got {c:g}")
+    info = {"clearance": c}
+    if c > 1e-9:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid
+        from OCP.BRepLib import BRepLib
+        from OCP.BRepOffset import BRepOffset_Skin
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffsetShape
+        from OCP.GeomAbs import GeomAbs_Arc, GeomAbs_Intersection
+        from OCP.TopAbs import TopAbs_SHELL
+        from OCP.TopExp import TopExp_Explorer
+        # constant-gap (rounded) corners first; OCCT sometimes manages only sharp ones on complicated bodies
+        for join, name in ((GeomAbs_Arc, "rounded"), (GeomAbs_Intersection, "sharp")):
+            mk = BRepOffsetAPI_MakeOffsetShape()
+            try:
+                mk.PerformByJoin(rb.shape, c, 1e-4, BRepOffset_Skin, False, False, join)
+                mk.Build()
+            except Exception:
+                continue
+            if not mk.IsDone():
+                continue
+            ms = BRepBuilderAPI_MakeSolid()
+            ex = TopExp_Explorer(mk.Shape(), TopAbs_SHELL)
+            while ex.More():
+                ms.Add(TopoDS.Shell(ex.Current()))
+                ex.Next()
+            try:
+                tool = ms.Solid()
+            except Exception:
+                continue
+            BRepLib.OrientClosedSolid_s(tool)
+            if _is_valid(tool) and bd.Shape.cast(tool).volume > 0:
+                break
+        else:
+            raise FeatureError(f"couldn't grow {f.tool!r} by a {c:g} mm clearance (OCCT offset failed on its shape); "
+                               "try clearance 0 and an offset sketch instead")
+        labels = [(g, lb) for x, lab in rb.labels for g in mk.Generated(x)
+                  for lb in (Label(f.id, "wall", _short(lab)), Label(f.id, "wall"))]
+        info["corners"] = name
+    else:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        cp = BRepBuilderAPI_Copy(rb.shape)
+        tool = cp.Shape()
+        labels = [(cp.Modified(x).First() if cp.Modified(x).Size() else x, lb) for x, lab in rb.labels
+                  for lb in (Label(f.id, "wall", _short(lab)), Label(f.id, "wall"))]
+    labels = propagate(_Identity(), labels, tool, Label(f.id, "wall"))
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    info["tool_volume"] = round(bd.Shape.cast(tool).volume, 6)
+    return info
+
+
 class _PipeHistory:
     """Generated() over several pipe builds (outer walls and hole walls)."""
 
@@ -689,7 +752,7 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
 def _replay(ctx: Ctx, pid: str, features: list[str], transforms: list[gp_Trsf]) -> dict:
     for src in features:
         if src not in ctx.tools:
-            raise FeatureError(f"can only pattern extrude, revolve, loft, sweep, hole or import features that built before this one; {src!r} is not one")
+            raise FeatureError(f"can only pattern extrude, revolve, loft, sweep, boolean, hole or import features that built before this one; {src!r} is not one")
     for i, trsf in enumerate(transforms, start=1):
         for src in features:
             tool = ctx.tools[src]
@@ -964,5 +1027,5 @@ BUILDERS = {
     "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
     "circular_pattern": do_circular_pattern, "mirror": do_mirror, "import": do_import, "hole": do_hole, "text": do_text,
-    "loft": do_loft, "sweep": do_sweep,
+    "loft": do_loft, "sweep": do_sweep, "boolean": do_boolean,
 }

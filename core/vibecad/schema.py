@@ -241,6 +241,16 @@ class Sweep(_Feature):
     mode: Mode = "add"
 
 
+class Boolean(_Feature):
+    """Combine the part with a reference body (an import with mode reference): cut it out to make a nest, cradle or
+    case for it, add it, or keep only the overlap. `clearance` grows the body first by that gap all round (rounded
+    corners follow it at a constant distance), so the fit is not metal-to-metal."""
+    type: Literal["boolean"] = "boolean"
+    tool: str  # id of a reference import that builds before this feature
+    mode: Literal["cut", "add", "intersect"] = "cut"
+    clearance: Num = 0.0
+
+
 class Fillet(_Feature):
     type: Literal["fillet"] = "fillet"
     edges: list[EdgeRef]
@@ -340,7 +350,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Extrude, Revolve, Loft, Sweep, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole, Text],
+    Union[Sketch, Extrude, Revolve, Loft, Sweep, Boolean, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole, Text],
     Field(discriminator="type"),
 ]
 

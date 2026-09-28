@@ -102,7 +102,7 @@ button.rb:disabled { opacity: .38; }
 .gizmo .ax text { font: 700 10px -apple-system, sans-serif; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .gizmo .ax.neg circle { fill-opacity: .35; stroke-opacity: .6; }
 /* narrower views: tighter buttons, then icons only (the tooltips still name them) */
-@container (max-width: 1020px) { button.rb { min-width: 40px; padding: 4px 1px 3px; font-size: 10px; } .rgroup { padding: 0 1px; } }
+@container (max-width: 1020px) { button.rb { min-width: 35px; padding: 4px 0 3px; font-size: 9.5px; } .rgroup { padding: 0 1px; } .ribbon { gap: 1px; } }
 @container (max-width: 690px) { button.rb span { display: none; } button.rb { min-width: 34px; height: 38px; }
   .ribbon { flex-wrap: wrap; justify-content: center; overflow-x: visible; width: max-content; }
   .vtools button { padding: 3px 5px; font-size: 11px; }
@@ -379,3 +379,20 @@ html[data-theme=dark] #params .owner, html[data-theme=dark] .muted { color: var(
 html[data-theme=dark] dialog.formdlg label.opt:has(input:checked) { background: var(--accent-soft); border-color: #2f4f8a; }
 html[data-theme=dark] .tool { background: var(--tool); }
 html[data-theme=dark] #tree ol.fparams { border-left-color: var(--line2); }
+
+/* reference bodies: a colour swatch and a show/hide eye in the tree; the fit panel */
+.refsw { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-left: 7px; vertical-align: 1px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+#tree .meta:has(.eye) { display: inline-flex; align-items: center; }
+#tree button.eye { border: 0; background: transparent; padding: 0 2px; margin-left: 4px; color: var(--muted); display: inline-flex; align-items: center; cursor: pointer; }
+#tree button.eye svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#tree button.eye:hover { color: var(--accent); }
+#tree button.eye.off { color: #b0b8c4; }
+#clashPanel { min-width: 250px; }
+#clashPanel .fitrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 12px; }
+#clashPanel .fitrow .refsw { margin-left: 0; }
+#clashPanel .fitrow b { font-family: ui-monospace, monospace; font-weight: 600; }
+#clashPanel .fitst { margin-left: auto; color: var(--muted); }
+#clashPanel .fitst.bad { color: var(--err); font-weight: 600; }
+#clashPanel .fitst.good { color: var(--ok); font-weight: 600; }
+#clashPanel .fitrow .muted { flex-basis: 100%; }
+#clashPanel > .muted:last-child { margin-top: 6px; }

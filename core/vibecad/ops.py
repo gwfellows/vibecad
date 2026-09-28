@@ -493,7 +493,7 @@ def _rename_feature(raw: dict, old: str, new: str) -> int:
         if g.get("profile", {}).get("sketch") == old:
             g["profile"]["sketch"] = new
             n += 1
-        for key in ("sketch", "path"):  # hole / text points, sweep path
+        for key in ("sketch", "path", "tool"):  # hole / text points, sweep path, boolean tool body
             if g is not f and g.get(key) == old and g.get("type") != "sketch":
                 g[key] = new
                 n += 1

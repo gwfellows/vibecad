@@ -487,6 +487,80 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const drafted = await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json()));
   check("the draft is stored on the feature and nothing else changed", drafted.draft === 5 && drafted.extent === "up_to_face" && (drafted.distance ?? 0) === 0, JSON.stringify(drafted));
 
+  // ── design around two imported parts: each reference has its own colour and an eye; Fit shows clashes and gaps ──
+  await newPart("fit_test");
+  await importFile("phone.step", { mode: "reference", place: "origin" });
+  await importFile("pillow_block.step", { mode: "reference" });
+  const [refA, refB] = (await state()).features.filter((f) => f.type === "import").map((f) => f.id);
+  const post = (ops, message) => page.evaluate(([ops, message]) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops, message }) }).then((r) => r.json()), [ops, message]);
+  await post([{ op: "update_feature", id: refB, set: { translate: [0, 120, 0] } },
+    { op: "add_feature", feature: { id: "plate_sk", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_rectangle", sketch: "plate_sk", id: "plate", width: 100, height: 170, center: [0, 0] },
+    { op: "add_feature", feature: { id: "plate", type: "extrude", profile: { sketch: "plate_sk" }, distance: 3, direction: "reverse" } },
+    { op: "add_feature", feature: { id: "boss_sk", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_rectangle", sketch: "boss_sk", id: "boss", width: 10, height: 10, center: [0, 0] },
+    { op: "add_feature", feature: { id: "boss", type: "extrude", profile: { sketch: "boss_sk" }, distance: 5 } }], "plate under the phone, a boss into it");
+  await idle();
+  const sw = await page.$$eval("#tree li.feat .refsw", (l) => l.map((x) => x.style.background));
+  check("each reference body has its own colour in the tree", sw.length === 2 && sw[0] !== sw[1], sw.join(" | "));
+  check("and in the view", (await page.evaluate(([a, b]) => window.vibecadView.refColorOf(a) !== window.vibecadView.refColorOf(b), [refA, refB])));
+  check("Clash is on with a solid and references", !(await page.isDisabled("#clashBtn")));
+  await page.click("#clashBtn");
+  await page.waitForSelector("#clashPanel .fitrow");
+  let rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("fit: the boss runs 500 mm³ into the phone", rowsTxt.some((t) => t.includes(refA) && t.includes("overlaps 500 mm³")), rowsTxt.join(" | "));
+  check("fit: the pillow block is clear, with its gap", rowsTxt.some((t) => t.includes(refB) && /clear, [\d.]+ mm gap/.test(t)), rowsTxt.join(" | "));
+  let fo = await page.evaluate(() => window.vibecadView.fitObjects());
+  check("the clash is drawn in red and the gap as a line", fo.some((o) => o.ref === refA && o.type === "Mesh") && fo.some((o) => o.ref === refB && o.type === "Line"), JSON.stringify(fo.slice(0, 6)));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("fit");
+  await page.click(`#tree li.feat[data-id=${refA}] .eye`);
+  await page.waitForTimeout(300);
+  fo = await page.evaluate(() => window.vibecadView.fitObjects());
+  check("the eye hides a reference and its clash", !(await page.evaluate((a) => window.vibecadView.refVisible(a), refA)) && fo.filter((o) => o.ref === refA).every((o) => !o.visible));
+  await page.click(`#tree li.feat[data-id=${refA}] .eye`);
+  check("and shows it again", await page.evaluate((a) => window.vibecadView.refVisible(a), refA));
+  await post([{ op: "remove_feature", id: "boss" }], "drop the boss");
+  await idle();
+  await page.waitForFunction((a) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(a) && x.textContent.includes("touching")), refA, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("fit updates on its own: the plate now just touches the phone", rowsTxt.some((t) => t.includes(refA) && t.includes("touching")), rowsTxt.join(" | "));
+  // cut a nest for the phone with a 0.5 mm clearance: Clash then shows exactly that gap
+  const plateOnly = await vol();
+  await page.click(`#tree li.feat[data-id=${refA}] .fid`);
+  await page.waitForSelector("#details [data-a=nest]");
+  await page.click("#details [data-a=nest]");
+  await page.waitForSelector("#coGo");
+  check("the nest form picks the selected reference", (await page.inputValue("#coTool")) === refA);
+  await page.fill("#coC", "0.5");
+  await shot("nest_form");
+  await page.click("#coGo");
+  await idle();
+  const nested = await vol();
+  check("the nest cuts into the plate under the phone", nested < plateOnly - 100, `${plateOnly} -> ${nested}`);
+  await page.waitForFunction((a) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(a) && x.textContent.includes("0.5 mm gap")), refA, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("Clash: the phone now sits 0.5 mm clear of the nest", rowsTxt.some((t) => t.includes(refA) && t.includes("clear, 0.5 mm gap")), rowsTxt.join(" | "));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("nest");
+  const nid = (await state()).features.find((f) => f.type === "boolean").id;
+  await page.dblclick(`#tree li.feat[data-id=${nid}] .fid`);
+  await page.waitForSelector("#efClr");
+  await page.fill("#efClr", "1");
+  await page.click("#efGo");
+  await idle();
+  await page.waitForFunction((a) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(a) && x.textContent.includes(" 1 mm gap")), refA, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("editing the clearance to 1 mm: a 1 mm gap and a deeper nest", rowsTxt.some((t) => t.includes(refA) && t.includes("clear, 1 mm gap")) && (await vol()) < nested, rowsTxt.join(" | "));
+  await page.click("#clashBtn");
+  check("Clash off hides its panel", await page.isHidden("#clashPanel"));
+
   // ── mirror half a profile across the Y axis in the sketch editor: select its lines, I, Enter (Y is the default) ──
   await newPart("mirror_test");
   await page.click("#newSketchBtn");

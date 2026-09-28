@@ -50,6 +50,10 @@ def tree_text(res: RegenResult) -> str:
                 extra = f"{f.mode} {f.profile.sketch} {how}" + (f" draft {f.draft} deg" if f.draft not in (0, 0.0, "0") else "")
             else:
                 extra = f"{f.mode} {f.profile.sketch} axis {f.axis} {f.angle} deg"
+        elif f.type == "boolean":
+            extra = f"{f.mode} {f.tool}" + (f" clearance {f.clearance}" if f.clearance not in (0, 0.0, "0") else "")
+        elif f.type == "import":
+            extra = f"{f.mode} {f.file}"
         elif f.type == "loft":
             extra = f"{f.mode} through {', '.join(f.sections)}" + (" ruled" if f.ruled else "")
         elif f.type == "sweep":

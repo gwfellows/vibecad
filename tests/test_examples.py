@@ -79,6 +79,14 @@ def expected_volume(name, p):
         outer = (W - 2 * m) * (D - 2 * m) - 4 * fillet_corner_area(r - m)
         inner = (W - 2 * t + 2 * m) * (D - 2 * t + 2 * m) - 4 * fillet_corner_area(r - t + m)
         return (outer - inner) * p["seal_t"]
+    if name == "cell_18650":
+        return pi * p["cell_d"] ** 2 / 4 * p["cell_l"]
+    if name == "cell_holder":  # two nests: the cell grown by the clearance (rounded bottom rim), cut `sink` deep
+        from vibecad.expr import evaluate_params
+        cell = evaluate_params(load(EX / "cell_18650.vcad.json").params)
+        r, c, d = cell["cell_d"] / 2, p["clearance"], p["sink"]
+        nest = pi * (r + c) ** 2 * d + pi * r * r * c + pi**2 * r * c * c / 2 + 2 * pi * c**3 / 3  # side, bottom slab, rim (Pappus)
+        return p["holder_w"] * p["holder_d"] * p["holder_h"] - 2 * nest
     if name == "duct_adapter":  # ruled lofts: rectangles whose sides change linearly, so areas are quadratic in z
         L, t, w = p["duct_len"], p["flange_t"], p["wall"]
 
