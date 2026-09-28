@@ -32,7 +32,7 @@ You can also:
 - edit its intent (the one line that says why it exists) or, under JSON, the raw feature
 - set the part's name, material, process and design notes with **Part** in the header; the material gives Measure its mass
 
-The tree scrolls on its own; drag the bar under it to give it more or less room. `?` lists the keyboard shortcuts.
+The tree scrolls on its own; drag the bar under it to give it more or less room. `?` lists the keyboard shortcuts, and the moon button in the header switches to the dark theme.
 
 ### Sketch editor
 
@@ -48,6 +48,7 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 - **Dragging:** drag free geometry and the solver keeps every constraint. Fully constrained geometry stays put, and the hint tells you which dimension to change instead.
 - **Status:** the bar at the top shows the degrees of freedom (DOF) left. Conflicting or redundant constraints turn red and are named.
 - **Project:** projects the outline of the face under a face sketch as fixed construction geometry that follows the part when upstream sizes change.
+- **Round corner** (`F`): select the point where two lines meet and type a radius. The lines are trimmed and joined by a tangent arc; dimensions to the corner keep measuring to the sharp corner, so a rounded rectangle keeps its size.
 - **Other actions:** rename, → Param (turn a dimension into a named parameter), construction, delete, and Ask agent. Ask agent sends the selected entities and the constraints on them.
 
 **Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Hole**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (distance or through all, direction, add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
