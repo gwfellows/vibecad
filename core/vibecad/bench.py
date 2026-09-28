@@ -59,8 +59,10 @@ def check_parts(workdir: Path, task: dict, prev: dict[str, float | None] | None 
         out["parts"].append(info)
         if errs or warns or dof or not s.get("valid"):
             out["problems"].append(f"{p.name}: errors={errs} warnings={warns} dof={dof} valid={s.get('valid')}")
+    setup = {Path(f).name for f in ([task["setup_copy"]] if task.get("setup_copy") else []) + task.get("setup_files", [])}
+    made = [p for p in parts if p.name not in setup] or parts  # checks default to the part the agent made
     for chk in task.get("checks", []):
-        msg = _check(chk, parts, workdir, prev)
+        msg = _check(chk, made, workdir, prev)
         if msg:
             out["problems"].append(msg)
     out["pass"] = not out["problems"]
