@@ -81,7 +81,8 @@ EdgeRef: {"between": [FaceRef, FaceRef], "note": "..."}
        | {"of": FaceRef, "filter": {"type": "line", "parallel_to": "Z"}, "note": "..."}
 ```
 
-- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner` (`outer` when outward); hole `wall`, `cbore_wall`, `cbore_floor`, `csk`, `tip`, `bottom` (entity = the point's id); text `start`, `end` (the letters' floor or top), `side`; import `face` (entity `f0`, `f1`, ... in the file's face order) or `mesh` for an STL reference; `new` for faces with no better origin.
+- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet` and chamfer `chamfer` (entity: the edge it rounds, as its two faces `A|B`, e.g. `box.side:box_front|box.side:box_right`); shell `inner` (`outer` when outward; entity: the face it was offset from, e.g. `box.side:box_front`); hole `wall`, `cbore_wall`, `cbore_floor`, `csk`, `tip`, `bottom` (entity = the point's id); text `start`, `end` (the letters' floor or top), `side`; import `face` (entity `f0`, `f1`, ... in the file's face order) or `mesh` for an STL reference; `new` for faces with no better origin.
+- Fillet, chamfer and shell faces also carry the plain label (no entity), so `{"feature": "hollow", "role": "inner"}` still means all of the shell's inside.
 - `instance`: omitted = the original only; `"*"` = original and all copies; `"<pattern_id>#<n>"` = one copy.
 - `pick`: `largest`, `smallest`, or `nearest` (with `near: [x, y, z]`) when one face is required.
 - EdgeRef `pick: "nearest"` with `near: [x, y, z]` keeps the one edge closest to that point, for two faces that meet along more than one edge.

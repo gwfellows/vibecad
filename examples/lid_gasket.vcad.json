@@ -60,16 +60,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "corner_round.fillet"
+                "entity": "corner_round.fillet(box.side:box_front|box.side:box_right)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              38.5355,
-              -23.5355,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_front|box.side:box_right)], projected in the GUI"
           },
           "type": "external"
         },
@@ -104,16 +98,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "corner_round.fillet"
+                "entity": "corner_round.fillet(box.side:box_back|box.side:box_right)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              38.5355,
-              23.5355,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_back|box.side:box_right)], projected in the GUI"
           },
           "type": "external"
         },
@@ -148,16 +136,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "corner_round.fillet"
+                "entity": "corner_round.fillet(box.side:box_back|box.side:box_left)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              -38.5355,
-              23.5355,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_back|box.side:box_left)], projected in the GUI"
           },
           "type": "external"
         },
@@ -192,16 +174,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "corner_round.fillet"
+                "entity": "corner_round.fillet(box.side:box_front|box.side:box_left)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              -38.5355,
-              -23.5355,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_front|box.side:box_left)], projected in the GUI"
           },
           "type": "external"
         },
@@ -217,16 +193,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(box.side:box_front)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              0.0,
-              -23.0,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_front)], projected in the GUI"
           },
           "type": "external"
         },
@@ -242,16 +212,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_left)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              -37.1213,
-              -22.1213,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_left)], projected in the GUI"
           },
           "type": "external"
         },
@@ -267,16 +231,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(box.side:box_left)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              -38.0,
-              0.0,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_left)], projected in the GUI"
           },
           "type": "external"
         },
@@ -292,16 +250,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_left)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              -37.1213,
-              22.1213,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_left)], projected in the GUI"
           },
           "type": "external"
         },
@@ -317,16 +269,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(box.side:box_back)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              0.0,
-              23.0,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_back)], projected in the GUI"
           },
           "type": "external"
         },
@@ -342,16 +288,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_right)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              37.1213,
-              22.1213,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_right)], projected in the GUI"
           },
           "type": "external"
         },
@@ -367,16 +307,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(box.side:box_right)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              38.0,
-              0.0,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_right)], projected in the GUI"
           },
           "type": "external"
         },
@@ -392,16 +326,10 @@
               {
                 "feature": "lid",
                 "role": "face",
-                "entity": "hollow.inner"
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_right)"
               }
             ],
-            "pick": "nearest",
-            "near": [
-              37.1213,
-              -22.1213,
-              0.0
-            ],
-            "note": "edge where rim_sk's face meets lid.face[hollow.inner], projected in the GUI"
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_right)], projected in the GUI"
           },
           "type": "external"
         },

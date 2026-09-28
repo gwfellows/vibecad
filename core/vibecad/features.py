@@ -375,12 +375,33 @@ def _edges(ctx: Ctx, refs: list[S.EdgeRef]):
     return out
 
 
+def _short(lab: Label) -> str:
+    """A label as an entity name inside another label: `box.side:box_front` (no brackets or @)."""
+    return f"{lab.feature}.{lab.role}" + (f":{lab.entity}" if lab.entity else "") + (f"~{lab.instance}" if lab.instance else "")
+
+
+def _edge_name(body: Body, edge) -> str | None:
+    """An edge named by the faces it joins, `A|B`: tells apart the faces a fillet or chamfer makes on it."""
+    names = []
+    for f in list_faces(body.shape):
+        if any(edge.IsSame(x) for x in list_edges(f)):
+            labs = body.labels_of(f)
+            if labs:
+                names.append(_short(labs[0]))
+    return "|".join(sorted(names)) if len(names) == 2 else None
+
+
 def _dressup(ctx: Ctx, fid: str, maker, edges, role: str) -> dict:
     maker.Build()
     if not maker.IsDone():
         raise FeatureError(f"{role} failed on {len(edges)} edge(s); try a smaller size or fewer edges")
     result = maker.Shape()
-    pairs = [(g, Label(fid, role)) for e in edges for g in maker.Generated(e)]
+    # each face named after the edge it rounds (A|B), and plainly too, so refs without an entity still match
+    pairs = []
+    for e in edges:
+        n = _edge_name(ctx.body, e)
+        labs = ([Label(fid, role, n)] if n else []) + [Label(fid, role)]
+        pairs += [(g, lab) for g in maker.Generated(e) for lab in labs]
     pairs = propagate(maker, ctx.body.labels, result, None) + pairs
     pairs = propagate(_Identity(), pairs, result, Label(fid, role))
     if not _is_valid(result):
@@ -446,7 +467,12 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
         raise FeatureError("shell failed; the wall may be thicker than a local feature (a thin rib, a small boss, a "
                            "hole near the wall), or a removed face carries other features (remove the face they sit on too)")
     result = mk.Shape()
-    pairs = propagate(mk, ctx.body.labels, result, Label(f.id, "outer" if f.outward else "inner"))
+    role = "outer" if f.outward else "inner"
+    # each new wall face is named after the face it was offset from (hollow.inner[box.side:box_front]), so the
+    # inside of a shelled box has as many names as the outside
+    made = [(g, lb) for x, lab in ctx.body.labels for g in mk.Generated(x) for lb in (Label(f.id, role, _short(lab)), Label(f.id, role))]
+    pairs = propagate(mk, ctx.body.labels, result, None) + made
+    pairs = propagate(_Identity(), pairs, result, Label(f.id, role))
     ctx.body = Body(result, pairs)
     return {"removed_faces": len(faces), "thickness": t, "corners": name}
 
