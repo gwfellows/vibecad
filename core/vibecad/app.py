@@ -493,6 +493,9 @@ class App:
     def face_outline(self, sid: str) -> dict:
         """External entities for every edge of the face a sketch sits on, each named as the edge between
         that face and its neighbour. Edges that can't be named uniquely are skipped and counted."""
+        import build123d as bd
+        from OCP.TopoDS import TopoDS
+
         from . import schema as S
         from .topo import list_edges, list_faces, resolve_edges, resolve_faces
 
@@ -519,8 +522,11 @@ class App:
                 other = {"feature": lab.feature, "role": lab.role, **({"entity": lab.entity} if lab.entity else {}),
                          **({"instance": lab.instance} if lab.instance else {})}
                 ref = {"between": [plane_ref, other]}
-                for flt in (None, {"type": "line"}, {"type": "circle"}):
-                    trial = {**ref, **({"filter": flt} if flt else {})}
+                mid = bd.Edge(TopoDS.Edge(edge)).position_at(0.5)
+                near = {"pick": "nearest", "near": [round(mid.X, 4), round(mid.Y, 4), round(mid.Z, 4)]}
+                # labels shared by several faces (four corner fillets, a shell's inside): the edge nearest its midpoint
+                for extra in (None, {"filter": {"type": "line"}}, {"filter": {"type": "circle"}}, near):
+                    trial = {**ref, **(extra or {})}
                     try:
                         hits = resolve_edges(body, S.EdgeRef.model_validate(trial))
                     except Exception:

@@ -72,6 +72,13 @@ def expected_volume(name, p):
         top = strap_len * strap_wid * p["sheet_t"]
         flange = strap_len * p["flange_h"] * p["sheet_t"] - 2 * pi * (p["bolt_d"] / 2) ** 2 * p["sheet_t"]
         return top + 2 * flange
+    if name == "lid_gasket":  # the seal on enclosure_lid's rim, seal_margin in from both of its edges
+        from vibecad.expr import evaluate_params
+        lid = evaluate_params(load(EX / "enclosure_lid.vcad.json").params)
+        W, D, t, r, m = lid["width"], lid["depth"], lid["wall_t"], lid["corner_r"], p["seal_margin"]
+        outer = (W - 2 * m) * (D - 2 * m) - 4 * fillet_corner_area(r - m)
+        inner = (W - 2 * t + 2 * m) * (D - 2 * t + 2 * m) - 4 * fillet_corner_area(r - t + m)
+        return (outer - inner) * p["seal_t"]
     if name == "mounting_plate":
         t = p["plate_t"]
         v = p["plate_w"] * p["plate_d"] * t
@@ -107,7 +114,7 @@ def check(res, name):
 @pytest.mark.parametrize("name", PARTS)
 def test_part_builds(name):
     doc = load(EX / f"{name}.vcad.json")
-    check(Regenerator().run(doc), name)
+    check(Regenerator(EX).run(doc), name)
 
 
 def _sweep_cases():
@@ -121,12 +128,12 @@ def _sweep_cases():
 @pytest.mark.parametrize("name,param,scale", list(_sweep_cases()))
 def test_param_change(name, param, scale):
     doc = load(EX / f"{name}.vcad.json")
-    base = Regenerator().run(doc).env
+    base = Regenerator(EX).run(doc).env
     if param in ("bolt_n", "vent_n"):  # integer counts: step by one instead
         val = base[param] + (1 if scale > 1 else -1)
     else:
         val = base[param] * scale
-    check(Regenerator().run(doc, {param: val}), name)
+    check(Regenerator(EX).run(doc, {param: val}), name)
 
 
 def test_cache_reuses_upstream():
@@ -140,6 +147,6 @@ def test_cache_reuses_upstream():
 
 def test_edge_holes_keep_their_inset_when_the_plate_grows():
     doc = load(EX / "edge_holes_plate.vcad.json")
-    res = Regenerator().run(doc, {"w": 90, "d": 40})
+    res = Regenerator(EX).run(doc, {"w": 90, "d": 40})
     c = res.sketches["hole_sk"][0].entities["hole"].center
     assert c == pytest.approx((-45 + 8, -20 + 8))

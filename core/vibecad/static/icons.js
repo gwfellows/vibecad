@@ -43,6 +43,7 @@ export const ICON = {
   revolve: S('<ellipse cx="12" cy="14" rx="8" ry="3.5"/><path d="M12 3v18"/><path d="M17 8.5l2.5.5-.5 2.5"/>'),
   fillet: S('<path d="M5 20v-8a7 7 0 0 1 7-7h7"/>'),
   chamfer: S('<path d="M5 20v-9l6-6h8"/>'),
+  text: S('<path d="M5 6V4h14v2M12 4v16M9 20h6"/><path d="M3 21h18" stroke-dasharray="2 2" opacity=".6"/>'),
   hole: S('<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0" stroke-dasharray="2 2"/><path d="M9 11.5l3 3 3-3M12 9v5.5" stroke-width="1.3"/>'),
   shell: S('<path d="M4 8l8-4 8 4v9l-8 4-8-4z"/><path d="M7 9.5l5-2.5 5 2.5v5.5l-5 2.5-5-2.5z" stroke-dasharray="2 1.6"/>'),
   pattern: S('<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1" stroke-dasharray="2 1.5"/><rect x="3" y="15" width="6" height="6" rx="1" stroke-dasharray="2 1.5"/><rect x="15" y="15" width="6" height="6" rx="1" stroke-dasharray="2 1.5"/>'),

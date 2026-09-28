@@ -199,6 +199,26 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const tj = await page.evaluate(() => fetch("/api/feature/hole2").then((r) => r.json()));
   check("thread recorded", tj.thread === "M4x0.7", JSON.stringify(tj));
 
+  // ── engrave text where the face was clicked, then change it in its form ──
+  const vt = await vol();
+  await click3d(38, 30, 12.7);
+  await page.click("#textBtn");
+  await page.fill("#txT", "R2");
+  await page.fill("#txS", "6");
+  await page.click("#txGo");
+  await idle();
+  const vt2 = await vol();
+  check("engraved text removes a little material", vt2 < vt && vt - vt2 < 20, `${vt} -> ${vt2}`);
+  await page.dblclick("#tree li.feat[data-id=text1] .fid");
+  await page.waitForSelector("#efGo");
+  await page.selectOption("#efM", "add");
+  await page.click("#efGo");
+  await idle();
+  check("switched to embossed: adds what it cut", near((await vol()) - vt, vt - vt2, 0.01), `${vt2} -> ${await vol()}`);
+  await page.keyboard.press("Control+z"); await idle();
+  await page.keyboard.press("Control+z"); await idle();
+  check("undone", near(await vol(), vt, 1e-3));
+
   // ── pattern the tapped hole, then mirror it ──
   const v2 = await vol();
   await page.click("#tree li.feat[data-id=hole2] .fid");

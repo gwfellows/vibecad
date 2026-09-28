@@ -52,7 +52,7 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 - **Offset** (`K`): select an edge; its whole connected outline is copied at a distance (a negative one for inside). The copy follows the original and its distance can be a parameter, so "a 2 mm wall inside this outline" or "a 0.3 mm clearance around the projected phone" stay right when sizes change.
 - **Other actions:** rename, → Param (turn a dimension into a named parameter), construction, delete, and Ask agent. Ask agent sends the selected entities and the constraints on them.
 
-**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Hole**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (distance or through all, direction, add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
+**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Hole**, **Text**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (distance or through all, direction, add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
 
 ### Working with real parts
 
@@ -87,6 +87,8 @@ This adds a small sketch holding the dimensioned position, and the hole. To dril
 - the part's volume, surface area, mass (from its material), size and centre of mass
 
 ![A section through the counterbores and countersinks](docs/img/section.png)
+
+**Text:** click a face, type the text (a part number, a revision, an arrow), and choose engraved or embossed, with height, depth and angle. Like a hole, it gets a dimensioned position sketch.
 
 **Section** cuts the view with a plane along X, Y or Z. It keeps the half away from you, so the cut faces you, and the inside shows in orange. **Export** downloads the part as STEP, STL, 3MF, BREP or glTF.
 

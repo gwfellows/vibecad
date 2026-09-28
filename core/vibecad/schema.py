@@ -280,6 +280,21 @@ class Hole(_Feature):
         return self
 
 
+class Text(_Feature):
+    """Text engraved into or raised from a face: placed on a sketch's plane at one of its points (the text's
+    centre, or its left end with `align: left`), `angle` degrees from sketch +x."""
+    type: Literal["text"] = "text"
+    sketch: str
+    at: str  # a point entity (or origin) of that sketch
+    text: str
+    size: Num = 5.0  # cap height-ish: the font size in mm
+    depth: Num = 0.5
+    mode: Literal["cut", "add"] = "cut"
+    angle: Num = 0.0
+    align: Literal["center", "left"] = "center"
+    font: str | None = None  # a font name or a .ttf/.otf path; default: the system's sans
+
+
 class Import(_Feature):
     """A solid from a STEP / IGES / BREP / STL file. `mode: reference` keeps it out of the part: shown ghosted,
     usable for sketch planes, projected edges and fit checks (a mating part, a phone, a motor)."""
@@ -298,7 +313,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole],
+    Union[Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole, Text],
     Field(discriminator="type"),
 ]
 

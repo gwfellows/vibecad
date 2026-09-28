@@ -619,6 +619,50 @@ def do_hole(ctx: Ctx, f: S.Hole) -> dict:
     return {"holes": len(where), "depth": round(depth, 6) if f.extent == "blind" else "through"}
 
 
+# ── Text ───────────────────────────────────────────────────────────
+def do_text(ctx: Ctx, f: S.Text) -> dict:
+    if f.sketch not in ctx.sketches:
+        raise FeatureError(f"text sketch {f.sketch!r} is missing, later in the tree, or failed to build")
+    if not f.text.strip():
+        raise FeatureError("text is empty")
+    solved, frame = ctx.sketches[f.sketch]
+    if f.at == "origin":
+        u, v = 0.0, 0.0
+    else:
+        e = solved.entities.get(f.at)
+        if e is None or e.type != "point":
+            raise FeatureError(f"text position {f.at!r} must be a point of sketch {f.sketch!r} (or origin)")
+        u, v = e.p1
+    size = _positive(ctx.num(f.size), "text size")
+    depth = _positive(ctx.num(f.depth), "text depth")
+    kw = {}
+    if f.font:
+        kw["font_path" if f.font.lower().endswith((".ttf", ".otf")) else "font"] = f.font
+    align = (bd.Align.CENTER, bd.Align.CENTER) if f.align == "center" else (bd.Align.MIN, bd.Align.CENTER)
+    try:
+        txt = bd.Text(f.text, font_size=size, align=align, **kw)
+    except Exception as ex:
+        raise FeatureError(f"could not lay out the text: {ex}") from None
+    loc = frame.location * bd.Location((u, v, 0), (0, 0, ctx.num(f.angle)))
+    faces = [(loc * x).wrapped for x in txt.faces()]
+    if not faces:
+        raise FeatureError("the text has no glyphs to cut (only spaces?)")
+    n = frame.n
+    vec = n * (-depth if f.mode == "cut" else depth)  # cut into the face, raise out of it
+    src = _compound(faces)
+    prism = BRepPrimAPI_MakePrism(src, _vec(vec))
+    prism.Build()
+    tool = prism.Shape()
+    labels = [(x, Label(f.id, "start")) for x in list_faces(prism.FirstShape())]
+    labels += [(x, Label(f.id, "end")) for x in list_faces(prism.LastShape())]
+    labels += [(g, Label(f.id, "side")) for fc in faces for e in list_edges(fc) for g in prism.Generated(e)]
+    labels = propagate(_Identity(), labels, tool, Label(f.id, "side"))
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    bb = bd.Shape.cast(src).bounding_box()
+    return {"glyph_faces": len(faces), "width": round(max(bb.size.X, bb.size.Y, bb.size.Z), 3)}
+
+
 # ── Import ─────────────────────────────────────────────────────────
 def import_transform(ctx: Ctx, f: S.Import) -> gp_Trsf:
     k = ctx.num(f.scale)
@@ -685,5 +729,5 @@ def do_import(ctx: Ctx, f: S.Import) -> dict:
 BUILDERS = {
     "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
-    "circular_pattern": do_circular_pattern, "mirror": do_mirror, "import": do_import, "hole": do_hole,
+    "circular_pattern": do_circular_pattern, "mirror": do_mirror, "import": do_import, "hole": do_hole, "text": do_text,
 }

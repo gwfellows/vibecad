@@ -29,6 +29,7 @@ const ICONS = {
   mirror: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7l-6 5 6 5z"/><path d="M15 7l6 5-6 5z"/>',
   import: '<path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5"/>',
   hole: '<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0"/>',
+  text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
 };
 const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy="12" r="6"/>'}</svg>`;
 
@@ -1187,7 +1188,8 @@ function profileSketch() {
 }
 function modelToolsUpdate() {
   const hasBody = !!S && S.volume != null, rep = S ? replayable() : [];
-  $("#holeBtn").disabled = $("#shellBtn").disabled = !hasBody;
+  $("#holeBtn").disabled = $("#shellBtn").disabled = $("#textBtn").disabled = !hasBody;
+  $("#textBtn").title = hasBody ? "Text: click a flat face, then type the text to engrave or emboss there" : "Text: the part needs a solid first";
   $("#holeBtn").title = hasBody ? "Hole: click a flat face where it goes (or use a sketch's points), then choose the screw size and type" : "Hole: the part needs a solid first";
   $("#shellBtn").title = hasBody ? "Shell: hollow the part; click the faces to leave open first" : "Shell: the part needs a solid first";
   $("#patternBtn").disabled = $("#mirrorBtn").disabled = !rep.length;
@@ -1514,7 +1516,7 @@ $("#sectionBtn").onclick = () => {
 };
 
 // ── editing a feature's settings in the form that made it ──
-const EDITABLE = ["extrude", "revolve", "hole", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
+const EDITABLE = ["extrude", "revolve", "hole", "text", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
 const val = (v) => (v == null ? "" : esc(String(v)));
 async function editFeature(fid, anchor) {
   let j;
@@ -1545,6 +1547,13 @@ async function editFeature(fid, anchor) {
       Object.assign(out, k === "countersink" ? { csk_diameter: numOrExpr($("#efCsD").value), csk_angle: numOrExpr($("#efCsA").value) } : { csk_diameter: null });
       return out;
     };
+  } else if (j.type === "text") {
+    body = `<div class="row"><label>text</label><input id="efTx" value="${val(j.text)}"></div>
+      <div class="row"><label>height</label><input id="efS" value="${val(j.size ?? 5)}"></div>
+      <div class="row"><label>depth</label><input id="efD" value="${val(j.depth ?? 0.5)}"></div>
+      <div class="row"><label>style</label><select id="efM">${opt([["cut", "engraved"], ["add", "embossed"]], j.mode || "cut")}</select></div>
+      <div class="row"><label>angle °</label><input id="efA" value="${val(j.angle ?? 0)}"></div>`;
+    read = () => ({ text: $("#efTx").value, size: numOrExpr($("#efS").value), depth: numOrExpr($("#efD").value), mode: $("#efM").value, angle: numOrExpr($("#efA").value || "0") });
   } else if (j.type === "fillet" || j.type === "chamfer") {
     const key = j.type === "fillet" ? "radius" : "distance";
     body = `<div class="row"><label>${key}</label><input id="efSize" value="${val(j[key])}"></div><div class="muted">${(j.edges || []).length} edge reference(s): change them with Edit edges…</div>`;
@@ -1607,6 +1616,47 @@ async function editFeature(fid, anchor) {
     if (Object.keys(set).length) await edit([{ op: "update_feature", id: j.id, set }], `edit ${j.id}`);
   };
 }
+
+// ── text: engraved into (or raised from) the face you clicked, centred where you clicked ──
+$("#textBtn").onclick = () => {
+  if (!S || S.volume == null) return note("Text: the part needs a solid first", "err");
+  const pf = lastPicked();
+  if (!pf || pf.mesh?.userData?.ref) return note("Text: click the flat face the text goes on first", "err");
+  const m = $("#featMenu");
+  m.classList.remove("wide");
+  m.innerHTML = `<div class="ttl">Text on ${esc(pf.labels[0])}</div>
+    <div class="row"><label>text</label><input id="txT" value="" placeholder="e.g. REV A"></div>
+    <div class="row"><label>height</label><input id="txS" value="5"></div>
+    <div class="row"><label>depth</label><input id="txD" value="0.5"></div>
+    <div class="row"><label>style</label><select id="txM"><option value="cut">engraved (cut in)</option><option value="add">embossed (raised)</option></select></div>
+    <div class="row"><label>angle °</label><input id="txA" value="0"></div>
+    <button class="go" id="txGo">Add text</button>`;
+  popup(m, $("#textBtn"));
+  $("#txT").focus();
+  $("#txGo").onclick = async () => {
+    const text = $("#txT").value;
+    if (!text.trim()) return note("Text: type something", "err");
+    m.hidden = true;
+    const ref = faceRef(pf.labels[0], pf.point);
+    let at;
+    try { at = await api("/api/face_point", { ref, point: pf.point }); } catch { return; }
+    const id = nextId("text"), sid = `${id}_at`, [u, v] = at.uv.map((c) => +c.toFixed(2));
+    const ang = numOrExpr($("#txA").value || "0");
+    const f = { id, type: "text", sketch: sid, at: "p1", text, size: numOrExpr($("#txS").value), depth: numOrExpr($("#txD").value),
+      mode: $("#txM").value, intent: `“${text}” ${$("#txM").value === "cut" ? "engraved" : "embossed"} on ${pf.labels[0]}`, ...(ang ? { angle: ang } : {}) };
+    const rb = S.rollback, anchor = rb != null && rb > 0 ? { after: S.features[rb - 1].id } : {};
+    const ok = await edit([
+      { op: "add_feature", ...anchor, feature: { id: sid, type: "sketch", plane: { face: ref }, intent: `position of ${id}`,
+        entities: [{ id: "p1", type: "point", at: [u, v] }],
+        constraints: [{ type: "distance_x", on: ["origin", "p1"], value: u, name: `${id}_x` }, { type: "distance_y", on: ["origin", "p1"], value: v, name: `${id}_y` }] } },
+      { op: "add_feature", after: sid, feature: f },
+    ], `text “${text}” on ${pf.labels[0]}`);
+    if (ok) {
+      if (rb != null) setState((await api("/api/rollback", { index: rb + 2 })).state);
+      pickedFaces = []; pickUpdate(); select(id);
+    }
+  };
+};
 
 // ── import a CAD file: upload it next to the part, then choose how it joins the model ──
 const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, "µm": 0.001 };

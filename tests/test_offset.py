@@ -105,3 +105,24 @@ def test_offset_of_projected_edges_follows_the_part(tmp_path):
     assert rep["ok"] and "first_edge" in a.ws.session().doc.feature("lip_sk").entities[-1].of
     rep = json.loads(a.ws.apply_ops([{"op": "remove_entity", "sketch": "lip_sk", "id": "first_edge"}], "rm", "user"))
     assert not rep["ok"] and "copied by offset" in rep["error"]
+
+
+def test_the_gasket_follows_the_lid(tmp_path):
+    """examples/lid_gasket imports enclosure_lid live and offsets its projected rim: widen the lid, the gasket follows."""
+    import json
+    import shutil
+    from math import pi
+    from pathlib import Path
+
+    from vibecad.regen import load
+    ex = Path(__file__).resolve().parent.parent / "examples"
+    for f in ("enclosure_lid.vcad.json", "lid_gasket.vcad.json"):
+        shutil.copy(ex / f, tmp_path / f)
+    lid = json.loads((tmp_path / "enclosure_lid.vcad.json").read_text())
+    lid["params"]["width"] = 100
+    (tmp_path / "enclosure_lid.vcad.json").write_text(json.dumps(lid))
+    res = Regenerator(tmp_path).run(load(tmp_path / "lid_gasket.vcad.json"))
+    assert res.ok, [(f.id, f.message) for f in res.features]
+    c = lambda r: r * r * (1 - pi / 4)
+    outer, inner = 99 * 49 - 4 * c(4.5), 97 * 47 - 4 * c(3.5)
+    assert res.part.volume == pytest.approx((outer - inner) * 1.5, rel=1e-6)
