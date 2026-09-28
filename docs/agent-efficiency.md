@@ -133,6 +133,24 @@ GUI (Playwright, `scripts/gui_smoke.sh`, 66 checks; the agent panel is driven by
 
 The agent gained extrude `draft` / `up_to_face`, `loft`, `sweep`, the SVG drawing export and the `mirror_entities` op. The guide got two small changes: patterns and mirrors now name every replayable feature type, and one line tells the agent to draw half a symmetric profile and mirror it. Neither was benched. Later the same day: the `place_import` tool (placing an import by a face of it and a target face) and the `boolean` feature with `clearance`, each with a guide line; also not benched. A task worth adding to the suite: "a holder for this STEP part" (import, place, nest with clearance, check_fit). Worth a run: does `mirror_entities` cut output tokens and rejected batches on symmetric parts (a T-slot nut, a bracket with a symmetric gusset) against drawing the whole outline with `add_polygon`?
 
+## 2026-09-28: suite with the design-around-import tasks (Sonnet, effort low)
+
+Two tasks added: `cell_holder_step` (a holder for two 18650 cells from a STEP, 0.3 mm clearance) and `pcb_base` (standoffs under an imported board that arrives standing on edge, off the origin). New check `ref_fit`: no overlap with any reference import, gap within a range. Bench fix: the agent SDK refuses `bypassPermissions` as root, so runs in a container set `IS_SANDBOX=1`.
+
+Baseline (one run each): 18 of 19 turns pass, about $3.80 in all. The existing 13 tasks all pass. The import tasks are the weak spot:
+
+| task | pass | wall s | tool calls | cost $ | what went wrong |
+|---|---|---|---|---|---|
+| cell_holder_step | no (2 of 2 runs) | 72 | 17 | 0.16 | drilled pockets where it chose, left the reference cell at the origin; `check_fit` said 2505 mm³ overlap and it exported anyway |
+| pcb_base | yes | 311 | 47 | 0.66 | about 290 s spent finding where the board and its holes are: dozens of probe sketches to read frames, a solid copy of the import, external edges |
+| tube_corner_bracket | yes | 215 | 29 | 0.44 | about 100 s on a hole that cut nothing: the points were at world y = +10, the body at y −20..0; the warning didn't say where either was |
+
+Causes, and the changes made:
+- A reference import told the agent nothing: no size in the report, and `face_labels` ignored reference bodies. Now the tree line gives its size and world extents (`60 x 9.6 x 40 mm, x 10..70 y 20.4..30 z 5..45`), and `face_labels <import id>` lists its faces with plane normals and centres, and cylinder axes and diameters (its mounting holes).
+- `check_fit` returned numbers only. It now ends with a verdict: `OVERLAP with reference X: ... Fix this before reporting ...`.
+- A cut or add that changes nothing now says where the tool and the body are, in world mm.
+- Guide: a four-step "Designing around an imported part" recipe (import as reference and read it, decide where it sits, take sizes from it with `boolean` + `clearance` for nests, `check_fit` must show no overlap), replacing one long bullet.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?

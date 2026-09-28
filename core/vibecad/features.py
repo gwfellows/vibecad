@@ -288,7 +288,10 @@ def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str, rev
             hint = " The tool lies entirely inside the body."
         else:
             hint = ""
-        ctx.warnings.append(f"{mode} changed no volume (the tool does not overlap the body as intended).{hint}")
+        span = lambda sh: (lambda b: f"x {b.min.X:.4g}..{b.max.X:.4g} y {b.min.Y:.4g}..{b.max.Y:.4g} z {b.min.Z:.4g}..{b.max.Z:.4g}")(
+            bd.Shape.cast(sh).bounding_box())
+        where = f" In world mm, the {mode} tool spans {span(tool)}; the body spans {span(body.shape)}."
+        ctx.warnings.append(f"{mode} changed no volume (the tool does not overlap the body as intended).{hint}{where}")
     n0, n1 = _n_solids(body.shape), _n_solids(merged)
     if mode == "cut" and n1 > n0:
         ctx.warnings.append(f"cut split the body into {n1} separate solids (it had {n0}); a cut wider than the "
@@ -1007,7 +1010,9 @@ def do_import(ctx: Ctx, f: S.Import) -> dict:
         labels = [(x, Label(f.id, "face", f"f{i}")) for i, x in enumerate(faces)]
     bb = bd.Shape.cast(shape).bounding_box()
     out = {"format": info["format"], "faces": len(faces),
-           "bbox": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)]}
+           "bbox": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)],
+           "bbox_min": [round(v, 3) for v in (bb.min.X, bb.min.Y, bb.min.Z)],
+           "bbox_max": [round(v, 3) for v in (bb.max.X, bb.max.Y, bb.max.Z)]}
     if "triangles" in info:
         out["triangles"] = info["triangles"]
     if f.mode == "reference":

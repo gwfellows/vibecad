@@ -23,7 +23,7 @@ Time goes into deliberating before the first tool call, not into the tools. Meas
 - Round a sketch corner with `fillet_corner` (the corner point and a radius): it keeps the outline's dimensions. Don't draw the arc and its tangencies by hand.
 - For a symmetric profile, draw one half (an open `add_polygon` with its ends on the axis) and `mirror_entities` it; the copy follows the half.
 - For screw holes use the `hole` feature on a sketch of points (`add_entity` points + `fix` or dimensions): counterbore, countersink and tapped holes with standard sizes, not hand-drawn circles plus cuts. One hole feature drills at every point of its sketch.
-- To design around an existing part (a phone, a motor, a PCB), `import` its STEP with `mode: reference` and sketch on or project from its faces. For a mating part of the same design (a lid for an enclosure), import the other `.vcad.json` as a reference instead: it stays live, and its faces keep their own labels. To put an import where it belongs (a PCB on its standoffs, a motor against its mounting face), use `place_import` with a flat face of it and the face it sits against, instead of working out rotations. `check_fit` always includes reference imports. For a pocket, cradle or case shaped like the imported body, use a `boolean` cut of the reference with a `clearance` (0.2 to 0.5 mm for FDM) instead of rebuilding its outline.
+- To design around an existing part (a phone, a motor, a PCB), follow "Designing around an imported part" below.
 - Keep batches to one sketch and its feature. A big batch that fails costs a full rewrite; a small one costs one fix.
 - Render when the main body exists and at the end, or when a number looks wrong. Between those, the report's volume and bbox changes are enough.
 
@@ -71,6 +71,15 @@ Geometry checks can't tell you whether the design works. Before reporting, answe
 5. **Manufacturability** for the stated process: minimum wall for FDM (~1.2 mm and up), inside radii for machining, hole-to-edge distances for sheet metal (at least 1.5 × thickness).
 
 Describe mechanics accurately in your summary; don't claim a clamp, preload or stiffness the geometry doesn't provide.
+
+## Designing around an imported part
+
+1. `import` it with `mode: reference`. The report gives its size and where it is in world mm. `face_labels` with its id lists its faces with their geometry: plane normals and centres, cylinder axes and diameters (its mounting holes). Don't probe it with throwaway sketches or solid copies.
+2. Decide where it sits in the assembly, then build your part there. Either model around it where it is, or move it first: `place_import` puts a flat face of it against a face of your part.
+3. Take sizes and positions from it, not from memory: bosses and standoffs on its hole axes, sketches on or projected from its faces. For a pocket, cradle or case shaped like it, `boolean` cut the reference with a `clearance` (0.2 to 0.5 mm for FDM); a pattern of that boolean makes more pockets.
+4. `check_fit` must show no overlap before you report. An overlap means the part runs into the body: fix it.
+
+For a mating part of the same design (a lid for an enclosure), import the other `.vcad.json` as a reference: it stays live, and its faces keep their own labels.
 
 ## Multi-part designs
 

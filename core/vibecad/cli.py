@@ -54,6 +54,10 @@ def tree_text(res: RegenResult) -> str:
             extra = f"{f.mode} {f.tool}" + (f" clearance {f.clearance}" if f.clearance not in (0, 0.0, "0") else "")
         elif f.type == "import":
             extra = f"{f.mode} {f.file}"
+            lo, hi = r.info.get("bbox_min"), r.info.get("bbox_max")
+            if lo and hi:  # where the body is, in world mm: what the agent designs around
+                size = " x ".join(f"{b - a:g}" for a, b in zip(lo, hi))
+                extra += f"; {size} mm, x {lo[0]:g}..{hi[0]:g} y {lo[1]:g}..{hi[1]:g} z {lo[2]:g}..{hi[2]:g}"
         elif f.type == "loft":
             extra = f"{f.mode} through {', '.join(f.sections)}" + (" ruled" if f.ruled else "")
         elif f.type == "sweep":

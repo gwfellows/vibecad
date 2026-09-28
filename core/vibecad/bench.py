@@ -15,6 +15,8 @@ import shutil
 import time
 from pathlib import Path
 
+import build123d as bd
+
 from .agent import AgentRunner
 from .regen import Regenerator, load
 from .workspace import ROOT, Workspace
@@ -120,6 +122,23 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
         n = len(axes)
         ok = chk.get("min", 0) <= n <= chk.get("max", math.inf)
         return None if ok else f"{n} holes of d {chk['d_min']}-{chk['d_max']} mm, expected {chk.get('min')}-{chk.get('max')}"
+    if kind == "ref_fit":  # against the part's reference imports: none overlapped, gaps in range
+        from .measure import min_distance
+        refs = res.refs
+        if len(refs) < chk.get("min_refs", 1):
+            return f"{len(refs)} reference import(s), expected at least {chk.get('min_refs', 1)}"
+        for rid, rb in refs.items():
+            other = bd.Shape.cast(rb.shape)
+            if other.solids():
+                common = part & other
+                ov = common.volume if common is not None else 0.0
+                if ov > chk.get("overlap_max", 0.01):
+                    return f"part overlaps reference {rid} by {ov:.1f} mm³"
+            d = min_distance(part.wrapped, rb.shape)
+            gap = d[0] if d else None
+            if gap is None or not chk.get("gap_min", 0) - 1e-6 <= gap <= chk.get("gap_max", 1e9) + 1e-6:
+                return f"gap to {rid} is {gap}, expected {chk.get('gap_min', 0)}-{chk.get('gap_max', 'any')}"
+        return None
     if kind == "feature_type":
         types = [f.type for f in res.doc.features]
         return None if chk["type"] in types else f"no {chk['type']} feature"
@@ -130,8 +149,8 @@ async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunn
     """Run a task's prompt, then each of its `followups` (user edit requests) in the same conversation,
     checking the parts after every turn."""
     workdir.mkdir(parents=True, exist_ok=True)
-    if task.get("setup_copy"):
-        shutil.copy(ROOT / task["setup_copy"], workdir / Path(task["setup_copy"]).name)
+    for f in ([task["setup_copy"]] if task.get("setup_copy") else []) + task.get("setup_files", []):
+        shutil.copy(ROOT / f, workdir / Path(f).name)
     if variant.get("prompt_mode") == "claude_code":  # give it what a repo checkout would have
         shutil.copy(ROOT / "CLAUDE.md", workdir / "CLAUDE.md")
         (workdir / "agent").mkdir(exist_ok=True)

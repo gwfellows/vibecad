@@ -146,7 +146,13 @@ class Workspace:
     def face_labels(self, feature_id: str | None = None) -> str:
         from .topo import available
 
-        return "\n".join(available(self.session().result.body, feature_id))
+        res = self.session().result
+        if feature_id in res.refs:  # a reference import: its faces with what they are, to pick for sketches and placing
+            return "\n".join(_ref_faces(feature_id, res.refs[feature_id]))
+        out = available(res.body, feature_id)
+        if feature_id is None and res.refs:
+            out.append(f"reference imports (face_labels with their id for their faces): {', '.join(res.refs)}")
+        return "\n".join(out)
 
     def _frame(self, sketch_id: str):
         sketches = self.session().result.sketches
@@ -254,6 +260,10 @@ class Workspace:
             gap = _gap(me, other)
             out[p] = {"overlap_mm3": round(ov, 4), "min_gap_mm": gap,
                       "touching": ov < 1e-6 and gap is not None and gap < 1e-4}
+        bad = [k for k, v in out.items() if isinstance(v, dict) and v.get("overlap_mm3", 0) > 1e-3]
+        out["verdict"] = (f"OVERLAP with {', '.join(bad)}: the part runs into it. Fix this before reporting: move the "
+                          "geometry or the import (place_import), or cut a nest for it (boolean, mode cut, clearance)"
+                          if bad else "no overlaps")
         return json.dumps(out, indent=1)
 
     def render(self, views: list[str] | None = None, highlight: list[str] | None = None, size: int = 520) -> bytes:
@@ -300,6 +310,34 @@ class Workspace:
         with self.lock:
             write_part(s.result, fmt, out)
         return f"wrote {out}"
+
+
+def _ref_faces(rid: str, body, limit: int = 80) -> list[str]:
+    """A reference import's faces: label, surface, and where it is (plane normal and centre, cylinder axis and
+    diameter), largest first."""
+    import build123d as bd
+    from OCP.TopoDS import TopoDS
+
+    from .measure import describe
+    rows = []
+    for face, lab in body.labels:
+        F = bd.Face(TopoDS.Face(face))
+        d = describe(face)
+        c = F.center()
+        at = f"centre ({c.X + 0:.2f}, {c.Y + 0:.2f}, {c.Z + 0:.2f})"
+        if d.get("surface") == "plane":
+            what = f"plane, normal ({', '.join(f'{v + 0:g}' for v in d['normal'])}), {at}"
+        elif d.get("surface") == "cylinder":
+            what = (f"cylinder d {d['diameter']:g}, axis ({', '.join(f'{v + 0:g}' for v in d['axis'])}) through "
+                    f"({', '.join(f'{v + 0:g}' for v in d['axis_point'])})")
+        else:
+            what = f"{d.get('surface', 'face')}, {at}"
+        rows.append((d.get("area", 0), f"{lab}  {what}, area {d.get('area', 0):g} mm²"))
+    rows.sort(key=lambda r: -r[0])
+    out = [r for _, r in rows[:limit]]
+    if len(rows) > limit:
+        out.append(f"... {len(rows) - limit} smaller faces not listed")
+    return out
 
 
 def _gap(a, b) -> float | None:
@@ -375,7 +413,7 @@ TOOLS: list[dict] = [
      "props": {"ops": {"type": "array", "items": {"type": "object"}}, "message": S_STR}, "req": ["ops", "message"]},
     {"name": "undo", "desc": "Undo the last applied batch.", "props": {}, "req": []},
     {"name": "redo", "desc": "Redo the last undone batch.", "props": {}, "req": []},
-    {"name": "face_labels", "desc": "Face labels on the current body, optionally for one feature. Use to write or repair FaceRefs.",
+    {"name": "face_labels", "desc": "Face labels on the current body, optionally for one feature. Use to write or repair FaceRefs. For a reference import's id: its faces with their geometry (plane normal and centre, cylinder axis and diameter).",
      "props": {"feature_id": S_STR}, "req": []},
     {"name": "to_world", "desc": "Sketch (u, v) -> world [x, y, z] in mm.",
      "props": {"sketch_id": S_STR, "u": {"type": "number"}, "v": {"type": "number"}}, "req": ["sketch_id", "u", "v"]},

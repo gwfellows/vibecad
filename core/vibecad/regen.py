@@ -171,9 +171,12 @@ def _file_key(feat, base_dir: Path) -> str:
 def _collapse(warnings: list[str]) -> list[str]:
     """One line per distinct warning (a pattern repeats its tool's warning for every copy)."""
     counts: dict[str, int] = {}
+    first: dict[str, str] = {}
     for w in warnings:
-        counts[w] = counts.get(w, 0) + 1
-    return [w if n == 1 else f"{w} (x{n})" for w, n in counts.items()]
+        key = w.split(" In world mm,")[0]  # copies differ only in where they are: keep the first one's positions
+        counts[key] = counts.get(key, 0) + 1
+        first.setdefault(key, w)
+    return [first[k] if n == 1 else f"{first[k]} (x{n})" for k, n in counts.items()]
 
 
 def _strings(obj):

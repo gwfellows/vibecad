@@ -297,3 +297,25 @@ def test_a_part_cannot_import_itself(tmp_path):
         {"id": "me", "type": "import", "file": "loop.vcad.json", "mode": "reference"}]}))
     res = Regenerator(tmp_path).run(load(tmp_path / "loop.vcad.json"))
     assert not res.ok and "imports itself" in res.features[0].message
+
+
+def test_reference_import_is_described_to_the_agent(tmp_path):
+    """The tree shows where a reference body is; face_labels lists its faces with geometry; check_fit says OVERLAP."""
+    import json
+    import shutil
+
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Pos(10, 20, 0) * bd.Cylinder(5, 30, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN)), str(tmp_path / "rod.step"))
+    ws = Workspace(tmp_path)
+    ws.new_part(path="t.vcad.json", name="t")
+    rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "rod", "type": "import", "file": "rod.step", "mode": "reference"}}], "rod"))
+    assert "10 x 10 x 30 mm, x 5..15 y 15..25 z 0..30" in rep["tree"], rep["tree"]
+    faces = ws.face_labels("rod").splitlines()
+    assert any("cylinder d 10, axis (0, 0, 1) through (10, 20" in f for f in faces), faces
+    assert any("plane, normal (0, 0, 1), centre (10.00, 20.00, 30.00)" in f for f in faces), faces
+    ws.apply_ops([{"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+                  {"op": "add_rectangle", "sketch": "sk", "id": "b", "width": 40, "height": 40, "center": [10, 20]},
+                  {"op": "add_feature", "feature": {"id": "block", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 10}}], "block")
+    fit = json.loads(ws.check_fit([]))
+    assert fit["verdict"].startswith("OVERLAP with reference rod"), fit
+    assert "reference imports" in ws.face_labels()
