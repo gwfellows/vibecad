@@ -161,6 +161,42 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const top = await page.evaluate(() => window.vibecadView.pickedFace());
   check("its faces carry the part's own labels", top?.labels?.[0] === "enclosure_lid1.face[box.end]", JSON.stringify(top));
 
+  // ── the gasket for that lid, by hand: sketch on its rim, project the rim, offset both edges, extrude ──
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");  // look up at the open bottom
+  await page.waitForTimeout(400);
+  await click3d(-39, 0, 0);  // on the rim (the left wall is 2 mm thick: x from -40 to -38)
+  const rim = await page.evaluate(() => window.vibecadView.pickedFace());
+  check("the lid's rim picked", rim?.labels?.[0] === "enclosure_lid1.face[box.start]", JSON.stringify(rim));
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-face]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.click("#sketchTools [data-act=project]");
+  await idle();
+  const gsk = (fn, a) => page.evaluate(([src, a]) => new Function("sk", "a", `return (${src})(sk, a)`)(window.vibecadSketch, a), [fn.toString(), a]);
+  const nProj = await gsk((s) => s.data().entities.filter((e) => e.external).length);
+  check("all 16 rim edges projected", nProj === 16, String(nProj));
+  // an outer edge and an inner one: the projected lines along y = ±25 (outside) and ±23 (inside), in sketch coordinates
+  const pick = async (pred) => gsk((s, src) => { const f = new Function("e", `return (${src})(e)`); return s.data().entities.find((e) => e.external && e.type === "line" && f(e))?.id; }, pred.toString());
+  const outerId = await pick((e) => Math.abs(Math.abs(e.p1[1]) - 25) < 1e-6 && Math.abs(e.p1[1] - e.p2[1]) < 1e-6);
+  const innerId = await pick((e) => Math.abs(Math.abs(e.p1[1]) - 23) < 1e-6 && Math.abs(e.p1[1] - e.p2[1]) < 1e-6);
+  for (const [id, d] of [[outerId, "-0.5"], [innerId, "0.5"]]) {
+    await gsk((s, k) => s.select([k]), id);
+    await page.keyboard.press("k");
+    await page.waitForSelector("#dimEdit:not([hidden])");
+    await page.fill("#dimEdit input", d);
+    await page.press("#dimEdit input", "Enter");
+    await idle();
+  }
+  const offs = await gsk((s) => [...new Set(s.data().entities.filter((e) => e.offset).map((e) => e.offset))]);
+  check("two offsets of the rim", offs.length === 2, JSON.stringify(offs));
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "1.5");
+  await page.selectOption("#ffMode", "new");
+  await page.click("#ffGo");
+  await idle();
+  check("the gasket, made by clicking, matches the example part", near(await vol(), 367.699, 0.01), `${await vol()}`);
+
   // ── units: an inch model comes in at the right size ──
   await newPart("inch_test");
   const inSize = await importFile("block_inches.step", { units: "in" });
