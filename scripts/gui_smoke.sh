@@ -55,7 +55,7 @@ if [[ -z "${ONLY:-}" || ",$ONLY," == *",workflow,"* ]]; then  # uses both server
   node "$REPO/tests/gui/workflow.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
 fi
 if [[ ",${ONLY:-}," == *",readme_shots,"* ]]; then  # README screenshots: ONLY=readme_shots scripts/gui_smoke.sh docs/img
-  node "$REPO/tests/gui/readme_shots.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
+  FIXTURES="$WORK/fixtures" node "$REPO/tests/gui/readme_shots.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
 fi
 if [[ ",${ONLY:-}," == *",readme_gifs,"* ]]; then  # README GIFs: ONLY=readme_gifs scripts/gui_smoke.sh docs/img (needs ffmpeg)
   node "$REPO/tests/gui/readme_gifs.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1

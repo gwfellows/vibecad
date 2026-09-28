@@ -85,5 +85,63 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(300);
   await shot("agent");
 
+  // 5. real parts: import a phone as a solid, shell it outward with the screen open (a case), section it
+  let partName = "";
+  page.on("dialog", (d) => d.accept(partName));
+  const FIX = process.env.FIXTURES;
+  const idle = async () => { await page.waitForFunction(() => document.querySelector("#rebuild").hidden, null, { timeout: 60000 }); await sleep(900); };
+  await open(BASE);
+  partName = "case_demo";
+  await page.click("#newBtn");
+  await sleep(1200);
+  await page.setInputFiles("#importFile", path.join(FIX, "phone.step"));
+  await page.waitForSelector("#imGo", { timeout: 30000 });
+  await page.selectOption("#imMode", "new");
+  await page.selectOption("#imPlace", "origin");
+  await sleep(300);
+  await shot("import");
+  await page.click("#imGo");
+  await idle();
+  await page.click(".vtools [data-view=iso]"); await sleep(300);
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']"); await sleep(400);
+  [x, y] = await world(-20, -40, 0);
+  await page.mouse.click(x, y); await sleep(400);
+  await page.click("#shellBtn");
+  await page.selectOption("#shDir", "out");
+  await page.fill("#shT", "1.6");
+  await page.click("#shGo");
+  await idle();
+
+  // 6. holes: click the plate's top, M5 counterbore
+  await open(BASE, "mounting_plate.vcad.json");
+  await page.click(".vtools [data-view=iso]"); await sleep(400);
+  [x, y] = await world(-20, 15, 8);
+  await page.mouse.click(x, y); await sleep(400);
+  await page.click("#holeBtn");
+  await page.selectOption("#hoKind", "counterbore");
+  await page.selectOption("#hoScrew", "M5");
+  await sleep(300);
+  await shot("holes");
+  await page.keyboard.press("Escape");
+  await page.mouse.click(1000, 850);
+
+  // section through two counterbores and the countersinks' row: their profiles in the cut
+  await page.click("#sectionBtn");
+  await page.evaluate(() => { const r = document.querySelector("#secT"); r.value = 8 / 60; r.dispatchEvent(new Event("input")); });
+  await sleep(700);
+  await page.mouse.move(1000, 850);
+  await shot("section");
+  await page.click("#sectionBtn");
+
+  // 7. measure: two counterbores' axes, and the part's mass
+  await page.click("#measureBtn");
+  for (const [px, py] of [[-32, -22], [32, -22]]) {  // the far inside wall of each counterbore, as seen from the iso view
+    [x, y] = await world(px - 4 * 0.7071, py + 4 * 0.7071, 6);
+    await page.mouse.click(x, y); await sleep(900);
+  }
+  await page.mouse.move(1000, 850);
+  await sleep(600);
+  await shot("measure");
+
   await browser.close();
 })().catch((e) => { console.error("SCRIPT ERROR", e); process.exit(2); });

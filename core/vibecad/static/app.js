@@ -1463,9 +1463,9 @@ function applySection() {
   if (section) {
     const box = partBox();
     if (!box.isEmpty()) {
-      // three keeps what lies on the plane's positive side: by default the far (+axis) side, which the usual
-      // views (from -Y, -X... iso from the front) look into
-      const i = "XYZ".indexOf(section.axis), sg = section.flip ? -1 : 1, n = new THREE.Vector3().setComponent(i, sg);
+      // keep the half away from the camera, so the cut faces you (flip keeps the other half)
+      const i = "XYZ".indexOf(section.axis), cam = camera.position.getComponent(i) - controls.target.getComponent(i);
+      const sg = (cam > 0 ? -1 : 1) * (section.flip ? -1 : 1), n = new THREE.Vector3().setComponent(i, sg);
       const lo = box.min.getComponent(i), hi = box.max.getComponent(i), at = lo + (hi - lo) * section.t;
       clipPlanes.push(new THREE.Plane(n, -sg * at));
       $("#secAt") && ($("#secAt").textContent = `${section.axis} = ${fmt(at, 2)} mm`);

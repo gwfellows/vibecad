@@ -2,7 +2,7 @@
 
 AI-assisted parametric CAD. You and the AI edit the same thing: a readable feature tree of named parameters, fully constrained sketches and features (`*.vcad.json`), regenerated into a B-rep solid with OpenCascade. You can talk to the agent, edit by hand, or both in the same session. Either way every change is one undoable step.
 
-![The VibeCAD app: feature tree with per-feature parameters, 3D view, agent panel](docs/img/overview.png)
+![The VibeCAD app: feature tree with per-feature parameters, the modelling toolbar over the 3D view, agent panel](docs/img/overview.png)
 
 Design doc: https://claude.ai/code/artifact/143cbf50-54de-4302-849d-9ac99055b488
 
@@ -28,7 +28,11 @@ Edits on a big part take a few seconds. While one is applied, a status pill in t
 You can also:
 - drag the blue rollback bar to see the part at an earlier step; new features (yours or the agent's) go in at the bar
 - Rename, Suppress, ↑/↓ or Delete the selected feature
-- edit its intent (the one line that says why it exists) or its JSON
+- **Edit…** it (or double-click it in the tree): the form that made it opens again, filled in (extrude distance and direction, hole type and size, pattern count, import placement, ...)
+- edit its intent (the one line that says why it exists) or, under JSON, the raw feature
+- set the part's name, material, process and design notes with **Part** in the header; the material gives Measure its mass
+
+The tree scrolls on its own; drag the bar under it to give it more or less room. `?` lists the keyboard shortcuts.
 
 ### Sketch editor
 
@@ -38,7 +42,7 @@ You can also:
 
 Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS) runs on the server, and the view updates as you drag.
 
-- **Drawing:** the palette on the left has line, rectangle, circle, arc and a freehand mark tool. The keys are `S L R C A M`.
+- **Drawing:** the palette on the left has line, rectangle, circle, arc, slot, polygon, point and a freehand mark tool. The keys are `S L R C A O N P M`. Slots and polygons arrive fully constrained; points mark where holes go.
 - **Constraints:** coincident, horizontal/vertical, parallel, perpendicular, equal, tangent, concentric, midpoint and symmetric. Buttons enable only when the selection fits.
 - **Dimensions:** drawn the way CAD tools draw them, with extension lines, arrows, `⌀` for diameters and `R` for radii. Double-click one to change its value. `ƒ` marks a dimension driven by a parameter; hover it to see which one.
 - **Dragging:** drag free geometry and the solver keeps every constraint. Fully constrained geometry stays put, and the hint tells you which dimension to change instead.
@@ -46,7 +50,43 @@ Click a sketch to edit it on its plane, viewed straight on. The solver (PlaneGCS
 - **Project:** projects the outline of the face under a face sketch as fixed construction geometry that follows the part when upstream sizes change.
 - **Other actions:** rename, → Param (turn a dimension into a named parameter), construction, delete, and Ask agent. Ask agent sends the selected entities and the constraints on them.
 
-**Modelling by hand.** The tool column in the 3D view has **+ Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude** and **Revolve**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (distance or through all, direction, add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top.
+**Modelling by hand.** The toolbar across the top of the view has **Sketch** (on XY, XZ or YZ with an offset, or on the face you last clicked), **Extrude**, **Revolve**, **Hole**, **Fillet**, **Chamfer**, **Shell**, **Pattern**, **Mirror**, **Import**, **Measure**, **Section** and **Export**. Extrude and Revolve act on the sketch selected in the tree, or else the newest sketch nothing uses yet; they open it with the form (distance or through all, direction, add / cut / new / intersect; revolve axis and angle). Inside a sketch the same two buttons sit in the dark bar at the top. The gizmo in the corner shows the axes; click one to look along it.
+
+### Working with real parts
+
+![Importing a STEP file: format, size in the part, units, placement](docs/img/import.png)
+
+**Import** (or drop a file on the view) brings in STEP, IGES, BREP or STL. The form shows what is in the file and its size once scaled. The units are guessed from the size, and you can type your own scale. You can keep the file's position or centre it on the origin. Choose how it joins the model:
+- **Reference:** a mating part to design around (a phone, a motor, a board). It is drawn in violet and is not part of the solid, but you can sketch on its faces, **Project** its edges into a sketch, and measure to it.
+- **Base solid, add, cut, intersect:** it becomes part of the model. IGES and STL surfaces are sewn into a solid when they close.
+
+The file is copied next to the part (`imports/`) and re-read when it changes on disk.
+
+For a phone case, import the phone as a solid, click its screen, and **Shell** it outward by the wall thickness: the case skin, open where the screen is.
+
+![Adding a counterbored hole where the face was clicked: ISO screw presets](docs/img/holes.png)
+
+**Hole:** click a flat face where the hole goes, then choose the type and an ISO screw size (M2–M12). The size presets fill in the numbers:
+
+| Type | What the preset fills in |
+|---|---|
+| Simple | the clearance diameter |
+| Counterbore | a counterbore for a socket-head screw |
+| Countersink | a 90° countersink for a flat-head screw |
+| Tapped | a blind hole at the tap drill size, recorded with its thread (`M4x0.7`) |
+
+This adds a small sketch holding the dimensioned position, and the hole. To drill several at once, put points in a sketch (Point tool) and choose "at every point of" that sketch. Holes can be patterned and mirrored like extrudes.
+
+![Measuring between two counterbores: distance, distance between axes, the part's mass](docs/img/measure.png)
+
+**Measure** (`M`): click faces or edges. One pick gives its type and size (diameter, area, length). Two picks give:
+- the distance between them, plus the distance between two planes or two axes
+- the angle between them
+- the part's volume, surface area, mass (from its material), size and centre of mass
+
+![A section through the counterbores and countersinks](docs/img/section.png)
+
+**Section** cuts the view with a plane along X, Y or Z. It keeps the half away from you, so the cut faces you, and the inside shows in orange. **Export** downloads the part as STEP, STL, 3MF, BREP or glTF.
 
 ### Pick edges and faces, then fillet or chamfer
 
@@ -98,7 +138,7 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 
 | Piece | What |
 |---|---|
-| Part format | `*.vcad.json`: params (with units and expressions), sketches, features, each with an `intent`. Reference: [docs/IR.md](docs/IR.md) |
+| Part format | `*.vcad.json`: params (with units and expressions), sketches, and features (extrude, revolve, hole, fillet, chamfer, shell, patterns, mirror, import), each with an `intent`. Reference: [docs/IR.md](docs/IR.md) |
 | Geometry | build123d on OCP (OpenCascade). Faces are labelled by the feature that made them (`wall.side[wall_top]`), and labels are carried through OCCT's own operation history, so references survive regeneration |
 | Sketch solver | PlaneGCS (FreeCAD's solver) via `planegcs`, on the server. The GUI's drag and freedom checks call the same solver |
 | Edits | Ops (`set_param`, `add_feature`, `add_rectangle`, `set_dimension`, `rename_feature`, ...) applied in atomic batches. A batch that fails or doesn't validate changes nothing. Undo and redo are shared by you and the agent, and every batch is logged to `*.history.jsonl` |
@@ -107,9 +147,17 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 
 ## Status
 
-- **Reference parts:** 10 in `examples/`, including a bracket, pillow block, enclosure lid, NEMA 17 mount, battery tray and strap, and hex standoff. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
-- **Tests:** `uv run pytest` runs 275 tests.
-- **Browser tests:** `scripts/gui_smoke.sh` runs about 220 Playwright checks, covering the main flows, modelling a part by hand from an empty file, the sketch editor, the agent panel against a scripted agent, and editing a fillet's edges, per-part conversations, attachments and the rebuild indicator.
+- **Reference parts:** 11 in `examples/`, including a bracket, pillow block, enclosure lid, NEMA 17 mount, battery tray and strap, hex standoff, and a mounting plate with counterbored, countersunk and tapped holes. They regenerate with every sketch fully constrained, and their volumes match hand calculations. Every parameter is swept ±10% and must still rebuild.
+- **Tests:** `uv run pytest` runs 332 tests. They include imports of STEP, IGES, BREP and STL (exact round trips, units, placement, sewing surfaces), and every hole type against its volume formula.
+- **Browser tests:** `scripts/gui_smoke.sh` runs about 280 Playwright checks. They cover:
+  - the main flows
+  - modelling a part by hand from an empty file
+  - the sketch editor
+  - the agent panel, against a scripted agent
+  - editing a fillet's edges, per-part conversations, attachments and the rebuild indicator
+  - real-part work: imports, holes, pattern, mirror, shell (including the phone case), measure, section, export and editing features
+
+  With `USERPARTS=folder` it also opens your own parts, changes a parameter of each and undoes it.
 
 ## Measuring the agent
 
@@ -117,7 +165,7 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 
 ## Screenshots and GIFs
 
-The images in `docs/img/` are taken from the running app: `ONLY=readme_shots scripts/gui_smoke.sh docs/img` for the PNGs, `ONLY=readme_gifs scripts/gui_smoke.sh docs/img` for the GIFs (Playwright video, a drawn cursor and captions, converted with ffmpeg; `GIFS=edges` records one).
+The images in `docs/img/` are taken from the running app (the GIFs still show the earlier tool column; re-record them where ffmpeg is installed): `ONLY=readme_shots scripts/gui_smoke.sh docs/img` for the PNGs, `ONLY=readme_gifs scripts/gui_smoke.sh docs/img` for the GIFs (Playwright video, a drawn cursor and captions, converted with ffmpeg; `GIFS=edges` records one).
 
 ## License
 

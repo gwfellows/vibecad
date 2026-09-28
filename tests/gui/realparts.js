@@ -255,11 +255,12 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   await page.click("#sectionBtn");
   await page.waitForTimeout(300);
   let clip = await page.evaluate(() => window.vibecadView.clip());
-  check("section on: a Y plane through the middle", clip.length === 1 && clip[0].normal[1] === 1 && near(-clip[0].constant, 19.05, 0.01), JSON.stringify(clip));
+  check("section on: a Y plane through the middle, the far half kept", clip.length === 1 && clip[0].normal[1] === 1 && near(-clip[0].constant, 19.05, 0.01), JSON.stringify(clip));
   await page.click("#sectionPanel [data-ax=X]");
   await page.evaluate(() => { const r = document.querySelector("#secT"); r.value = 0.25; r.dispatchEvent(new Event("input")); });
   clip = await page.evaluate(() => window.vibecadView.clip());
-  check("X plane at a quarter", clip[0].normal[0] === 1 && near(-clip[0].constant, 12.7, 0.01), JSON.stringify(clip));
+  // the iso camera is on the +X side: the kept half is -X, so the cut faces the camera
+  check("X plane at a quarter, cut facing the camera", clip[0].normal[0] === -1 && near(clip[0].constant, 12.7, 0.01), JSON.stringify(clip));
   await shot("4_section");
   await page.click("#sectionBtn");
   check("section off", (await page.evaluate(() => window.vibecadView.clip())).length === 0);
