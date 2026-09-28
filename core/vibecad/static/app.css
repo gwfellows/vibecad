@@ -73,7 +73,7 @@ section { min-height: 0; overflow: auto; }
 #details .row { display: flex; gap: 6px; margin-top: 6px; }
 
 /* viewport */
-#center { position: relative; overflow: hidden; }
+#center { position: relative; overflow: hidden; container-type: inline-size; }
 #viewer { position: absolute; inset: 0; }
 #center { background: radial-gradient(ellipse at 50% 35%, #fbfcfe 0%, #eef1f6 60%, #e3e8ef 100%); }
 /* the modelling ribbon along the top of the view */
@@ -86,6 +86,9 @@ section { min-height: 0; overflow: auto; }
 button.rb { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 46px; height: 48px;
   padding: 4px 3px 3px; border: 0; border-radius: 8px; background: transparent; color: #334155; font-size: 11px; line-height: 1.1; }
 button.rb svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* narrower views: tighter buttons, then icons only (the tooltips still name them) */
+@container (max-width: 1020px) { button.rb { min-width: 40px; padding: 4px 1px 3px; font-size: 10px; } .rgroup { padding: 0 1px; } }
+@container (max-width: 760px) { button.rb span { display: none; } button.rb { min-width: 34px; height: 38px; } }
 button.rb:hover:not(:disabled) { background: var(--accent-soft); color: #1d4ed8; border: 0; }
 button.rb.on { background: #dbe6ff; color: #1d4ed8; box-shadow: inset 0 0 0 1px #a9c1fb; }
 button.rb:disabled { opacity: .38; }
@@ -297,6 +300,7 @@ body.rebuilding #params input, body.rebuilding #tree input { opacity: .6; }
 #details details.json summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .popmenu.wide { min-width: 280px; }
 .popmenu .row input[id^=efO], .popmenu .row input[id^=efR], .popmenu .row input[id^=efT], .popmenu .row input[id^=efC] { width: 40px; flex: 1; min-width: 0; }
+.popmenu .row input[type=checkbox] { flex: 0 0 auto; width: 15px; height: 15px; min-width: 15px; margin: 0; padding: 0; accent-color: var(--accent); }
 
 dialog.formdlg { width: 440px; }
 dialog.formdlg form { display: flex; flex-direction: column; gap: 10px; }

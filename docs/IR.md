@@ -56,6 +56,8 @@ Rules: fully constrain every sketch (build reports DOF). Where a line meets an a
 |---|---|
 | extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind / through_all / up_to_face`, `to_face` (up_to_face: a planar face parallel to the sketch; the extrude turns toward it by itself and `distance` goes past it), `draft` (degrees, default 0; positive tapers the walls inward along the extrusion, for molded or printed bosses and pockets; not with `symmetric`), `mode: add / cut / intersect / new` |
 | revolve | `profile`, `axis` (a sketch line id, `x_axis` or `y_axis`), `angle` |
+| loft | `sections` (two or more sketch ids, first to last; each has one closed loop without holes, on different planes), `ruled` (default false: a smooth blend; true: straight faces between sections), `mode`. Faces: `start`, `end`, `side[entity]` named by the first section's entities. Hollow it with a second loft through inset sections, `mode: cut` |
+| sweep | `profile {sketch, regions}` (holes are kept: a ring makes a tube), `path` (a sketch id: its non-construction lines and arcs, chained into one open or closed chain), `mode`. The profile should cross the path, usually at its start; sharp path corners are mitred, tangent arcs make bends. Faces: `start`, `end`, `side[entity]` |
 | fillet / chamfer | `edges: [EdgeRef]`, `radius` / `distance` |
 | shell | `remove_faces: [FaceRef]`, `thickness` (inward; `outward: true` grows the wall outside: a skin around an imported body) |
 | linear_pattern | `features: [extrude/revolve ids]`, `direction: X, Y, Z or [x,y,z]`, `spacing`, `count` |

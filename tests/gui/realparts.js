@@ -65,6 +65,10 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   // ── the ribbon: every tool has an icon and a label ──
   const labels = await page.$$eval("#modelTools button.rb", (l) => l.map((b) => [b.querySelector("svg") ? 1 : 0, b.textContent.trim()]));
   check("ribbon buttons have an icon and a label", labels.length >= 13 && labels.every(([i, t]) => i && t), JSON.stringify(labels.map((x) => x[1])));
+  const fits = await page.evaluate(() => { const r = document.querySelector("#modelTools"), c = document.querySelector("#center").getBoundingClientRect(),
+    last = [...r.querySelectorAll("button.rb")].at(-1).getBoundingClientRect();
+    return { scroll: r.scrollWidth - r.clientWidth, lastRight: last.right, centerRight: c.right, width: c.width }; });
+  check("the whole ribbon fits in the view (no button cut off)", fits.scroll <= 1 && fits.lastRight <= fits.centerRight, JSON.stringify(fits));
 
   // ── import a phone as a reference body, then design a case plate on it ──
   await newPart("case_test");
@@ -467,6 +471,57 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   check("a 5° draft tapers the post (less volume, same height)", pst.volume < postVol - 1 && pst.volume > plateVol, `${postVol} -> ${pst.volume}`);
   const drafted = await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json()));
   check("the draft is stored on the feature and nothing else changed", drafted.draft === 5 && drafted.extent === "up_to_face" && (drafted.distance ?? 0) === 0, JSON.stringify(drafted));
+
+  // ── loft a square into a circle; sweep a round bar along a bent path ──
+  await newPart("loft_test");
+  const postOps = (ops, message) => page.evaluate(([ops, message]) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops, message }) }).then((r) => r.json()), [ops, message]);
+  let r = await postOps([
+    { op: "add_feature", feature: { id: "sq", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_rectangle", sketch: "sq", id: "sq", width: 20, height: 20, center: [0, 0] },
+    { op: "add_feature", feature: { id: "rnd", type: "sketch", plane: { datum: "XY", offset: 25 } } },
+    { op: "add_circle", sketch: "rnd", id: "rnd", diameter: 16, center: [0, 0] }], "two sections");
+  await idle();
+  check("Loft is enabled with two sketches", !(await page.isDisabled("#loftBtn")), JSON.stringify(r).slice(0, 200));
+  await page.click("#loftBtn");
+  check("the loft form ticks both unused sketches", (await page.$$eval("#featMenu .checks input:checked", (x) => x.map((i) => i.value))).join() === "sq,rnd");
+  await shot("loft_form");
+  await page.click("#loGo");
+  await idle();
+  let lst = await state();
+  check("square-to-round loft: 25 tall, between the two prisms", near(lst.bbox[2], 25, 1e-6) && lst.volume > Math.PI * 64 * 25 && lst.volume < 400 * 25, `${JSON.stringify(lst.bbox)} ${lst.volume}`);
+  const smoothVol = lst.volume;
+  await page.dblclick("#tree li.feat[data-id=loft1] .fid");
+  await page.waitForSelector("#efRuled");
+  await page.check("#efRuled");
+  await page.click("#efGo");
+  await idle();
+  lst = await state();
+  // with two sections a smooth loft is already straight-sided: ruled changes the setting, not the shape
+  check("the loft edit form switches it to ruled", (await page.evaluate(() => fetch("/api/feature/loft1").then((r) => r.json()))).ruled === true && near(lst.volume, smoothVol, 1e-3),
+    `${smoothVol} -> ${lst.volume}`);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("loft");
+
+  await newPart("sweep_test");
+  r = await postOps([
+    { op: "add_feature", feature: { id: "bar", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_circle", sketch: "bar", id: "bar", diameter: 6, center: [0, 0] },
+    { op: "add_feature", feature: { id: "rail", type: "sketch", plane: { datum: "XZ" } } },
+    { op: "add_polygon", sketch: "rail", id: "rail", closed: false, points: [[0, 0], [0, 30], [25, 30]] }], "profile and path");
+  await idle();
+  await page.click("#sweepBtn");
+  check("the sweep form guesses profile and path", (await page.inputValue("#swProf")) === "bar" && (await page.inputValue("#swPath")) === "rail", JSON.stringify(r).slice(0, 300));
+  await shot("sweep_form");
+  await page.click("#swGo");
+  await idle();
+  lst = await state();
+  check("bar swept up 30 and across 25, mitred", near(lst.volume, Math.PI * 9 * 55, 0.05) && near(lst.bbox[0], 28, 1e-4) && near(lst.bbox[2], 33, 1e-4),
+    `${lst.volume} vs ${(Math.PI * 9 * 55).toFixed(2)} bbox ${JSON.stringify(lst.bbox)}`);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("sweep");
 
   // ── offset an outline inward: select one edge, K, a negative distance; the ring extrudes ──
   await newPart("offset_test");

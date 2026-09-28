@@ -45,6 +45,8 @@ export const ICON = {
   chamfer: S('<path d="M5 20v-9l6-6h8"/>'),
   text: S('<path d="M5 6V4h14v2M12 4v16M9 20h6"/><path d="M3 21h18" stroke-dasharray="2 2" opacity=".6"/>'),
   hole: S('<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0" stroke-dasharray="2 2"/><path d="M9 11.5l3 3 3-3M12 9v5.5" stroke-width="1.3"/>'),
+  loft: S('<rect x="4" y="15" width="10" height="5" rx=".5" transform="skewX(-20) translate(6 0)"/><circle cx="12" cy="6" r="3"/><path d="M5.5 15.5L9 6.5M15.5 15.5L15 6.5" stroke-dasharray="2 1.5"/>'),
+  sweep: S('<circle cx="5.5" cy="18" r="2.5"/><path d="M5.5 15.5V11a6 6 0 0 1 6-6H20" stroke-dasharray="2 1.6"/><path d="M8 18V11a3.5 3.5 0 0 1 3.5-3.5H20M3 18v-7a8.5 8.5 0 0 1 8.5-8.5H20"/>'),
   shell: S('<path d="M4 8l8-4 8 4v9l-8 4-8-4z"/><path d="M7 9.5l5-2.5 5 2.5v5.5l-5 2.5-5-2.5z" stroke-dasharray="2 1.6"/>'),
   pattern: S('<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1" stroke-dasharray="2 1.5"/><rect x="3" y="15" width="6" height="6" rx="1" stroke-dasharray="2 1.5"/><rect x="15" y="15" width="6" height="6" rx="1" stroke-dasharray="2 1.5"/>'),
   mirror: S('<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 6L3 18h6z"/><path d="M15 6l6 12h-6z" stroke-dasharray="2 1.5"/>'),

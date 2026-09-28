@@ -396,6 +396,128 @@ def _extrude_drafted(ctx: Ctx, f: S.Extrude, solved, frame, faces, d: float, dir
     return {"length": round(d, 6), "draft": draft}
 
 
+# ── Loft / sweep ───────────────────────────────────────────────────
+def _single_loop(ctx: Ctx, sid: str, what: str):
+    solved, frame, faces = _profile(ctx, S.Profile(sketch=sid))
+    if len(faces) != 1:
+        raise FeatureError(f"{what} sketch {sid!r} has {len(faces)} closed regions; it needs exactly one")
+    F = bd.Face(TopoDS.Face(faces[0]))
+    if F.inner_wires():
+        raise FeatureError(f"{what} sketch {sid!r} has a hole in its profile; loft the outside, then cut the inside "
+                           "with a second loft or an extrude")
+    return solved, frame, faces[0], F.outer_wire().wrapped
+
+
+def do_loft(ctx: Ctx, f: S.Loft) -> dict:
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+    if len(set(f.sections)) != len(f.sections):
+        raise FeatureError("a loft's sections must be different sketches")
+    secs = [_single_loop(ctx, sid, "loft section") for sid in f.sections]
+    for (_, fa, _, _), (_, fb, _, _), a, b in zip(secs, secs[1:], f.sections, f.sections[1:]):
+        if abs(fa.n.dot(fb.n)) > 0.9999 and abs((fb.origin - fa.origin).dot(fa.n)) < 1e-9:
+            raise FeatureError(f"loft sections {a!r} and {b!r} lie in the same plane; offset one of them")
+    ts = BRepOffsetAPI_ThruSections(True, f.ruled, 1e-6)
+    for *_, w in secs:
+        ts.AddWire(TopoDS.Wire(w))
+    ts.Build()
+    if not ts.IsDone():
+        raise FeatureError("the loft failed; check that the sections are ordered and don't cross each other")
+    tool = ts.Shape()
+    sol = bd.Shape.cast(tool)
+    if not sol.is_valid or sol.volume <= 1e-9:
+        raise FeatureError("the loft made no valid solid; sections may twist or cross (keep their starting "
+                           "points and directions alike)")
+    labels = [(x, Label(f.id, "start")) for x in list_faces(ts.FirstShape())]
+    labels += [(x, Label(f.id, "end")) for x in list_faces(ts.LastShape())]
+    solved, frame, face0, _ = secs[0]
+    labels += _side_labels(ts, tool, [face0], solved, frame, f.id, labels)
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    return {"sections": len(secs)}
+
+
+def _path_wire(ctx: Ctx, sid: str):
+    """The non-construction lines and arcs of sketch `sid`, chained into one wire in world space."""
+    from .sketch import _edge
+    if sid not in ctx.sketches:
+        raise FeatureError(f"path sketch {sid!r} is missing, later in the tree, or failed to build")
+    solved, frame = ctx.sketches[sid]
+    geo = [e for e in solved.entities.values() if not e.construction and e.type in ("line", "arc", "circle")]
+    if not geo:
+        raise FeatureError(f"path sketch {sid!r} has no lines or arcs")
+    wires = list(bd.Wire.combine([_edge(e) for e in geo], tol=1e-4))
+    if len(wires) != 1:
+        raise FeatureError(f"path sketch {sid!r} has {len(wires)} separate chains; a sweep path is one chain "
+                           "(mark other geometry construction)")
+    return frame.location * wires[0], frame
+
+
+def do_sweep(ctx: Ctx, f: S.Sweep) -> dict:
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_TransitionMode
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipeShell
+    from OCP.gp import gp_Dir
+    if f.path == f.profile.sketch:
+        raise FeatureError("the path must be a different sketch from the profile")
+    solved, frame, faces = _profile(ctx, f.profile)
+    path, pframe = _path_wire(ctx, f.path)
+    t0 = path.edges()[0].tangent_at(0)
+
+    def pipe(wire):
+        ps = BRepOffsetAPI_MakePipeShell(path.wrapped)
+        # a path in one plane: keep the profile's orientation to that plane, so it doesn't twist
+        ps.SetMode(gp_Dir(pframe.n.X, pframe.n.Y, pframe.n.Z))
+        ps.SetTransitionMode(BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
+        ps.Add(wire, False, False)
+        ps.Build()
+        if not ps.IsDone() or not ps.MakeSolid():
+            raise FeatureError("the sweep failed; check the profile crosses the path and the path has no "
+                               "corner tighter than the profile")
+        return ps
+
+    pipes, labels, solids, holes = [], [], [], []
+    for fc in faces:
+        F = bd.Face(TopoDS.Face(fc))
+        if abs(F.normal_at().dot(t0)) < 1e-3:
+            raise FeatureError(f"the profile sketch {f.profile.sketch!r} lies along the path; it must cross it "
+                               "(put it on a plane across the path's start)")
+        outer = pipe(F.outer_wire().wrapped)
+        pipes.append(outer)
+        solids.append(outer.Shape())
+        labels += [(x, Label(f.id, "start")) for x in list_faces(outer.FirstShape())]
+        labels += [(x, Label(f.id, "end")) for x in list_faces(outer.LastShape())]
+        for w in F.inner_wires():  # a hollow profile (a tube): sweep each hole and cut it out below
+            inner = pipe(w.wrapped)
+            pipes.append(inner)
+            holes.append(inner.Shape())
+    tool = solids[0] if len(solids) == 1 else _compound(solids)
+    labels += _side_labels(_PipeHistory(pipes), _compound(solids + holes), faces, solved, frame, f.id, labels)
+    if holes:
+        op = BRepAlgoAPI_Cut(tool, _compound(holes))
+        op.Build()
+        if not op.IsDone():
+            raise FeatureError("cutting the profile's holes out of the sweep failed")
+        tool, labels = op.Shape(), propagate(op, labels, op.Shape(), Label(f.id, "side"))
+    sol = bd.Shape.cast(tool)
+    if not sol.is_valid or sol.volume <= 1e-9:
+        raise FeatureError("the sweep made no valid solid; a path corner may be tighter than the profile")
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    return {"path_length": round(path.length, 6)}
+
+
+class _PipeHistory:
+    """Generated() over several pipe builds (outer walls and hole walls)."""
+
+    def __init__(self, builds):
+        self.builds = builds
+
+    def Generated(self, e):
+        out = []
+        for b in self.builds:
+            out += list(b.Generated(e))
+        return out
+
+
 def _distance_to_face(ctx: Ctx, ref: S.FaceRef, frame) -> float:
     """Signed distance along the sketch normal from the sketch plane to a planar face parallel to it."""
     fs = faces_of(ctx, ref)
@@ -567,7 +689,7 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
 def _replay(ctx: Ctx, pid: str, features: list[str], transforms: list[gp_Trsf]) -> dict:
     for src in features:
         if src not in ctx.tools:
-            raise FeatureError(f"can only pattern extrude, revolve, hole or import features that built before this one; {src!r} is not one")
+            raise FeatureError(f"can only pattern extrude, revolve, loft, sweep, hole or import features that built before this one; {src!r} is not one")
     for i, trsf in enumerate(transforms, start=1):
         for src in features:
             tool = ctx.tools[src]
@@ -842,4 +964,5 @@ BUILDERS = {
     "sketch": do_sketch, "extrude": do_extrude, "revolve": do_revolve, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
     "circular_pattern": do_circular_pattern, "mirror": do_mirror, "import": do_import, "hole": do_hole, "text": do_text,
+    "loft": do_loft, "sweep": do_sweep,
 }

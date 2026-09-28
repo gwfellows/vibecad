@@ -176,8 +176,11 @@ class App:
         for f, fr in zip(s.doc.features, r.features):
             d = {"id": f.id, "type": f.type, "name": f.name, "intent": f.intent, "status": fr.status,
                  "message": fr.message, "warnings": fr.warnings, "cached": fr.cached, **per.get(f.id, {})}
-            if getattr(f, "profile", None) is not None:
-                d["sketch"] = f.profile.sketch  # extrude / revolve: the sketch it consumes
+            used = ([f.profile.sketch] if getattr(f, "profile", None) is not None else []) + list(getattr(f, "sections", None) or []) \
+                + [x for x in (getattr(f, "path", None),) if x]
+            if used:
+                d["sketch"] = used[0]  # extrude / revolve / sweep: the sketch it consumes
+                d["sketches"] = used
             if f.type == "sketch":
                 d["dof"] = fr.info.get("dof")
                 d["plane"] = f.plane.model_dump(exclude_none=True)

@@ -1,0 +1,203 @@
+{
+  "vibecad": "0.1",
+  "name": "bent_tube",
+  "material": "6061-T6 aluminum tube",
+  "process": "tube bending",
+  "design_notes": "A tube bent 90 degrees: a straight leg up, a bend of centreline radius bend_r, a straight leg across. The path is one tangent chain on the XZ plane; the ring profile sits across its start.",
+  "params": {
+    "tube_od": 12.0,
+    "tube_id": 9.0,
+    "leg_1": 40.0,
+    "bend_r": 20.0,
+    "leg_2": 60.0
+  },
+  "features": [
+    {
+      "id": "ring_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "od",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 6.0,
+          "type": "circle"
+        },
+        {
+          "id": "id",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 4.5,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "od"
+          ],
+          "value": "tube_od",
+          "name": "od_diameter"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "od.center",
+            "origin"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "id"
+          ],
+          "value": "tube_id",
+          "name": "id_diameter"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "id.center",
+            "origin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "path_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XZ"
+      },
+      "entities": [
+        {
+          "id": "leg_up",
+          "p1": [
+            0.0,
+            0.0
+          ],
+          "p2": [
+            0.0,
+            40.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bend",
+          "center": [
+            20.0,
+            40.0
+          ],
+          "r": 20.0,
+          "start_angle": 90.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "leg_across",
+          "p1": [
+            20.0,
+            60.0
+          ],
+          "p2": [
+            80.0,
+            60.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "leg_up.p1",
+            "origin"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "leg_up"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "leg_up"
+          ],
+          "value": "leg_1",
+          "name": "leg_1_len"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "leg_up.p2",
+            "bend.end"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "leg_up",
+            "bend",
+            "leg_up.p2"
+          ]
+        },
+        {
+          "type": "radius",
+          "on": [
+            "bend"
+          ],
+          "value": "bend_r",
+          "name": "bend_radius"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bend.start",
+            "leg_across.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "bend",
+            "leg_across",
+            "bend.start"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "leg_across"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "leg_across"
+          ],
+          "value": "leg_2",
+          "name": "leg_2_len"
+        }
+      ]
+    },
+    {
+      "id": "tube",
+      "type": "sweep",
+      "intent": "the tube: the ring swept along the bent centreline",
+      "profile": {
+        "sketch": "ring_sk"
+      },
+      "path": "path_sk"
+    }
+  ]
+}

@@ -50,6 +50,10 @@ def tree_text(res: RegenResult) -> str:
                 extra = f"{f.mode} {f.profile.sketch} {how}" + (f" draft {f.draft} deg" if f.draft not in (0, 0.0, "0") else "")
             else:
                 extra = f"{f.mode} {f.profile.sketch} axis {f.axis} {f.angle} deg"
+        elif f.type == "loft":
+            extra = f"{f.mode} through {', '.join(f.sections)}" + (" ruled" if f.ruled else "")
+        elif f.type == "sweep":
+            extra = f"{f.mode} {f.profile.sketch} along {f.path}"
         elif f.type in ("fillet", "chamfer"):
             extra = f"{getattr(f, 'radius', None) or getattr(f, 'distance', None)} on {r.info.get('edges', '?')} edges"
         elif f.type in ("linear_pattern", "circular_pattern", "mirror"):

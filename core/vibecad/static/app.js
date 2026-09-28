@@ -30,6 +30,8 @@ const ICONS = {
   import: '<path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5"/>',
   hole: '<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0"/>',
   text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+  loft: '<path d="M4 20h10l6-4H10z"/><ellipse cx="13" cy="5.5" rx="4" ry="2"/><path d="M6.5 18.5L9 5.5M17.5 17L17 5.5"/>',
+  sweep: '<circle cx="6" cy="18.5" r="2.5"/><path d="M8.5 18.5V12a5 5 0 0 1 5-5H21M3.5 18.5V12a10 10 0 0 1 10-10H21"/>',
 };
 const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy="12" r="6"/>'}</svg>`;
 
@@ -1235,7 +1237,7 @@ function profileSketch() {
   const upto = S ? S.features.slice(0, rollIndex()) : [];
   const sel = upto.find((f) => f.id === selected && f.type === "sketch");
   if (sel) return sel.id;
-  const used = new Set(upto.map((f) => f.sketch).filter(Boolean));
+  const used = new Set(upto.flatMap((f) => f.sketches || []));
   return [...upto].reverse().find((f) => f.type === "sketch" && !used.has(f.id) && f.status !== "error")?.id || null;
 }
 function modelToolsUpdate() {
@@ -1248,6 +1250,12 @@ function modelToolsUpdate() {
   $("#patternBtn").title = rep.length ? "Pattern: repeat features in a row or around an axis" : "Pattern: make an extrude, revolve or hole to repeat first";
   $("#mirrorBtn").title = rep.length ? "Mirror: copy features across a datum plane" : "Mirror: make an extrude, revolve or hole to mirror first";
   $("#exportBtn").disabled = !hasBody;
+  const sks = sketchesOk();
+  $("#loftBtn").disabled = $("#sweepBtn").disabled = sks.length < 2;
+  $("#loftBtn").title = sks.length < 2 ? "Loft: needs two or more sketches (the sections), on different planes"
+    : "Loft: blend a solid through the profiles of two or more sketches (a square duct to a round one)";
+  $("#sweepBtn").title = sks.length < 2 ? "Sweep: needs two sketches, a profile and a path"
+    : "Sweep: move a profile along a path of lines and arcs (a bent tube, a handle, a frame)";
   const sid = profileSketch();
   for (const [b, kind] of [[$("#extrude3dBtn"), "Extrude"], [$("#revolve3dBtn"), "Revolve"]]) {
     b.disabled = !sid;
@@ -1369,7 +1377,58 @@ $("#shellBtn").onclick = () => {
     }
   };
 };
-const REPLAYABLE = ["extrude", "revolve", "hole", "import"];
+// sketches above the rollback bar that built
+function sketchesOk() {
+  return S ? S.features.slice(0, rollIndex()).filter((f) => f.type === "sketch" && f.status !== "error").map((f) => f.id) : [];
+}
+const sketchOpts = (ids, cur) => ids.map((id) => `<option ${id === cur ? "selected" : ""}>${esc(id)}</option>`).join("");
+const modeRow = (idp, cur) => `<div class="row"><label>mode</label><select id="${idp}">${["add", "cut", "new", "intersect"].map((x) =>
+  `<option ${x === cur ? "selected" : ""}>${x}</option>`).join("")}</select></div>`;
+// loft: the ticked sketches, in tree order; unused sketches are ticked to start with
+$("#loftBtn").onclick = () => {
+  const ids = sketchesOk();
+  if (ids.length < 2) return note("Loft: needs two or more sketches", "err");
+  const used = new Set(S.features.flatMap((f) => f.sketches || []));
+  let pre = ids.filter((id) => !used.has(id));
+  if (pre.length < 2) pre = ids.slice(-2);
+  const m = $("#featMenu"), hasBody = S.volume != null;
+  m.innerHTML = `<div class="ttl">Loft</div><div class="muted">Blend through these sections, first to last (tree order):</div>
+    <div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${pre.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>
+    <div class="row"><label>ruled</label><input id="loRuled" type="checkbox" style="flex:0" title="straight faces between sections instead of a smooth blend"></div>
+    ${modeRow("loMode", hasBody ? "add" : "new")}<button class="go" id="loGo">Loft</button><div class="err" id="loErr"></div>`;
+  popup(m, $("#loftBtn"));
+  $("#loGo").onclick = async () => {
+    const secs = pickedIds(m);
+    if (secs.length < 2) { $("#loErr").textContent = "tick two or more sketches"; return; }
+    const id = nextId("loft");
+    m.hidden = true;
+    if (await addFeature({ id, type: "loft", sections: secs, ...($("#loRuled").checked ? { ruled: true } : {}), mode: $("#loMode").value,
+      intent: `Loft through ${secs.join(", ")}` }, `loft ${id}`)) select(id);
+  };
+};
+// sweep: a profile sketch along a path sketch; guesses the newest unused sketch as the path, the one before as profile
+$("#sweepBtn").onclick = () => {
+  const ids = sketchesOk();
+  if (ids.length < 2) return note("Sweep: needs two sketches, a profile and a path", "err");
+  const used = new Set(S.features.flatMap((f) => f.sketches || []));
+  const free = ids.filter((id) => !used.has(id));
+  const path = free.at(-1) || ids.at(-1), prof = (free.length > 1 ? free.at(-2) : ids.filter((x) => x !== path).at(-1));
+  const m = $("#featMenu"), hasBody = S.volume != null;
+  m.innerHTML = `<div class="ttl">Sweep</div>
+    <div class="row"><label>profile</label><select id="swProf">${sketchOpts(ids, prof)}</select></div>
+    <div class="row"><label>path</label><select id="swPath">${sketchOpts(ids, path)}</select></div>
+    <div class="muted">The path is the other sketch's lines and arcs, end to end. Sharp corners are mitred; round them for a bend.</div>
+    ${modeRow("swMode", hasBody ? "add" : "new")}<button class="go" id="swGo">Sweep</button><div class="err" id="swErr"></div>`;
+  popup(m, $("#sweepBtn"));
+  $("#swGo").onclick = async () => {
+    const pr = $("#swProf").value, pa = $("#swPath").value;
+    if (pr === pa) { $("#swErr").textContent = "the profile and the path must be different sketches"; return; }
+    const id = nextId("sweep");
+    m.hidden = true;
+    if (await addFeature({ id, type: "sweep", profile: { sketch: pr }, path: pa, mode: $("#swMode").value, intent: `Sweep ${pr} along ${pa}` }, `sweep ${id}`)) select(id);
+  };
+};
+const REPLAYABLE = ["extrude", "revolve", "loft", "sweep", "hole", "import"];
 function replayable() {
   return S.features.slice(0, rollIndex()).filter((f) => REPLAYABLE.includes(f.type) && f.status === "ok").map((f) => f.id);
 }
@@ -1568,7 +1627,7 @@ $("#sectionBtn").onclick = () => {
 };
 
 // ── editing a feature's settings in the form that made it ──
-const EDITABLE = ["extrude", "revolve", "hole", "text", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
+const EDITABLE = ["extrude", "revolve", "loft", "sweep", "hole", "text", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
 const val = (v) => (v == null ? "" : esc(String(v)));
 async function editFeature(fid, anchor) {
   let j;
@@ -1582,6 +1641,21 @@ async function editFeature(fid, anchor) {
     let readExtent;
     after = () => { readExtent = wireExtent("ex", j.profile.sketch, j, fid); };
     read = () => ({ ...readExtent(), direction: $("#efDir").value, mode: $("#efMode").value });
+  } else if (j.type === "loft") {
+    const before = S.features.findIndex((f) => f.id === j.id), ids = sketchesOk().filter((id) => S.features.findIndex((f) => f.id === id) < before);
+    body = `<div class="muted">Sections, first to last (tree order):</div>
+      <div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.sections.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>
+      <div class="row"><label>ruled</label><input id="efRuled" type="checkbox" style="flex:0" ${j.ruled ? "checked" : ""}></div>${modes(j.mode || "add")}`;
+    read = () => {
+      const secs = pickedIds(m);
+      if (secs.length < 2) throw new Error("tick two or more sketches");
+      return { sections: secs, ruled: $("#efRuled").checked, mode: $("#efMode").value };
+    };
+  } else if (j.type === "sweep") {
+    const before = S.features.findIndex((f) => f.id === j.id), ids = sketchesOk().filter((id) => S.features.findIndex((f) => f.id === id) < before);
+    body = `<div class="row"><label>profile</label><select id="efProf">${sketchOpts(ids, j.profile.sketch)}</select></div>
+      <div class="row"><label>path</label><select id="efPath">${sketchOpts(ids, j.path)}</select></div>${modes(j.mode || "add")}`;
+    read = () => ({ profile: { ...j.profile, sketch: $("#efProf").value }, path: $("#efPath").value, mode: $("#efMode").value });
   } else if (j.type === "revolve") {
     body = `<div class="row"><label>axis</label><input id="efAxis" value="${val(j.axis)}"></div>
       <div class="row"><label>angle</label><input id="efAng" value="${val(j.angle ?? 360)}"></div>${modes(j.mode || "add")}`;
@@ -1666,7 +1740,7 @@ async function editFeature(fid, anchor) {
   $("#efGo").onclick = async () => {
     let want;
     try { want = read(); } catch (e) { $("#efErr").textContent = e.message; return; }
-    const set = {}, dflt = { draft: 0, distance: 0, extent: "blind", direction: "normal" };
+    const set = {}, dflt = { draft: 0, distance: 0, extent: "blind", direction: "normal", ruled: false };
     for (const [k, v] of Object.entries(want)) if (JSON.stringify(v ?? null) !== JSON.stringify(j[k] ?? dflt[k] ?? null)) set[k] = v;
     m.hidden = true;
     if (Object.keys(set).length) await edit([{ op: "update_feature", id: j.id, set }], `edit ${j.id}`);

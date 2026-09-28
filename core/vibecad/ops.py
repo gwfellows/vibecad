@@ -406,6 +406,13 @@ def _rename_feature(raw: dict, old: str, new: str) -> int:
         if g.get("profile", {}).get("sketch") == old:
             g["profile"]["sketch"] = new
             n += 1
+        for key in ("sketch", "path"):  # hole / text points, sweep path
+            if g is not f and g.get(key) == old and g.get("type") != "sketch":
+                g[key] = new
+                n += 1
+        if old in g.get("sections", []):  # loft
+            g["sections"] = [new if x == old else x for x in g["sections"]]
+            n += 1
         if old in g.get("features", []) and g["type"] in ("linear_pattern", "circular_pattern", "mirror"):
             g["features"] = [new if x == old else x for x in g["features"]]
             n += 1
@@ -438,6 +445,8 @@ def _rename_entity(raw: dict, sid: str, old: str, new: str) -> int:
             n += 1
     makers = set()  # extrudes/revolves built from this sketch: their side faces are labelled with its entities
     for g in raw["features"]:
+        if g.get("sections", [None])[0] == sid:  # a loft's sides are labelled with its first section's entities
+            makers.add(g["id"])
         prof = g.get("profile", {})
         if prof.get("sketch") != sid:
             continue

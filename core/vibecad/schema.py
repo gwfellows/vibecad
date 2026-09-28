@@ -222,6 +222,25 @@ class Revolve(_Feature):
     mode: Mode = "add"
 
 
+class Loft(_Feature):
+    """A solid blended through the closed profiles of two or more sketches, in order (an adapter from a square
+    duct to a round one, a tapered handle). Each section sketch has one closed loop without holes."""
+    type: Literal["loft"] = "loft"
+    sections: list[str] = Field(min_length=2)  # sketch ids, first to last
+    ruled: bool = False  # straight faces between sections instead of a smooth blend
+    mode: Mode = "add"
+
+
+class Sweep(_Feature):
+    """The profile swept along a path: the lines and arcs of another sketch, chained end to end (a bent tube,
+    a handle, a wire channel). Keep the path tangent at its joins (round sharp corners); the profile sketch
+    usually sits across the path's start."""
+    type: Literal["sweep"] = "sweep"
+    profile: Profile
+    path: str  # sketch id; its non-construction lines and arcs form one chain
+    mode: Mode = "add"
+
+
 class Fillet(_Feature):
     type: Literal["fillet"] = "fillet"
     edges: list[EdgeRef]
@@ -321,7 +340,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Extrude, Revolve, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole, Text],
+    Union[Sketch, Extrude, Revolve, Loft, Sweep, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole, Text],
     Field(discriminator="type"),
 ]
 

@@ -79,6 +79,17 @@ def expected_volume(name, p):
         outer = (W - 2 * m) * (D - 2 * m) - 4 * fillet_corner_area(r - m)
         inner = (W - 2 * t + 2 * m) * (D - 2 * t + 2 * m) - 4 * fillet_corner_area(r - t + m)
         return (outer - inner) * p["seal_t"]
+    if name == "duct_adapter":  # ruled lofts: rectangles whose sides change linearly, so areas are quadratic in z
+        L, t, w = p["duct_len"], p["flange_t"], p["wall"]
+
+        def lofted(w0, d0, w1, d1, z1):  # volume of a ruled rectangle loft (over duct_len) from z = 0 to z1: Simpson
+            area = lambda z: (w0 + (w1 - w0) * z / L) * (d0 + (d1 - d0) * z / L)
+            return z1 / 6 * (area(0) + 4 * area(z1 / 2) + area(z1))
+        outer = (p["in_w"], p["in_d"], p["out_w"], p["out_d"])
+        inner = (p["in_w"] - 2 * w, p["in_d"] - 2 * w, p["out_w"] - 2 * w, p["out_d"] - 2 * w)
+        return lofted(*outer, L) + p["flange_w"] ** 2 * t - lofted(*outer, t) - lofted(*inner, L)
+    if name == "bent_tube":  # Pappus: the ring's centroid follows the path
+        return pi * (p["tube_od"] ** 2 - p["tube_id"] ** 2) / 4 * (p["leg_1"] + pi * p["bend_r"] / 2 + p["leg_2"])
     if name == "drafted_boss_block":  # plate + back wall + a boss up to the wall's top, a cone frustum from its draft
         from math import radians
         h = p["wall_h"]

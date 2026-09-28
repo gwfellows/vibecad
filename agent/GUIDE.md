@@ -46,7 +46,7 @@ Time goes into deliberating before the first tool call, not into the tools. Meas
 
 - Refer to faces by the feature that made them: `{"feature": "base", "role": "end"}`, `{"feature": "wall", "role": "side", "entity": "wall_top"}`. Never by index.
 - Every face and edge reference gets a `note` in plain words ("inside corner where base top meets wall back face"). If a reference later fails, read its note and call `face_labels` to repair it.
-- Patterns and mirrors re-apply extrude/revolve features. Copies are addressed with `"instance": "<pattern_id>#n"` or `"*"`.
+- Patterns and mirrors re-apply extrude, revolve, loft, sweep, hole and import features. Copies are addressed with `"instance": "<pattern_id>#n"` or `"*"`.
 
 ## Verify, every time
 
