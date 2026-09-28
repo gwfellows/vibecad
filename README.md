@@ -165,7 +165,7 @@ Register the MCP server once: `claude mcp add --scope project vibecad -- uv run 
 
 ## Screenshots and GIFs
 
-The images in `docs/img/` are taken from the running app (the GIFs still show the earlier tool column; re-record them where ffmpeg is installed): `ONLY=readme_shots scripts/gui_smoke.sh docs/img` for the PNGs, `ONLY=readme_gifs scripts/gui_smoke.sh docs/img` for the GIFs (Playwright video, a drawn cursor and captions, converted with ffmpeg; `GIFS=edges` records one).
+The images in `docs/img/` are taken from the running app: `ONLY=readme_shots scripts/gui_smoke.sh docs/img` for the PNGs, `ONLY=readme_gifs scripts/gui_smoke.sh docs/img` for the GIFs (Playwright video, a drawn cursor and captions, converted with ffmpeg; `GIFS=edges` records one. No ffmpeg? `uv run --no-project --with imageio-ffmpeg python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"` prints the path of a static build to put on your PATH).
 
 ## License
 
