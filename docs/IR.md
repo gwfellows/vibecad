@@ -107,6 +107,9 @@ Parts are edited through ops, applied in batches as one undoable transaction (`a
 {"op": "set_dimension", "sketch": "<id>", "name": "<dimension name>", "value": "12 mm"}
 {"op": "rename_feature", "id": "<feature id>", "to": "<new id>"}          (updates profiles, face/edge refs, pattern lists)
 {"op": "rename_entity", "sketch": "<id>", "id": "<entity id>", "to": "<new id>"}   (updates constraints, regions, face refs)
+{"op": "fillet_corner", "sketch": "<id>", "corner": "<line>.p2", "radius": "corner_r"}
+      (rounds the corner where two lines meet: trims them, adds a tangent arc with a named radius; dimensions to
+       the corner and the lines' lengths move to a construction point at the sharp corner, so sizes are kept)
 ```
 
 Sketch shortcuts (expand into fully constrained primitives, stored as ordinary entities and constraints):

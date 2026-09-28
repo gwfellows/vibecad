@@ -342,6 +342,37 @@ const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
   const slotA = 20 * 8 + Math.PI * 16, hexA = (3 * Math.sqrt(3) / 2) * 36;
   check("slot and hexagon extrude to the right volume", near(await vol(), (slotA + hexA) * 5, 0.5), `${await vol()} (expected ${((slotA + hexA) * 5).toFixed(1)})`);
 
+  // ── round a corner in a sketch: a rectangle keeps its size, the corner becomes a tangent arc ──
+  await newPart("round_test");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.keyboard.press("r");
+  await at(0, 0); await at(30, 20);
+  await page.keyboard.press("s");
+  const dimOps = [{ op: "add_constraint", sketch: "sketch1", constraint: { type: "distance", on: ["rect1_bottom"], value: 30, name: "w" } },
+    { op: "add_constraint", sketch: "sketch1", constraint: { type: "distance", on: ["rect1_right"], value: 20, name: "h" } },
+    { op: "add_constraint", sketch: "sketch1", constraint: { type: "coincident", on: ["rect1_bottom.p1", "origin"] } }];
+  await page.evaluate((ops) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ops, message: "size it" }) }), dimOps);
+  await idle();
+  check("rectangle fully constrained", (await skf((s) => s.data().dof)) === 0);
+  await at(30, 20);  // the top-right corner
+  check("a corner point selected enables Round corner", !(await page.isDisabled("#sketchTools [data-act=roundcorner]")));
+  await page.keyboard.press("f");
+  await page.waitForSelector("#dimEdit:not([hidden])");
+  await page.fill("#dimEdit input", "4");
+  await page.press("#dimEdit input", "Enter");
+  await idle();
+  d = await skf((s) => s.data());
+  check("the corner became a tangent arc, still 0 DOF", d.entities.some((e) => e.type === "arc" && Math.abs(e.r - 4) < 1e-6) && d.dof === 0,
+    `${d.entities.map((e) => `${e.id}:${e.type}`).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "2");
+  await page.click("#ffGo");
+  await idle();
+  check("rounded plate: 30 × 20 less the corner", near(await vol(), (600 - 16 * (1 - Math.PI / 4)) * 2, 0.01), `${await vol()}`);
+
   // ── part properties: a material gives Measure a mass ──
   await page.click("#propsBtn");
   await page.fill("#ppMat", "PETG");

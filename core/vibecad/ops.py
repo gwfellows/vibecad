@@ -19,6 +19,9 @@ transaction: all apply and the result validates against the schema, or nothing c
     {"op": "set_dimension", "sketch": "<id>", "name": "<dimension name>", "value": "12 mm"}
     {"op": "rename_feature", "id": "<feature id>", "to": "<new id>"}          updates every reference to it
     {"op": "rename_entity", "sketch": "<id>", "id": "<entity id>", "to": "<new id>"}   same, for a sketch entity
+    {"op": "fillet_corner", "sketch": "<id>", "corner": "<line>.p1|p2", "radius": "r", "id": "<arc id>"?}
+          rounds the corner where two lines meet (joined by a coincident): the lines are trimmed to the tangent
+          points and a tangent arc with a named radius dimension joins them
 """
 from __future__ import annotations
 
@@ -44,7 +47,7 @@ OP_KINDS = {
     "set_param", "remove_param", "set_meta", "add_feature", "update_feature", "remove_feature", "move_feature",
     "add_entity", "update_entity", "remove_entity", "add_constraint", "update_constraint", "remove_constraint",
     "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon",
-    "rename_feature", "rename_entity",
+    "rename_feature", "rename_entity", "fillet_corner",
 }
 ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 META_FIELDS = {"name", "design_notes", "material", "process"}
@@ -263,6 +266,8 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
     elif kind == "rename_entity":
         n = _rename_entity(raw, op["sketch"], op["id"], op["to"])
         notes.append(f"renamed {op['sketch']}.{op['id']} to {op['to']!r}; updated {n} reference(s)")
+    elif kind == "fillet_corner":
+        notes.append(_fillet_corner(raw, op))
     elif kind == "set_dimension":
         sk = _sketch(raw, op["sketch"])
         c = sk["constraints"][_match_constraint(sk, {"name": op["name"]})]
@@ -273,6 +278,99 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
             notes.append(f"dimension {op['name']!r} is driven by param {cur.strip()!r}; set that param to {op['value']!r}")
         else:
             c["value"] = op["value"]
+
+
+def _fillet_corner(raw: dict, op: dict) -> str:
+    import math
+
+    from .expr import evaluate
+    sk = _sketch(raw, op["sketch"])
+    env = evaluate_params(raw.get("params", {}))
+    ents = {e["id"]: e for e in sk["entities"]}
+    num = lambda v: evaluate(v, env)
+    xy = lambda p: (num(p[0]), num(p[1]))
+    corner = op["corner"]
+    eid, _, end = corner.partition(".")
+    if ents.get(eid, {}).get("type") != "line" or end not in ("p1", "p2"):
+        raise OpError(f"corner {corner!r} must be a line endpoint like 'side.p2'")
+    partner, ci = None, None
+    for i, c in enumerate(sk["constraints"]):
+        if c["type"] == "coincident" and corner in c["on"] and len(c["on"]) == 2:
+            other = c["on"][1] if c["on"][0] == corner else c["on"][0]
+            oid, _, oend = other.partition(".")
+            if ents.get(oid, {}).get("type") == "line" and oend in ("p1", "p2") and oid != eid:
+                partner, ci = other, i
+                break
+    if partner is None:
+        raise OpError(f"{corner} is not joined to another line's end by a coincident constraint; fillet_corner "
+                      "rounds the corner where two lines meet")
+    oid, _, oend = partner.partition(".")
+    l1, l2 = ents[eid], ents[oid]
+    p = xy(l1[end])
+    a = xy(l1["p2" if end == "p1" else "p1"])
+    b = xy(l2["p2" if oend == "p1" else "p1"])
+    r = num(op["radius"])
+    if r <= 0:
+        raise OpError(f"fillet radius must be > 0, got {r:g}")
+    la, lb = math.dist(a, p), math.dist(b, p)
+    if la < 1e-9 or lb < 1e-9:
+        raise OpError("a line at the corner has no length")
+    u = ((a[0] - p[0]) / la, (a[1] - p[1]) / la)
+    v = ((b[0] - p[0]) / lb, (b[1] - p[1]) / lb)
+    theta = math.acos(max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1])))
+    if theta < 1e-6 or math.pi - theta < 1e-6:
+        raise OpError("the two lines are in line at that corner: nothing to round")
+    t = r / math.tan(theta / 2)
+    if t >= la - 1e-9 or t >= lb - 1e-9:
+        raise OpError(f"radius {r:g} is too big for these lines: it needs {t:.3g} of each, and they are "
+                      f"{la:.3g} and {lb:.3g} long")
+    t1 = (p[0] + u[0] * t, p[1] + u[1] * t)
+    t2 = (p[0] + v[0] * t, p[1] + v[1] * t)
+    bis = (u[0] + v[0], u[1] + v[1])
+    bl = math.hypot(*bis)
+    d = r / math.sin(theta / 2)
+    ctr = (p[0] + bis[0] / bl * d, p[1] + bis[1] / bl * d)
+    ang = lambda q: math.degrees(math.atan2(q[1] - ctr[1], q[0] - ctr[0])) % 360
+    s1, s2 = ang(t1), ang(t2)
+    first, second = (corner, partner) if (s2 - s1) % 360 <= 180 else (partner, corner)  # arcs run counterclockwise
+    if first != corner:
+        s1, s2 = s2, s1
+    aid = op.get("id") or f"{eid}_{oid}_round"
+    _check_new_id(aid, set(ents), "entity")
+    r6 = lambda q: [round(q[0], 6), round(q[1], 6)]
+    # dimensions to the corner, and the lines' lengths, keep measuring to the sharp corner (as CAD does): a
+    # construction point held at the lines' intersection stands in for it
+    vc = f"{aid}_corner"
+    _check_new_id(vc, set(ents) | {aid}, "entity")
+    far1, far2 = f"{eid}.{'p2' if end == 'p1' else 'p1'}", f"{oid}.{'p2' if oend == 'p1' else 'p1'}"
+    del sk["constraints"][ci]
+    moved = []
+    for c in sk["constraints"]:
+        on = c["on"]
+        if len(on) == 1 and on[0] in (eid, oid) and c["type"] in ("distance", "distance_x", "distance_y"):
+            corner_end, far = (end, far1) if on[0] == eid else (oend, far2)
+            c["on"] = [far, vc] if corner_end == "p2" else [vc, far]  # p2 - p1 keeps its sign
+            moved.append(c)
+        elif corner in on or partner in on:
+            c["on"] = [vc if r in (corner, partner) else r for r in on]
+            moved.append(c)
+    l1[end], l2[oend] = r6(t1), r6(t2)
+    sk["entities"].append({"id": vc, "type": "point", "at": r6(p), "construction": True})
+    sk["constraints"] += [{"type": "point_on", "on": [vc, eid]}, {"type": "point_on", "on": [vc, oid]}]
+    sk["entities"].append({"id": aid, "type": "arc", "center": r6(ctr), "r": round(r, 6),
+                           "start_angle": round(s1, 6), "end_angle": round(s2, 6)})
+    sk["constraints"] += [
+        {"type": "coincident", "on": [first, f"{aid}.start"]},
+        {"type": "coincident", "on": [second, f"{aid}.end"]},
+        {"type": "tangent", "on": [first.split(".")[0], aid, first]},
+        {"type": "tangent", "on": [second.split(".")[0], aid, second]},
+        {"type": "radius", "on": [aid], "value": op["radius"], "name": op.get("name") or f"{aid}_r"},
+    ]
+    note = f"rounded {corner} / {partner} with arc {aid!r} (radius {op['radius']})"
+    if moved:
+        note += (f"; {len(moved)} constraint(s) that used the corner now use {vc!r}, the sharp corner the lines "
+                 "still meet at: " + ", ".join(c.get("name") or c["type"] for c in moved))
+    return note
 
 
 def _check_new_id(to, taken, what: str) -> None:

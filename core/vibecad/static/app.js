@@ -906,6 +906,7 @@ function ghostPart(on) {
   group(SKETCH_CONSTRAINTS.map((c) => btn(c.id, c.title, () => SK.constrain(c.id), { con: c.id })));
   group([btn("project", "Project the outline of this sketch's face as reference geometry to constrain to (it follows the part)", () => SK.projectOutline(), { act: "project" }),
          btn("construction", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
+         btn("roundcorner", "Round corner: select the point where two lines meet, then give the radius (F)", () => SK.roundCorner(), { act: "roundcorner" }),
          btn("rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
          btn("param", "Drive the selected dimension from a new part parameter", () => SK.toParam(), { act: "param" }),
          btn("clearmarks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
@@ -952,6 +953,7 @@ function sketchBarUpdate() {
   $("#sketchTools [data-act=clearmarks]").disabled = !SK.marks().length;
   $("#sketchTools [data-act=project]").disabled = !d.on_face;
   $("#sketchTools [data-act=param]").disabled = !SK.canParam();
+  $("#sketchTools [data-act=roundcorner]").disabled = !SK.canRound();
   const sub = tool === "select" && sel.length ? `Selected: ${sel.join(", ")}` : HINTS[tool](SK.pendingCount());
   $("#sketchHint").textContent = sub;
 }
@@ -1754,7 +1756,7 @@ $("#propsDlg").onclose = async () => {
 // keyboard shortcuts: ? shows them
 const KEYS = [["Model", ""], ["M", "Measure"], ["F", "Fit the part in view"], ["Ctrl/⌘ Z", "Undo"], ["Ctrl/⌘ Shift Z", "Redo"], ["Double-click a feature", "Edit it"],
   ["Shift-click", "Pick more faces or edges"], ["Esc", "Leave measure / reference picking"], ["Sketch", ""], ["S L R C A", "Select, Line, Rectangle, Circle, Arc"], ["O N P", "Slot, Polygon, Point"],
-  ["M", "Mark (freehand, for the agent)"], ["H V E T D", "Horizontal, Vertical, Equal, Tangent, Dimension"], ["G", "Construction on/off"], ["Delete", "Delete the selection"],
+  ["M", "Mark (freehand, for the agent)"], ["F", "Round the selected corner"], ["H V E T D", "Horizontal, Vertical, Equal, Tangent, Dimension"], ["G", "Construction on/off"], ["Delete", "Delete the selection"],
   ["Esc", "Cancel the tool, clear the selection, then leave the sketch"], ["", ""], ["?", "This list"]];
 function showKeys() {
   $("#keysList").innerHTML = KEYS.map(([k, d]) => (!d ? (k ? `<div class="h">${k}</div>` : "") : `<div>${k.split(" / ").map((x) => `<kbd>${esc(x)}</kbd>`).join(" / ")}</div><div>${esc(d)}</div>`)).join("");

@@ -630,6 +630,23 @@ export function createSketchEditor(ctx) {
       inp.onblur = () => done(null);
     });
   }
+  // round the corner where two lines meet (the selected point): the server trims them and adds a tangent arc
+  function canRound() {
+    if (sel.size !== 1) return false;
+    const [k] = sel, [eid, end] = k.split(".");
+    if (ent(eid)?.type !== "line" || !["p1", "p2"].includes(end)) return false;
+    return D.constraints.some((c) => c.type === "coincident" && c.on.includes(k) && c.on.some((r) => r !== k && ent(r.split(".")[0])?.type === "line"));
+  }
+  async function roundCorner() {
+    if (!canRound()) return ctx.note("Round corner: select the point where two lines meet", "err");
+    const [k] = sel, el = ctx.labelsBox.querySelector(".sel") || null;
+    const text = await askValue(el, "2", "corner radius =");
+    if (text == null) return;
+    const v = parseValue(text);
+    if (v.error) return ctx.note(v.error, "err");
+    sel = new Set();
+    await commit([{ op: "fillet_corner", sketch: sid, corner: k, radius: v.value }], `round corner ${k} in ${sid}`);
+  }
   async function editDim(c, el) {
     const shown = c.param || (c.expr && isNaN(+c.expr) ? c.expr : String(+(+c.value).toFixed(6)));
     const text = await askValue(el, shown, `${c.name || c.type} =`);
@@ -891,6 +908,7 @@ export function createSketchEditor(ctx) {
     const c = CONSTRAINTS.find((x) => x.key === k);
     if (c) { constrain(c.id); return true; }
     if (k === "g") { toggleConstruction(); return true; }
+    if (k === "f" && canRound()) { roundCorner(); return true; }
     return false;
   }
 
@@ -940,7 +958,7 @@ export function createSketchEditor(ctx) {
 
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
-    rename, toParam, canRename, canParam, projectOutline,
+    rename, toParam, canRename, canParam, projectOutline, roundCorner, canRound,
     marks: () => marks.map((m) => m.map(([u, v]) => [+u.toFixed(2), +v.toFixed(2)])),
     clearMarks: () => { marks = []; stroke = null; render(); ctx.onChange?.(); },
     active: () => sid,

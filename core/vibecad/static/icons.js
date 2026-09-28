@@ -29,6 +29,7 @@ export const ICON = {
   dy: S('<path d="M12 4h9M12 20h9M16.5 4v16M14 7l2.5-3 2.5 3M14 17l2.5 3 2.5-3"/>' + T("y", 7, 15, 9)),
   // edit actions
   project: S('<rect x="5" y="9" width="14" height="11" stroke-dasharray="3 2"/><path d="M12 2v6M9.5 5.5L12 8l2.5-2.5"/>'),
+  roundcorner: S('<path d="M4 20V11a7 7 0 0 1 7-7h9"/><circle cx="4" cy="20" r="1.4" fill="currentColor"/><circle cx="20" cy="4" r="1.4" fill="currentColor"/><path d="M8 16l3-3" stroke-width="1.2"/>'),
   clearmarks: S('<path d="M3 17c2.5-5 4.5 1.5 7-3"/><path d="M14 20l6-6-4-4-8 8 2 2h4z"/>'),
   rename: S('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>'),
   param: S(T("ƒx", 12, 16.5, 11)),
