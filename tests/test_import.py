@@ -238,3 +238,28 @@ def test_outward_shell_of_an_imported_phone_is_a_case(tmp_path):
     # walls grow outward with rounded outer edges (the offset of a sharp box): between the sharp and rounded bounds
     sharp = 74 * 144 * 10 - 70 * 140 * 8
     assert sharp * 0.9 < res.part.volume < sharp
+
+
+def test_agent_check_fit_includes_reference_imports_and_measure_gives_mass(tmp_path):
+    import json
+
+    from vibecad.workspace import Workspace
+
+    bd.export_step(bd.Box(20, 20, 10, align=bd.Align.MIN), str(tmp_path / "motor.step"))
+    ws = Workspace(tmp_path)
+    ws.new_part("mount.vcad.json", "mount")
+    rep = json.loads(ws.apply_ops([
+        {"op": "set_meta", "set": {"material": "PLA"}},
+        {"op": "add_feature", "feature": {"id": "motor", "type": "import", "file": "motor.step", "mode": "reference"}},
+        {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY", "offset": 10}}},
+        {"op": "add_rectangle", "sketch": "sk", "id": "plate", "width": 30, "height": 30, "center": [10, 10]},
+        {"op": "add_feature", "feature": {"id": "plate", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 3}},
+    ], "mount on the motor"))
+    assert rep["ok"], rep
+    fit = json.loads(ws.check_fit([]))
+    assert fit["reference motor"] == {"overlap_mm3": 0, "min_gap_mm": 0, "touching": True}
+    m = json.loads(ws.measure())
+    assert m["mass_g"] == pytest.approx(30 * 30 * 3 / 1000 * 1.24, rel=1e-6) and m["density"] == 1.24
+    ws.apply_ops([{"op": "update_feature", "id": "sk", "set": {"plane": {"datum": "XY", "offset": 8}}}], "sink it", "agent")
+    fit = json.loads(ws.check_fit([]))
+    assert fit["reference motor"]["overlap_mm3"] == pytest.approx(20 * 20 * 2)  # the plate now dips 2 mm into the motor

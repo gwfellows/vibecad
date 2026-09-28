@@ -359,21 +359,9 @@ class App:
         name = re.sub(r"[^A-Za-z0-9._-]+", "_", vr.doc.name or "part").strip("._") or "part"
         fmt = fmt.lower()
         out = Path(tempfile.mkdtemp(prefix="vibecad-export-")) / f"{name}.{fmt}"
+        from .workspace import write_part
         with self.ws.lock:
-            if fmt == "step":
-                bd.export_step(part, str(out))
-            elif fmt == "stl":
-                bd.export_stl(part, str(out), tolerance=0.01, angular_tolerance=0.1)
-            elif fmt == "brep":
-                bd.export_brep(part, str(out))
-            elif fmt == "glb":
-                bd.export_gltf(part, str(out), binary=True)
-            elif fmt == "3mf":
-                m = bd.Mesher()
-                m.add_shape(part, linear_deflection=0.01, angular_deflection=0.1)
-                m.write(str(out))
-            else:
-                raise ToolError(f"can't export {fmt!r}; use step, stl, 3mf, brep or glb")
+            write_part(part, fmt, out)
         return str(out), out.name
 
     def sketch_geometry(self, sid: str) -> dict:

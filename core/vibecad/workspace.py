@@ -162,19 +162,37 @@ class Workspace:
         return [round(c, 6) for c in self._frame(sketch_id).to_local((x, y, z))]
 
     def measure(self) -> str:
-        s = self.session().result.summary()
+        from .measure import mass_properties
+        res = self.session().result
+        s = res.summary()
         s.pop("features", None)
         s.pop("face_labels", None)
+        if res.body.shape is not None:
+            m = mass_properties(res.body.shape, res.doc.material)
+            s.update({k: m[k] for k in ("area", "center_of_mass", "density", "mass_g") if k in m})
+            s["area_mm2"] = s.pop("area")
         return json.dumps(s, indent=1)
 
     def check_fit(self, other_paths: list[str]) -> str:
-        """Overlap volume between the active part and other parts (all modeled in shared world coordinates)."""
+        """Overlap volume between the active part and other parts (all modeled in shared world coordinates), and
+        its reference imports."""
+        import build123d as bd
+
         from .regen import Regenerator, load
 
         me = self.session().result.part
         if me is None:
             raise ToolError("active part has no solid")
         out = {}
+        res = self.session().result
+        for rid, rb in res.refs.items():  # reference imports (the phone, the motor): always checked
+            other = bd.Shape.cast(rb.shape)
+            if not other.solids():
+                out[f"reference {rid}"] = {"min_gap_mm": round(me.distance_to(other), 4), "note": "surfaces or mesh only: no overlap volume"}
+                continue
+            ov = (me & other).volume
+            gap = me.distance_to(other)
+            out[f"reference {rid}"] = {"overlap_mm3": round(ov, 4), "min_gap_mm": round(gap, 4), "touching": ov < 1e-6 and gap < 1e-4}
         for p in other_paths:
             key = str(self._path(p))
             if key not in self.sessions and not Path(key).exists():
@@ -231,8 +249,30 @@ class Workspace:
         out = self._path(path) if path else self.root / "out" / s.doc.name / f"{s.doc.name}.{fmt}"
         out.parent.mkdir(parents=True, exist_ok=True)
         with self.lock:
-            {"step": bd.export_step, "stl": bd.export_stl}[fmt](part, str(out))
+            write_part(part, fmt, out)
         return f"wrote {out}"
+
+
+EXPORT_FORMATS = ("step", "stl", "3mf", "brep", "glb")
+
+
+def write_part(part, fmt: str, out: Path) -> None:
+    """A solid to a file: STEP (exact), STL / 3MF (meshes for printing), BREP (OpenCascade), GLB (viewers)."""
+    import build123d as bd
+    if fmt == "step":
+        bd.export_step(part, str(out))
+    elif fmt == "stl":
+        bd.export_stl(part, str(out), tolerance=0.01, angular_tolerance=0.1)
+    elif fmt == "brep":
+        bd.export_brep(part, str(out))
+    elif fmt == "glb":
+        bd.export_gltf(part, str(out), binary=True)
+    elif fmt == "3mf":
+        m = bd.Mesher()
+        m.add_shape(part, linear_deflection=0.01, angular_deflection=0.1)
+        m.write(str(out))
+    else:
+        raise ToolError(f"can't export {fmt!r}; use {', '.join(EXPORT_FORMATS)}")
 
 
 def tile(imgs: list) -> bytes:
@@ -282,15 +322,15 @@ TOOLS: list[dict] = [
     {"name": "to_sketch", "desc": "World point -> sketch [u, v, w]; w is distance along the sketch normal.",
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
-    {"name": "measure", "desc": "Volume, bounding box, face count, validity and params of the active part.", "props": {}, "req": []},
-    {"name": "check_fit", "desc": "Overlap volume and minimum gap between the active part and other part files that share its world coordinates. Use for multi-part designs.",
+    {"name": "measure", "desc": "Volume, surface area, bounding box, centre of mass, mass (from the part's material), face count, validity and params of the active part.", "props": {}, "req": []},
+    {"name": "check_fit", "desc": "Overlap volume and minimum gap between the active part and other part files that share its world coordinates, and its reference imports (always included). Use for multi-part designs and for parts designed around an imported one.",
      "props": {"other_paths": {"type": "array", "items": S_STR}}, "req": ["other_paths"]},
     {"name": "render", "desc": "Render the active part as one tiled PNG. views: iso, iso_back, iso_below, front, top, right (default iso, iso_back, iso_below, top). highlight: feature ids drawn orange.",
      "props": {"views": {"type": "array", "items": S_STR}, "highlight": {"type": "array", "items": S_STR}}, "req": [], "image": True},
     {"name": "render_sketch_image", "desc": "Plot a sketch in its 2D coordinates with entity ids, dimensions, DOF and frame.",
      "props": {"sketch_id": S_STR}, "req": ["sketch_id"], "image": True},
-    {"name": "export", "desc": "Export the active part as step or stl (default out/<name>/<name>.<fmt>).",
-     "props": {"fmt": {"type": "string", "enum": ["step", "stl"]}, "path": S_STR}, "req": []},
+    {"name": "export", "desc": "Export the active part as step, stl, 3mf, brep or glb (default out/<name>/<name>.<fmt>).",
+     "props": {"fmt": {"type": "string", "enum": list(EXPORT_FORMATS)}, "path": S_STR}, "req": []},
 ]
 
 
