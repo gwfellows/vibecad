@@ -50,6 +50,8 @@ Constraints: `{"type": ..., "on": [refs], "value": Num, "name": "shown_to_user",
 
 Rules: fully constrain every sketch (build reports DOF). Where a line meets an arc at an endpoint, use the 3-reference `tangent` with the shared point, never a 2-reference tangent plus coincident: that combination is degenerate and the solver flags it redundant.
 
+Regions: closed loops nest even-odd (a circle inside a plate is a hole, a loop inside that hole is an island). Loops that touch or cross each other (an L drawn as two stacked rectangles, a tab standing on a plate's edge) make one region, their union.
+
 ## Features
 
 | type | key fields |
