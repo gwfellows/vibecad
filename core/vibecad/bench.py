@@ -152,6 +152,9 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
             if gap is None or not chk.get("gap_min", 0) - 1e-6 <= gap <= chk.get("gap_max", 1e9) + 1e-6:
                 return f"gap to {rid} is {gap}, expected {chk.get('gap_min', 0)}-{chk.get('gap_max', 'any')}"
         return None
+    if kind == "import_file":  # the part imports this file (a swapped-in model, not the old one)
+        names = [Path(f.file).name for f in res.doc.features if f.type == "import" and not f.suppressed]
+        return None if chk["name"] in names else f"no import of {chk['name']} (imports: {names})"
     if kind == "feature_type":  # with "field": one of them sets that field to something non-zero
         feats = [f for f in res.doc.features if f.type == chk["type"]]
         if "field" in chk:

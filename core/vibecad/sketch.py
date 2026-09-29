@@ -534,29 +534,34 @@ def regions(solved: SolvedSketch) -> list[Region]:
         ents = sorted({solved.entity_at(_mid(ed)) or "?" for w in open_w for ed in w.edges()})
         raise SketchError(f"sketch {solved.id!r} has an open profile through entities {ents}; "
                           "close the loop or mark stray entities construction")
-    if _loops_touch(wires):  # stacked rectangles, a tab standing on a plate: the union, not even-odd nesting
+    try:
+        return _nested_regions(wires, solved)
+    except _Tangled as t:  # loops that share parts of edges (an L drawn as two rectangles): their union
         arranged = _arranged_regions(edges, solved)
         if arranged:
             return arranged
+        raise SketchError(t.args[0]) from None
+
+
+class _Tangled(Exception):
+    """Loops that touch each other, so they don't nest even-odd; the message is for when no union works either."""
+
+
+def _nested_regions(wires: list[bd.Wire], solved: SolvedSketch) -> list[Region]:
+    tangled = (f"sketch {solved.id!r}: its loops touch or overlap in a way that makes no closed region; draw the "
+               "outline as one add_polygon, or put the pieces in separate sketches")
     loops = []
     for w in wires:
         bad = _self_intersections(w, solved)
         if bad:
-            arranged = _arranged_regions(edges, solved)
-            if arranged:  # loops that touch along part of an edge (an L drawn as two rectangles): their union
-                return arranged
             names = " and ".join(dict.fromkeys(bad[:2]))
-            raise SketchError(f"sketch {solved.id!r}: the profile through {names} crosses itself near "
-                              f"({bad[2][0]:.2f}, {bad[2][1]:.2f}); a loop must not self-intersect (check vertex order "
-                              "and coordinates)")
+            raise _Tangled(f"sketch {solved.id!r}: the profile through {names} crosses itself near "
+                           f"({bad[2][0]:.2f}, {bad[2][1]:.2f}); a loop must not self-intersect (check vertex order "
+                           "and coordinates)")
         try:
             f = bd.Face(w)
         except Exception:  # OCCT can't make a face of a tangled wire (a rectangle standing on another's edge)
-            arranged = _arranged_regions(edges, solved)
-            if arranged:
-                return arranged
-            raise SketchError(f"sketch {solved.id!r}: its loops touch or overlap in a way that makes no closed "
-                              "region; draw the outline as one add_polygon, or put the pieces in separate sketches") from None
+            raise _Tangled(tangled) from None
         ents = {solved.entity_at(_mid(ed)) for ed in w.edges()} - {None}
         loops.append({"wire": w, "face": f, "area": abs(f.area), "ents": ents, "parents": []})
     loops.sort(key=lambda l: -l["area"])
@@ -564,6 +569,8 @@ def regions(solved: SolvedSketch) -> list[Region]:
         probe = a["wire"].edges()[0].position_at(0.5)
         for b in loops[:i]:
             if b["face"].is_inside(probe):
+                if _touch(a["wire"], b["wire"]):  # a tab standing on a plate's edge, not a hole in it
+                    raise _Tangled(tangled)
                 a["parents"].append(b)
     out = []
     for a in loops:
@@ -571,7 +578,10 @@ def regions(solved: SolvedSketch) -> list[Region]:
         if depth % 2:
             continue
         holes = [b["wire"] for b in loops if len(b["parents"]) == depth + 1 and a in b["parents"]]
-        face = bd.Face(a["wire"], holes) if holes else a["face"]
+        try:
+            face = bd.Face(a["wire"], holes) if holes else a["face"]
+        except Exception:
+            raise _Tangled(tangled) from None
         out.append(Region(face=face, outer_entities=a["ents"]))
     return out
 
@@ -617,17 +627,12 @@ def _arranged_regions(edges: list[bd.Edge], solved: SolvedSketch) -> list[Region
         return None
 
 
-def _loops_touch(wires: list[bd.Wire]) -> bool:
-    boxes = [w.bounding_box() for w in wires]
-    for i in range(len(wires)):
-        for j in range(i + 1, len(wires)):
-            a, b = boxes[i], boxes[j]
-            if (a.min.X > b.max.X + 1e-6 or b.min.X > a.max.X + 1e-6 or a.min.Y > b.max.Y + 1e-6
-                    or b.min.Y > a.max.Y + 1e-6):
-                continue
-            if wires[i].distance_to(wires[j]) < 1e-6:
-                return True
-    return False
+def _touch(a: bd.Wire, b: bd.Wire) -> bool:
+    ba, bb = a.bounding_box(), b.bounding_box()
+    if (ba.min.X > bb.max.X + 1e-6 or bb.min.X > ba.max.X + 1e-6 or ba.min.Y > bb.max.Y + 1e-6
+            or bb.min.Y > ba.max.Y + 1e-6):
+        return False
+    return a.distance_to(b) < 1e-6
 
 
 def _inner_point(face: bd.Face) -> bd.Vector:

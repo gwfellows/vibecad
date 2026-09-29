@@ -41,4 +41,22 @@ with bd.BuildPart() as bat:
     with bd.Locations((36, 0, 9)):
         bd.Box(4, 8, 6)
 bd.export_step(bat.part, str(here / "battery_pack.step"))
+# the same kind of phone in a case: bigger and thicker, and exported elsewhere
+with bd.BuildPart() as case:
+    with bd.BuildSketch():
+        bd.RectangleRounded(78, 153, 11)
+    bd.extrude(amount=12.4)
+bd.export_step(bd.Pos(-150, 60, 0) * case.part, str(here / "phone_case.step"))
+# a micro servo (SG90 size): 22.8 x 12.2 x 22.7 body, 2.5 mm mounting tabs 32.3 mm across with 2 mm holes
+# 27.8 mm apart, their undersides 15.9 mm up; output shaft on top, off-centre. Exported lying on its side
+with bd.BuildPart() as srv:
+    bd.Box(22.8, 12.2, 22.7, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+    with bd.Locations((0, 0, 15.9)):
+        bd.Box(32.3, 12.2, 2.5, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+    with bd.Locations(*[(x, 0, 18.4) for x in (-13.9, 13.9)]):
+        bd.Hole(1.0, 2.5)
+    with bd.Locations((5.5, 0, 22.7)):
+        bd.Cylinder(5.9, 4, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+        bd.Cylinder(2.4, 7.2, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+bd.export_step(bd.Pos(30, 40, 6.1) * bd.Rot(90, 0, 0) * srv.part, str(here / "servo.step"))
 print("ok")

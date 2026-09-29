@@ -45,3 +45,11 @@ def test_region_selection_picks_the_merged_outline():
     res = _build([_rect("base", [0, 0], 100, 5), _rect("back", [0, 5], 5, 60)], regions=["back_top"])
     assert res.ok, [f.message for f in res.features]
     assert res.part.volume == pytest.approx((100 * 5 + 5 * 60) * 10, rel=1e-9)
+
+
+def test_crossing_loops_stay_separately_selectable():
+    """A panel sunk into a slab (the loops cross, sharing no corner): each can still be extruded on its own."""
+    ops = [_rect("slab", [0, 0], 60, 8), _rect("panel", [20, -5], 6, 50)]
+    assert _build(ops, regions=["panel_top"]).part.volume == pytest.approx(6 * 50 * 10, rel=1e-9)
+    assert _build(ops, regions=["slab_bottom"]).part.volume == pytest.approx(60 * 8 * 10, rel=1e-9)
+    assert _build(ops).part.volume == pytest.approx((60 * 8 + 6 * 50 - 6 * 8) * 10, rel=1e-9)

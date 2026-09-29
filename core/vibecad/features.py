@@ -206,8 +206,26 @@ def _profile(ctx: Ctx, p: S.Profile):
         regs = [r for r in regs if r.outer_entities & want]
     if not regs:
         raise FeatureError(f"no closed regions selected in sketch {p.sketch!r} (regions={p.regions})")
-    faces = [(frame.location * r.face).wrapped for r in regs]
+    local = [r.face for r in regs]
+    if len(local) > 1 and _any_touch(local):
+        # overlapping or touching regions (a panel sunk into a slab): one face of their union, or the extrude
+        # makes overlapping solids and double-counts the shared part
+        local = local[0].fuse(*local[1:]).clean().faces()
+    faces = [(frame.location * f).wrapped for f in local]
     return solved, frame, faces
+
+
+def _any_touch(faces: list) -> bool:
+    boxes = [f.bounding_box() for f in faces]
+    for i in range(len(faces)):
+        for j in range(i + 1, len(faces)):
+            a, b = boxes[i], boxes[j]
+            if (a.min.X > b.max.X + 1e-6 or b.min.X > a.max.X + 1e-6 or a.min.Y > b.max.Y + 1e-6
+                    or b.min.Y > a.max.Y + 1e-6):
+                continue
+            if faces[i].distance_to(faces[j]) < 1e-6:
+                return True
+    return False
 
 
 def _side_labels(gen, tool, faces, solved: SolvedSketch, frame: Frame, fid: str, caps: list) -> list:

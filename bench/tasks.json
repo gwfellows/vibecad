@@ -517,5 +517,51 @@
     "max": 3
    }
   ]
+ },
+ {
+  "id": "servo_mount_step",
+  "prompt": "servo.step is a micro servo. Design a 3D printed bracket that screws to a flat surface and holds the servo upright (output shaft up), fastened by its two mounting tabs with M2 screws.",
+  "setup_files": [
+   "bench/fixtures/servo.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.05,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 1.5,
+    "d_max": 2.5,
+    "min": 2
+   }
+  ]
+ },
+ {
+  "id": "phone_swap_edit",
+  "prompt": "phone_stand.vcad.json is a desk stand for phone.step. The phone now lives in a case: phone_case.step is the phone in its case. Update the stand so it holds that instead.",
+  "setup_files": [
+   "bench/fixtures/phone_stand.vcad.json",
+   "bench/fixtures/phone.step",
+   "bench/fixtures/phone_case.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "import_file",
+    "file": "phone_stand.vcad.json",
+    "name": "phone_case.step"
+   },
+   {
+    "kind": "ref_fit",
+    "file": "phone_stand.vcad.json",
+    "overlap_max": 0.5,
+    "gap_min": 0,
+    "gap_max": 1.0
+   }
+  ]
  }
 ]
