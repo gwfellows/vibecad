@@ -89,6 +89,12 @@ def test_place_import_tool_for_the_agent(tmp_path):
     bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
     assert bb.min.Z == pytest.approx(7) and bb.center().X == pytest.approx(0) and bb.center().Y == pytest.approx(0)
     assert bb.size.X == pytest.approx(20) and bb.size.Y == pytest.approx(10)  # its long side along the plate's (60 x 40)
+    assert out["contact"].startswith("the import's face now points -Z (down), against a face pointing +Z (up)")
+    # the part's faces with outward normals, so a misnamed sketch edge is visible before placing against it
+    rows = ws.face_labels("plate").splitlines()
+    assert "normals point out" in rows[0]
+    assert any(r.startswith("plate.end ") and "normal (0, 0, 1)" in r for r in rows)
+    assert any(r.startswith("plate.start ") and "normal (0, 0, -1)" in r for r in rows)
     with pytest.raises(ToolError, match="must be on cube"):
         ws.place_import("cube", {"feature": "plate", "role": "end"}, {"feature": "plate", "role": "end"})
     with pytest.raises(ToolError, match="matched"):

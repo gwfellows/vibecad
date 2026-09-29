@@ -182,6 +182,18 @@ Cycle 2 (import tasks, two runs each): motor 2 of 2, phone stand 2 of 2 (both co
 - The IR reference says trig takes and returns degrees.
 - The bench marks runs cut off by the usage limit as `LIMIT`, not as failures.
 
+Cycle 3 (import and assembly tasks, two runs each): 7 of 8. Phone stand 2 of 2 (298 to 431 s), two-part enclosure 2 of 2 (225 to 532 s), cell holder for three 2 of 2 (about 20 s). The one failure made a base that fits the lid without importing it: the check was too strict (a base built from the lid's shared params is fine), so it now accepts either.
+
+Cycle 4 (phone stand and enclosure again): enclosure 2 of 2; phone stand 0 of 2. One run left the phone 1.6 mm off the backrest; the other never moved it (95 mm away) and reported. Fixes:
+- With one face pair, `place_import` also turns the import so the long sides of the two faces line up (the phone lands landscape on a wide backrest), for `align: touch` too.
+- Every edit report has a `fit` line when a reference is far from the part ("at least 95 mm from the part: ... put it where the part holds it"), not only when they overlap.
+
+Cycle 5 (phone stand, three runs): 2 of 3 (321 and 451 s). The failure left a scratch part (`test_extrude.vcad.json`) behind: the agent drew the side profile as three touching rectangles, got an OCCT `TopoDS::Face` type mismatch, and spent minutes on a scratch file finding out why. In the slow pass, the agent's `add_polygon` edge names were two edges off (`wall_front_top_to_slot` was the slot floor), so `place_import` onto it correctly put the phone flat, and the agent spent 4 minutes on rotation math by hand. Fixes:
+- Sketch loops that touch or cross (an L or T drawn as stacked rectangles) make one region, their union, through an OCCT edge arrangement.
+- `face_labels` with a part feature's id lists each face's outward normal and centre (as it already did for imports). The normals come from the solid's own faces: the stored label faces can carry the opposite orientation.
+- `place_import` returns a `contact` line: "the import's face now points -Z (down), against a face pointing +Z (up)", so a misnamed face shows at once.
+- Guide: try things in the part and `undo`, not in scratch files; read the `contact` line.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?

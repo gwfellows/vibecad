@@ -150,6 +150,11 @@ class Workspace:
         if feature_id in res.refs:  # a reference import: its faces with what they are, to pick for sketches and placing
             return "\n".join(_ref_faces(feature_id, res.refs[feature_id]))
         out = available(res.body, feature_id)
+        if feature_id is not None and any(l.feature == feature_id for _, l in res.body.labels):
+            # with where each face is and which way it faces: a misnamed polygon edge shows up here, not three
+            # place_import calls later
+            return "\n".join([f"faces of {feature_id} (plane normals point out of the solid):"]
+                             + _ref_faces(feature_id, res.body, feature=feature_id))
         if feature_id is None and res.refs:
             out.append(f"reference imports (face_labels with their id for their faces): {', '.join(res.refs)}")
         return "\n".join(out)
@@ -269,9 +274,13 @@ class Workspace:
                 tr = slide(rot, tr, n_b, n_a2, c_a2, tuple(B2.normal_at()), tuple(B2.center()), float(gap2))
             except ValueError as e:
                 raise ToolError(str(e)) from None
+        from .mate import rot_xyz
+        n_now = rot_xyz(rot) @ rot_xyz(rot0).T @ np.array(n_a)
+        contact = (f"the import's face now points {_heading(n_now)}, against a face pointing {_heading(n_b)}. If that "
+                   "isn't the face you meant (a misnamed sketch edge), face_labels with the feature id lists each face's normal")
         rep = self.apply_ops([{"op": "update_feature", "id": import_id, "set": {"rotate": rot, "translate": tr}}], message, author)
         out = json.loads(rep) if isinstance(rep, str) else rep
-        return {"ok": out.get("ok", False), "rotate": rot, "translate": tr, "report": out}
+        return {"ok": out.get("ok", False), "rotate": rot, "translate": tr, "contact": contact, "report": out}
 
     def check_fit(self, other_paths: list[str]) -> str:
         """Overlap volume between the active part and other parts (all modeled in shared world coordinates), and
@@ -364,15 +373,21 @@ class Workspace:
         return f"wrote {out}" + "".join(f"\nNOT READY: {w}" for w in fit)
 
 
-def _ref_faces(rid: str, body, limit: int = 80) -> list[str]:
-    """A reference import's faces: label, surface, and where it is (plane normal and centre, cylinder axis and
-    diameter), largest first."""
+def _ref_faces(rid: str, body, limit: int = 80, feature: str | None = None) -> list[str]:
+    """A reference import's (or one feature's) faces: label, surface, and where it is (plane normal and centre,
+    cylinder axis and diameter), largest first."""
     import build123d as bd
     from OCP.TopoDS import TopoDS
 
     from .measure import describe
+    from .topo import list_faces
     rows = []
-    for face, lab in body.labels:
+    # the solid's own faces, not the stored label faces: those can carry the opposite orientation, and the
+    # normal must point out of the solid
+    pairs = [(f, l) for f in list_faces(body.shape) for l in body.labels_of(f)] if body.shape is not None else []
+    for face, lab in pairs:
+        if feature is not None and lab.feature != feature:
+            continue
         F = bd.Face(TopoDS.Face(face))
         d = describe(face)
         c = F.center()
@@ -390,6 +405,19 @@ def _ref_faces(rid: str, body, limit: int = 80) -> list[str]:
     if len(rows) > limit:
         out.append(f"... {len(rows) - limit} smaller faces not listed")
     return out
+
+
+def _heading(n) -> str:
+    """A direction in words: '+Z (up)', or the vector with its tilt from the nearest axis."""
+    import math
+    names = {(2, 1): "+Z (up)", (2, -1): "-Z (down)", (0, 1): "+X", (0, -1): "-X", (1, 1): "+Y", (1, -1): "-Y"}
+    n = [float(v) for v in n]
+    i = max(range(3), key=lambda k: abs(n[k]))
+    tilt = math.degrees(math.acos(min(1.0, abs(n[i]) / (math.hypot(*n) or 1))))
+    axis = names[(i, 1 if n[i] > 0 else -1)]
+    if tilt < 0.5:
+        return axis
+    return f"({', '.join(f'{v + 0:.3g}' for v in n)}), {tilt:.0f}° off {axis}"
 
 
 def _gap(a, b) -> float | None:
@@ -465,7 +493,7 @@ TOOLS: list[dict] = [
      "props": {"ops": {"type": "array", "items": {"type": "object"}}, "message": S_STR}, "req": ["ops", "message"]},
     {"name": "undo", "desc": "Undo the last applied batch.", "props": {}, "req": []},
     {"name": "redo", "desc": "Redo the last undone batch.", "props": {}, "req": []},
-    {"name": "face_labels", "desc": "Face labels on the current body, optionally for one feature. Use to write or repair FaceRefs. For a reference import's id: its faces with their geometry (plane normal and centre, cylinder axis and diameter).",
+    {"name": "face_labels", "desc": "Face labels on the current body. With a feature id (a part feature or a reference import): each of its faces with its geometry (outward plane normal and centre, cylinder axis and diameter). Use to write or repair FaceRefs, and to check a face is the one you mean before placing against it or sketching on it.",
      "props": {"feature_id": S_STR}, "req": []},
     {"name": "to_world", "desc": "Sketch (u, v) -> world [x, y, z] in mm.",
      "props": {"sketch_id": S_STR, "u": {"type": "number"}, "v": {"type": "number"}}, "req": ["sketch_id", "u", "v"]},
