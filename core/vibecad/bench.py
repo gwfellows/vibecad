@@ -62,14 +62,15 @@ def check_parts(workdir: Path, task: dict, prev: dict[str, float | None] | None 
     setup = {Path(f).name for f in ([task["setup_copy"]] if task.get("setup_copy") else []) + task.get("setup_files", [])}
     made = [p for p in parts if p.name not in setup] or parts  # checks default to the part the agent made
     for chk in task.get("checks", []):
-        msg = _check(chk, made, workdir, prev)
+        msg = _check(chk, made, workdir, prev, parts)
         if msg:
             out["problems"].append(msg)
     out["pass"] = not out["problems"]
     return out
 
 
-def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | None] | None = None) -> str | None:
+def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | None] | None = None,
+           parts_all: list[Path] | None = None) -> str | None:
     """Task-specific checks. Returns a problem description, or None if the check passes.
 
     In a follow-up turn, `volume_change` with `"from": "@prev"` compares against the part as it was
@@ -129,7 +130,14 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
         return None if ok else f"{n} holes of d {chk['d_min']}-{chk['d_max']} mm, expected {chk.get('min')}-{chk.get('max')}"
     if kind == "ref_fit":  # against the part's reference imports: none overlapped, gaps in range
         from .measure import min_distance
-        refs = res.refs
+        refs = dict(res.refs)
+        if not refs and chk.get("or_parts"):  # multi-part workflow: the mating part as its own file, same world coordinates
+            from .topo import Body
+            for other in parts_all:
+                if other.resolve() != target.resolve():
+                    op = Regenerator(other.parent).run(load(other)).part
+                    if op is not None:
+                        refs[other.name] = Body(op.wrapped, [])
         if len(refs) < chk.get("min_refs", 1):
             return f"{len(refs)} reference import(s), expected at least {chk.get('min_refs', 1)}"
         for rid, rb in refs.items():
