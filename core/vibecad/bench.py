@@ -165,8 +165,11 @@ async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunn
         shutil.copy(ROOT / "agent" / "GUIDE.md", workdir / "agent" / "GUIDE.md")
     events = (workdir / "events.jsonl").open("w")
     t0 = time.time()
+    limit_hit = []
 
     def on_event(e):
+        if e["type"] == "agent_text" and "hit your session limit" in str(e.get("text", "")):
+            limit_hit.append(e["text"])  # the account's usage ran out: the run says nothing about the agent
         if e["type"] == "agent_phase" and e.get("chars"):
             return  # progress ticks: too many to log
         e = {k: v for k, v in e.items() if k != "png_b64"}
@@ -193,7 +196,7 @@ async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunn
                               "check": check_parts(workdir, {"expect_parts": task.get("expect_parts"), **fu}, prev)})
     events.close()
     result = {"task": task["id"], "variant": variant["name"], "metrics": m.summary(), "check": check,
-              "followups": followups}
+              "followups": followups, **({"aborted": limit_hit[0]} if limit_hit else {})}
     (workdir / "metrics.json").write_text(json.dumps(result, indent=1))
     return result
 
@@ -206,7 +209,8 @@ def table(results: list[dict]) -> str:
         turns += [(f"{r['task']} +{f['n']}", f["metrics"], f["check"]) for f in r.get("followups", [])]
         for name, m, c in turns:
             f1 = m.get("first_output_s")
-            rows.append(f"| {name} | {r['variant']} | {'yes' if c['pass'] else 'NO'} | {m['wall_s']:.0f} | "
+            verdict = "LIMIT" if r.get("aborted") else ("yes" if c["pass"] else "NO")
+            rows.append(f"| {name} | {r['variant']} | {verdict} | {m['wall_s']:.0f} | "
                         f"{f1 if f1 is None else round(f1)} | {m['thinking_s']:.0f} | {m['tool_input_s']:.0f} | {m['text_s']:.0f} | "
                         f"{m['tool_s']:.0f} | {m['turns']} | {m['n_tool_calls']} | {m['ops_rejected']} | "
                         f"{m['tool_counts'].get('render', 0)} | {m['output_tokens']} | {m['cost_usd']:.2f} |")
@@ -234,7 +238,7 @@ def main(argv=None) -> None:
                 r = asyncio.run(run_one(t, variants[vn], out / f"{t['id']}_{i + 1}"))
                 results.append(r)
                 m = r["metrics"]
-                print(f"  {'pass' if r['check']['pass'] else 'FAIL'}  {m['wall_s']:.0f}s  {m['n_tool_calls']} tools  "
+                print(f"  {'LIMIT' if r.get('aborted') else ('pass' if r['check']['pass'] else 'FAIL')}  {m['wall_s']:.0f}s  {m['n_tool_calls']} tools  "
                       f"${m['cost_usd']:.2f}  {r['check']['problems'][:2]}", flush=True)
                 for f in r["followups"]:
                     fm = f["metrics"]

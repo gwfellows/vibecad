@@ -85,3 +85,19 @@ def slide(rotate, translate, n_b, n_a2, c_a2, n_b2, c_b2, gap2: float = 0.0) -> 
     s = float(np.dot(np.asarray(c_a2, float) - np.asarray(c_b2, float), n_b2))  # how far the second faces are apart now
     t = (gap2 - s) / float(np.dot(u, n_b2))
     return [_clean(v) for v in np.asarray(translate, float) + t * u]
+
+
+def spin_to(rotate, n_b, n_a2, n_b2) -> list[float]:
+    """After a mate onto a plane with normal n_b: turn the import about n_b so its second face's normal n_a2 points
+    against the second target's normal n_b2 (as seen within the contact plane). Two face pairs fix the orientation
+    fully: a phone's back on the backrest and its long edge on the lip is landscape, whatever the file's axes."""
+    n_b = np.asarray(n_b, float) / np.linalg.norm(n_b)
+    proj = lambda v: np.asarray(v, float) - np.dot(v, n_b) * n_b
+    a, b = proj(n_a2), -proj(n_b2)
+    if np.linalg.norm(a) < 1e-6 or np.linalg.norm(b) < 1e-6:
+        return list(rotate)  # one of them is along the contact normal: nothing to turn
+    a, b = a / np.linalg.norm(a), b / np.linalg.norm(b)
+    ang = math.atan2(float(np.dot(np.cross(a, b), n_b)), float(np.dot(a, b)))
+    K = np.array([[0, -n_b[2], n_b[1]], [n_b[2], 0, -n_b[0]], [-n_b[1], n_b[0], 0]])
+    turn = np.eye(3) + math.sin(ang) * K + (1 - math.cos(ang)) * (K @ K)
+    return xyz_of(turn @ rot_xyz(rotate))

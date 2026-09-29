@@ -31,7 +31,18 @@ VIEWS = {  # name: (camera direction from target, world up)
     "right": ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
 }
 BASE = np.array([0.62, 0.70, 0.80])
+REF = np.array([0.55, 0.36, 0.96])
 HILITE = np.array([0.95, 0.55, 0.15])
+
+
+def _compound(shapes):
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Compound
+    c, bb = TopoDS_Compound(), BRep_Builder()
+    bb.MakeCompound(c)
+    for x in shapes:
+        bb.Add(c, x)
+    return c
 
 
 def _basis(view):
@@ -44,16 +55,38 @@ def _basis(view):
 
 
 def render_view(body: Body, path: Path, view: str = "iso", title: str = "", highlight: set[str] | None = None,
-                size_px: int = 900) -> None:
+                size_px: int = 900, refs: dict[str, Body] | None = None) -> None:
     b, right, up2 = _basis(view)
     light = b + 0.4 * up2 + 0.25 * right
     light /= np.linalg.norm(light)
     polys, colors, depths = [], [], []
-    part = bd.Shape.cast(body.shape)
-    diag = part.bounding_box().diagonal or 1.0
+    shapes = ([body.shape] if body.shape is not None else []) + [rb.shape for rb in (refs or {}).values()]
+    diag = bd.Shape.cast(_compound(shapes)).bounding_box().diagonal or 1.0 if shapes else 1.0
     tol = diag / 400
 
-    for f in list_faces(body.shape):
+    # reference imports (the phone, the motor): see-through violet, so the agent can check where they sit
+    for rid, rb in (refs or {}).items():
+        hl = bool(highlight) and rid in highlight
+        for f in list_faces(rb.shape):
+            face = bd.Face(TopoDS.Face(f))
+            try:
+                verts, tris = face.tessellate(diag / 150, 0.4)
+            except Exception:
+                continue
+            V = np.array([[v.X, v.Y, v.Z] for v in verts]) if verts else None
+            for t in tris:
+                p0 = V[list(t)]
+                n = np.cross(p0[1] - p0[0], p0[2] - p0[0])
+                nn = np.linalg.norm(n)
+                if nn < 1e-12:
+                    continue
+                shade = 0.55 + 0.45 * abs(float((n / nn) @ light))
+                col = (*((HILITE if hl else REF) * shade), 0.35)
+                polys.append(np.c_[p0 @ right, p0 @ up2])
+                colors.append(col)
+                depths.append(float((p0 @ b).mean()))
+
+    for f in (list_faces(body.shape) if body.shape is not None else []):
         face = bd.Face(TopoDS.Face(f))
         hl = bool(highlight) and any(l.feature in highlight for l in body.labels_of(f))
         verts, tris = face.tessellate(tol, 0.2)
@@ -84,7 +117,7 @@ def render_view(body: Body, path: Path, view: str = "iso", title: str = "", high
                 colors.append(col)
                 depths.append(float((p @ b).mean()))
 
-    segs = _visible_edges(body.shape, b, diag)
+    segs = _visible_edges(body.shape, b, diag) if body.shape is not None else []
     order = np.argsort(depths)
     fig, ax = plt.subplots(figsize=(size_px / 100, size_px / 100), dpi=100)
     ax.add_collection(PolyCollection([polys[i] for i in order], facecolors=[colors[i] for i in order],

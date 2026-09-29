@@ -165,6 +165,23 @@ Two more fixes came out of the re-runs:
 
 A full re-run of the suite after these changes got through 9 of 15 tasks before the account's usage limit stopped it: all 9 passed. The other 6 ran after the limit reset, and all passed. So with the changes the suite passes 19 of 19 turns (baseline 18 of 19), with both import tasks passing. Wall time on the 9 is mixed: tube_corner_bracket 215 → 56 s and tube_bracket 196 → 94 s, but vbelt_pulley 316 → 347 s, shelf_bracket 198 → 296 s and battery_mount 236 → 299 s. bushing_longer also went 66 → 174 s, while stiffen_bracket stayed at about 70 s and the conversation tasks were unchanged. These are single runs, so treat the slowdowns as variance until repeated: none of the changes touch those tasks' tools, but the longer guide is in every prompt.
 
+## 2026-09-29: expanded suite, two more cycles
+
+Seven tasks added (a NEMA 17 bracket from a motor STEP that arrives lying down, a phone stand, a tray for a board and a battery, a loft fan duct, a swept towel rail, a drawing export, a drafted molded knob), then two more (a base plate for `enclosure_lid.vcad.json`, a three-cell edit of `cell_holder`). New checks: `file_glob` (an export exists), `feature_type` with `field` (e.g. an extrude with a draft); checks default to the part the agent made, not setup files.
+
+Cycle 1 (new tasks, two runs each): 13 of 14 pass. Loft, sweep, drawing and draft tasks are quick (5 to 90 s, $0.03 to 0.16). The import tasks cost the most (160 to 250 s, $0.30 to 0.50). Findings and fixes:
+- Phone stand run 1 built the stand at the origin and left the phone where its file put it, 81 mm away; nothing flagged it. Export now says `NOT READY` when a reference is more than 2 mm from the part.
+- `render` crashed ("vector has zero norm") on a part with blind drilled holes: the hidden-line test asked for a normal at a drill tip's cone apex. Fixed.
+- Rejected batches: the agent assumed partial success and sent follow-ups referring to a sketch that was never added. Errors now say nothing in the batch was applied. An op nested as a field (`add_rectangle` inside a sketch) gets a hint to send it as its own op. Calls to op names as tools (`update_feature`) recurred in 4 runs; the apply_ops description now says ops aren't tools.
+- Hole `points` given as `m3_1.center` are accepted.
+- About 60 s of hand geometry to slide a placed phone down onto the lip: `place_import` gained `then_face` / `then_target`.
+
+Cycle 2 (import tasks, two runs each): motor 2 of 2, phone stand 2 of 2 (both correct now) but 430 to 445 s and $0.73 to 0.82, tray 1 of 2 (the failure was the account's usage limit cutting the run off mid-way). The phone stand's time went into: 183 s planning; 180 s after `place_import` because the smallest-rotation mate left the phone twisted (portrait, or turned about the contact), and the agent worked out the rotation by hand; renders don't show reference bodies, so it couldn't see where the phone was; and it assumed trig takes radians. Fixes, not yet benched:
+- With a second face pair, `place_import` also turns the import about the first contact so that pair faces each other: two face pairs fix the orientation (back on the backrest, long edge on the lip is landscape).
+- Renders draw reference bodies see-through in violet (orange when highlighted).
+- The IR reference says trig takes and returns degrees.
+- The bench marks runs cut off by the usage limit as `LIMIT`, not as failures.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?

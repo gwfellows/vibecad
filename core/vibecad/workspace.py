@@ -236,12 +236,20 @@ class Workspace:
         if second is not None:  # then slide within the first contact plane until a second pair of faces meets
             import numpy as np
 
-            from .mate import rot_xyz, slide
+            from .mate import rot_xyz, slide, spin_to
             fa2, fb2, gap2 = second
             A2, B2 = bd.Face(TopoDS.Face(fa2)), bd.Face(TopoDS.Face(fb2))
             if A2.geom_type != bd.GeomType.PLANE or B2.geom_type != bd.GeomType.PLANE:
                 raise ToolError("then_face and then_target must be flat")
-            move = rot_xyz(rot) @ rot_xyz(rot0).T  # the mate's turn: where the second face points and sits now
+            # turn about the first contact's normal so the second pair of faces face each other too, keeping the
+            # first face's centre where the mate put it
+            c_first = rot_xyz(rot) @ rot_xyz(rot0).T @ (np.array(c_a) - np.array(tr0)) + np.array(tr)
+            n_a2_now = rot_xyz(rot) @ rot_xyz(rot0).T @ np.array(tuple(A2.normal_at()))
+            rot_s = spin_to(rot, n_b, n_a2_now, tuple(B2.normal_at()))
+            spin = rot_xyz(rot_s) @ rot_xyz(rot).T
+            tr = list(spin @ (np.array(tr) - c_first) + c_first)
+            rot = rot_s
+            move = rot_xyz(rot) @ rot_xyz(rot0).T  # the whole turn: where the second face points and sits now
             c_a2 = move @ (np.array(tuple(A2.center())) - np.array(tr0)) + np.array(tr)
             n_a2 = move @ np.array(tuple(A2.normal_at()))
             try:
@@ -300,7 +308,7 @@ class Workspace:
         from .render import VIEWS, render_view
 
         s = self.session()
-        if s.result.body.shape is None:
+        if s.result.body.shape is None and not s.result.refs:
             raise ToolError("no solid yet")
         views = views or DEFAULT_VIEWS
         bad = [v for v in views if v not in VIEWS]
@@ -310,7 +318,8 @@ class Workspace:
         with self.lock, tempfile.TemporaryDirectory() as td:  # meshing is not thread-safe (see App.mesh)
             for v in views:
                 p = Path(td) / f"{v}.png"
-                render_view(s.result.body, p, v, f"{s.doc.name}  {v}", highlight=set(highlight or []), size_px=size)
+                render_view(s.result.body, p, v, f"{s.doc.name}  {v}", highlight=set(highlight or []), size_px=size,
+                            refs=s.result.refs)
                 tiles.append(PILImage.open(p).convert("RGB"))
         return tile(tiles)
 
