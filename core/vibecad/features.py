@@ -296,6 +296,13 @@ def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str, rev
     if mode == "cut" and n1 > n0:
         ctx.warnings.append(f"cut split the body into {n1} separate solids (it had {n0}); a cut wider than the "
                             "material around it leaves disconnected pieces. Check the cut's size against the part.")
+    if mode == "add" and n1 > n0 and _n_solids(tool) <= 1:
+        ctx.warnings.append(f"add left {n1} separate solids: the new material doesn't touch the body (or only along "
+                            "an edge). Move it so it overlaps the body.")
+    if _is_valid(body.shape) and not _is_valid(merged):
+        ctx.warnings.append(f"the {mode} left an invalid solid. Usually two faces only touch: an edge of the new "
+                            "profile lying exactly on an existing face, or two sketch loops sharing an edge. Make them "
+                            "overlap by a little, or leave a gap.")
     ctx.body = Body(merged, pairs)
 
 
