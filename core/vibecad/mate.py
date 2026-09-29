@@ -101,3 +101,35 @@ def spin_to(rotate, n_b, n_a2, n_b2) -> list[float]:
     K = np.array([[0, -n_b[2], n_b[1]], [n_b[2], 0, -n_b[0]], [-n_b[1], n_b[0], 0]])
     turn = np.eye(3) + math.sin(ang) * K + (1 - math.cos(ang)) * (K @ K)
     return xyz_of(turn @ rot_xyz(rotate))
+
+
+def long_axis(points, n) -> np.ndarray | None:
+    """The direction of a flat face's longest extent within its plane (normal n), from points on it; None when it
+    is round or square enough that no direction stands out."""
+    n = np.asarray(n, float) / np.linalg.norm(n)
+    P = np.asarray(points, float)
+    P = P - P.mean(0)
+    P = P - np.outer(P @ n, n)
+    w, v = np.linalg.eigh(P.T @ P)
+    if w[-1] < 1.2 * w[-2]:  # within 10 % in extent: no clear long side
+        return None
+    return v[:, -1]
+
+
+def spin_long_sides(rotate, n_b, axis_a_now, axis_b) -> list[float]:
+    """Turn about n_b so the import face's long side (axis_a_now, after the mate) lies along the target face's long
+    side (axis_b): a phone put against a wide backrest ends up landscape. Takes the smaller of the two turns."""
+    if axis_a_now is None or axis_b is None:
+        return list(rotate)
+    n_b = np.asarray(n_b, float) / np.linalg.norm(n_b)
+    a = np.asarray(axis_a_now, float) - np.dot(axis_a_now, n_b) * n_b
+    b = np.asarray(axis_b, float) - np.dot(axis_b, n_b) * n_b
+    if np.linalg.norm(a) < 1e-6 or np.linalg.norm(b) < 1e-6:
+        return list(rotate)
+    a, b = a / np.linalg.norm(a), b / np.linalg.norm(b)
+    if np.dot(a, b) < 0:
+        b = -b  # a line has no direction: turn the short way
+    ang = math.atan2(float(np.dot(np.cross(a, b), n_b)), float(np.dot(a, b)))
+    K = np.array([[0, -n_b[2], n_b[1]], [n_b[2], 0, -n_b[0]], [-n_b[1], n_b[0], 0]])
+    turn = np.eye(3) + math.sin(ang) * K + (1 - math.cos(ang)) * (K @ K)
+    return xyz_of(turn @ rot_xyz(rotate))

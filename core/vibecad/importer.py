@@ -32,6 +32,17 @@ def is_part(path: Path) -> bool:
     return path.name.endswith(".vcad.json")
 
 
+def _nearby(path: Path) -> str:
+    """The CAD files next to where it looked: the agent often guesses a folder that isn't there."""
+    for d in (path.parent, path.parent.parent):
+        if d.is_dir():
+            files = sorted(p.name for p in d.iterdir() if p.suffix.lower() in (".step", ".stp", ".iges", ".igs", ".brep", ".brp", ".stl")
+                           or p.name.endswith(".vcad.json"))
+            if files:
+                return f"; files in {d.name or d}: {', '.join(files[:12])} (paths are relative to the part's folder)"
+    return ""
+
+
 def part_label(label) -> str:
     """Another part's face label as an import entity: brackets and @ would clash with our own label syntax."""
     return str(label).replace("[", "(").replace("]", ")").replace("@", "~")
@@ -42,7 +53,7 @@ def load_part(path: Path) -> tuple[TopoDS_Shape, list, dict]:
     `{"feature": "enclosure", "role": "face", "entity": "box.end"}` and survive edits to that part."""
     from .regen import Regenerator, load as load_doc
     if not path.exists():
-        raise ImportError_(f"import file {path} not found")
+        raise ImportError_(f"import file {path} not found{_nearby(path)}")
     key = str(path.resolve())
     if key in _loading:
         raise ImportError_(f"{path.name} imports itself (directly or through other parts)")
@@ -69,7 +80,7 @@ def load(path: Path, as_solid: bool) -> tuple[TopoDS_Shape, dict]:
     """The file's shape and facts about it ({"format", "triangles"?, "mesh": bool}). `as_solid`: an STL is sewn
     into a solid (needed for booleans); otherwise it stays one triangulated face (fast; display and fit only)."""
     if not path.exists():
-        raise ImportError_(f"import file {path} not found")
+        raise ImportError_(f"import file {path} not found{_nearby(path)}")
     kind = SUFFIXES.get(path.suffix.lower())
     if kind is None:
         raise ImportError_(f"can't import {path.suffix!r} files; use STEP (.step/.stp), IGES, BREP or STL")

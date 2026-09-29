@@ -85,9 +85,10 @@ def test_place_import_tool_for_the_agent(tmp_path):
     text, _ = call(ws, "place_import", {"import_id": "cube", "face": {"feature": "cube", "role": bottom.role, "entity": bottom.entity},
                                         "target": {"feature": "plate", "role": "end"}, "gap": 2})
     out = json.loads(text)
-    assert out["ok"] and out["rotate"] == [0.0, 0.0, 0.0], out
+    assert out["ok"], out
     bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
     assert bb.min.Z == pytest.approx(7) and bb.center().X == pytest.approx(0) and bb.center().Y == pytest.approx(0)
+    assert bb.size.X == pytest.approx(20) and bb.size.Y == pytest.approx(10)  # its long side along the plate's (60 x 40)
     with pytest.raises(ToolError, match="must be on cube"):
         ws.place_import("cube", {"feature": "plate", "role": "end"}, {"feature": "plate", "role": "end"})
     with pytest.raises(ToolError, match="matched"):
@@ -138,3 +139,29 @@ def test_second_face_pair_sets_the_spin(tmp_path):
     bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
     assert bb.size.Z == pytest.approx(20, abs=1e-6) and bb.size.Y == pytest.approx(30, abs=1e-6), bb.size
     assert bb.min.Z == pytest.approx(5, abs=1e-6) and bb.min.X == pytest.approx(-26, abs=1e-6)
+
+
+def test_one_face_pair_lines_up_long_sides(tmp_path):
+    """A 10 x 20 x 30 box's 20 x 30 face against a wall that is long horizontally: the 30 side ends up horizontal."""
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Box(10, 20, 30, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    feats = [_rect("wsk", 4, 120, cx=-28), {"id": "wall", "type": "extrude", "profile": {"sketch": "wsk"}, "distance": 40},
+             {"id": "cube", "type": "import", "file": "cube.step", "mode": "reference", "translate": [100, 0, 50]}]
+    (tmp_path / "p.vcad.json").write_text(S.Document.model_validate({"name": "p", "features": feats}).model_dump_json())
+    ws = Workspace(tmp_path)
+    ws.open_part(path="p.vcad.json")
+    refs = ws.session().result.refs["cube"].labels
+    minus_x = next(l for f, l in refs if bd.Face(f).normal_at().X < -0.99)
+    ws.place_import("cube", {"feature": "cube", "role": minus_x.role, "entity": minus_x.entity}, {"feature": "wall", "role": "side", "entity": "r"})
+    bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
+    assert bb.size.Y == pytest.approx(30, abs=1e-6) and bb.size.Z == pytest.approx(20, abs=1e-6), bb.size
+    assert bb.min.X == pytest.approx(-26, abs=1e-6)
+
+
+def test_missing_import_lists_the_files_there(tmp_path):
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Box(1, 1, 1), str(tmp_path / "phone.step"))
+    ws = Workspace(tmp_path)
+    ws.new_part(path="t.vcad.json", name="t")
+    rep = ws.apply_ops([{"op": "add_feature", "feature": {"id": "p", "type": "import", "file": "../phone.step", "mode": "reference"}}], "p")
+    assert "phone.step" in rep and "files in" in rep, rep

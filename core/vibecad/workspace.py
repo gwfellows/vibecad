@@ -233,8 +233,21 @@ class Workspace:
         env = s.result.env
         rot0, tr0 = [evaluate(v, env) for v in f.rotate], [evaluate(v, env) for v in f.translate]
         rot, tr = mate(rot0, tr0, n_a, c_a, n_b, c_b, gap=float(gap), align=align)
+        import numpy as np
+        if second is None and align == "center":
+            # one face pair leaves the turn about the contact open: line up the two faces' long sides (a phone
+            # against a wide backrest lands landscape), keeping the face centred where the mate put it
+            from .mate import long_axis, rot_xyz, spin_long_sides
+            pts = lambda F: [tuple(v) for v in F.tessellate(max(F.bounding_box().diagonal / 30, 1e-3), 0.5)[0]]
+            FA, FB = bd.Face(TopoDS.Face(fa)), bd.Face(TopoDS.Face(fb))
+            turn0 = rot_xyz(rot) @ rot_xyz(rot0).T
+            ax_a = long_axis(pts(FA), n_a)
+            rot_s = spin_long_sides(rot, n_b, None if ax_a is None else turn0 @ ax_a, long_axis(pts(FB), n_b))
+            if rot_s != list(rot):
+                c_now = np.array(c_b) + float(gap) * np.array(n_b) / np.linalg.norm(n_b)
+                spin = rot_xyz(rot_s) @ rot_xyz(rot).T
+                tr, rot = list(spin @ (np.array(tr) - c_now) + c_now), rot_s
         if second is not None:  # then slide within the first contact plane until a second pair of faces meets
-            import numpy as np
 
             from .mate import rot_xyz, slide, spin_to
             fa2, fb2, gap2 = second
@@ -460,7 +473,7 @@ TOOLS: list[dict] = [
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
     {"name": "measure", "desc": "Volume, surface area, bounding box, centre of mass, mass (from the part's material), face count, validity and params of the active part.", "props": {}, "req": []},
-    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target), e.g. a phone leaning on a backrest slid down onto the lip. Faces are FaceRefs; the import's faces have the import id as feature.",
+    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). With one face pair it also lines up the two faces' long sides. Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target): any flat face it rests on, e.g. a phone leaning on a backrest slid down onto the base or the lip's inner face. Use this rather than nudging translate by hand. Faces are FaceRefs; the import's faces have the import id as feature.",
      "props": {"import_id": S_STR, "face": {"type": "object"}, "target": {"type": "object"}, "gap": {"type": "number"},
                "align": {"type": "string", "enum": ["center", "touch"]},
                "then_face": {"type": "object"}, "then_target": {"type": "object"}, "then_gap": {"type": "number"}},
