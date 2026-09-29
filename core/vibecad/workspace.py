@@ -234,7 +234,7 @@ class Workspace:
         rot0, tr0 = [evaluate(v, env) for v in f.rotate], [evaluate(v, env) for v in f.translate]
         rot, tr = mate(rot0, tr0, n_a, c_a, n_b, c_b, gap=float(gap), align=align)
         import numpy as np
-        if second is None and align == "center":
+        if second is None:
             # one face pair leaves the turn about the contact open: line up the two faces' long sides (a phone
             # against a wide backrest lands landscape), keeping the face centred where the mate put it
             from .mate import long_axis, rot_xyz, spin_long_sides
@@ -243,8 +243,8 @@ class Workspace:
             turn0 = rot_xyz(rot) @ rot_xyz(rot0).T
             ax_a = long_axis(pts(FA), n_a)
             rot_s = spin_long_sides(rot, n_b, None if ax_a is None else turn0 @ ax_a, long_axis(pts(FB), n_b))
-            if rot_s != list(rot):
-                c_now = np.array(c_b) + float(gap) * np.array(n_b) / np.linalg.norm(n_b)
+            if rot_s != list(rot):  # turn about where the face now sits (centred, or slid straight in for "touch")
+                c_now = rot_xyz(rot) @ rot_xyz(rot0).T @ (np.array(c_a) - np.array(tr0)) + np.array(tr)
                 spin = rot_xyz(rot_s) @ rot_xyz(rot).T
                 tr, rot = list(spin @ (np.array(tr) - c_now) + c_now), rot_s
         if second is not None:  # then slide within the first contact plane until a second pair of faces meets

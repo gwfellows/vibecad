@@ -165,3 +165,19 @@ def test_missing_import_lists_the_files_there(tmp_path):
     ws.new_part(path="t.vcad.json", name="t")
     rep = ws.apply_ops([{"op": "add_feature", "feature": {"id": "p", "type": "import", "file": "../phone.step", "mode": "reference"}}], "p")
     assert "phone.step" in rep and "files in" in rep, rep
+
+
+def test_touch_alignment_also_lines_up_long_sides(tmp_path):
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Box(10, 20, 30, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    feats = [_rect("wsk", 4, 120, cx=-28), {"id": "wall", "type": "extrude", "profile": {"sketch": "wsk"}, "distance": 40},
+             {"id": "cube", "type": "import", "file": "cube.step", "mode": "reference", "translate": [100, 0, 5]}]
+    (tmp_path / "p.vcad.json").write_text(S.Document.model_validate({"name": "p", "features": feats}).model_dump_json())
+    ws = Workspace(tmp_path)
+    ws.open_part(path="p.vcad.json")
+    refs = ws.session().result.refs["cube"].labels
+    minus_x = next(l for f, l in refs if bd.Face(f).normal_at().X < -0.99)
+    ws.place_import("cube", {"feature": "cube", "role": minus_x.role, "entity": minus_x.entity},
+                    {"feature": "wall", "role": "side", "entity": "r"}, align="touch")
+    bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
+    assert bb.size.Y == pytest.approx(30, abs=1e-6) and bb.min.X == pytest.approx(-26, abs=1e-6), (bb.size, bb.min)
