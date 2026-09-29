@@ -350,3 +350,18 @@ def test_export_says_not_ready_when_a_reference_floats_away(tmp_path):
     assert "NOT READY: reference cube is 45.0 mm from the part" in out, out
     ws.apply_ops([{"op": "update_feature", "id": "cube", "set": {"translate": [5, -5, 4]}}], "on top")
     assert "NOT READY" not in ws.export("step")
+
+
+def test_edit_reports_say_when_a_reference_is_far_away(tmp_path):
+    import json
+
+    from vibecad.workspace import Workspace
+    bd.export_step(bd.Box(10, 10, 10, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    ws = Workspace(tmp_path)
+    ws.new_part(path="t.vcad.json", name="t")
+    rep = json.loads(ws.apply_ops([
+        {"op": "add_feature", "feature": {"id": "cube", "type": "import", "file": "cube.step", "mode": "reference", "translate": [100, 0, 0]}},
+        {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+        {"op": "add_rectangle", "sketch": "sk", "id": "b", "width": 10, "height": 10, "center": [0, 0]},
+        {"op": "add_feature", "feature": {"id": "block", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 4}}], "b"))
+    assert "reference cube is at least 95 mm from the part" in rep["fit"][0], rep.get("fit")

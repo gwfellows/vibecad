@@ -33,8 +33,14 @@ def _ref_overlaps(r: RegenResult, max_faces: int = 3000) -> list[str]:
         if not other.solids() or len(other.faces()) > max_faces:
             continue
         ob = other.bounding_box()
-        if (pb.max.X < ob.min.X or ob.max.X < pb.min.X or pb.max.Y < ob.min.Y or ob.max.Y < pb.min.Y
-                or pb.max.Z < ob.min.Z or ob.max.Z < pb.min.Z):
+        apart = max(ob.min.X - pb.max.X, pb.min.X - ob.max.X, ob.min.Y - pb.max.Y, pb.min.Y - ob.max.Y,
+                    ob.min.Z - pb.max.Z, pb.min.Z - ob.max.Z)
+        if apart > 5.0:  # boxes clearly apart: the part isn't where the reference is
+            out.append(f"reference {rid} is at least {apart:.0f} mm from the part: the part doesn't hold or meet it yet. "
+                       f"Fine mid-build; before you report, put {rid} where the part holds it (place_import onto the face it "
+                       "rests on, then_face/then_target for a second contact) or build the part around it")
+            continue
+        if apart > 0:
             continue  # boxes apart: no overlap
         try:
             common = part & other
