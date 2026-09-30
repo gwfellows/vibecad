@@ -208,7 +208,15 @@ class Workspace:
             except (FeatureError, ValueError) as e:
                 raise ToolError(f"{what}: {e}") from None
             if len(fs) != 1:
-                raise ToolError(f"{what} matched {len(fs)} faces; narrow it to one (entity, or pick + near)")
+                import build123d as bd
+                from OCP.TopoDS import TopoDS as _T
+                rows = []
+                for f in fs[:6]:
+                    F = bd.Face(_T.Face(f))
+                    c = F.center()
+                    rows.append(f"centre ({c.X:.1f}, {c.Y:.1f}, {c.Z:.1f}) area {F.area:.0f} mm²")
+                raise ToolError(f"{what} matched {len(fs)} faces ({'; '.join(rows) or 'none'}); narrow it to one: add "
+                                "\"pick\": \"largest\", or \"pick\": \"nearest\" with \"near\": [x, y, z] of the one you mean")
             return fs[0]
         if ((face.get("feature") != import_id)):
             raise ToolError(f"face must be on {import_id} (its feature is the import id)")

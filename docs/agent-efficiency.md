@@ -205,6 +205,8 @@ Cycle 8 (same tasks, after the cycle 7 fixes): 4 of 4. Servo mount 411 and 174 s
 
 Cycle 9 (the whole suite once, as a regression check after the region and tool changes): 26 of 26 tasks pass (30 turns counting the conversation follow-ups), 67 minutes and $6.92 in all. Servo mount 241 s. The one slow run was the phone swap (519 s, 465 s of it thinking): it rested the case's short end on the lip, so the case stood portrait, and the agent then set `rotate` by hand for six minutes instead of placing again with a long side. Fix: `place_import`'s contact line gives the placed size and says to place it again resting a different side (a long side for landscape); the guide says not to set `rotate` by hand.
 
+Cycle 10: 4 of 4. Phone swap 175 and 225 s (cycle 9's slow run was 519 s). New task `fan_tray_two_imports` (a board on standoffs and a 40 mm fan bolted inside an end wall, two imports in one part): 404 and 456 s, $0.77 each. Remaining waste: imports still moved by hand-set `translate` after the part was built (5 calls in one run); a `place_import` target that matched two faces (the tray's inside wall, split by a feature) left the agent guessing a `near` point; ops called as if they were tools (`set_param`, `update_feature`) about once in three runs, a 2 s slip each. Fix: the ambiguous-face error lists each match's centre and area and the exact `pick` to add.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
