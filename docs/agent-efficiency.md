@@ -203,6 +203,8 @@ Cycle 7 (the two new tasks, two runs each): 4 of 4. Servo mount 306 and 234 s ($
 
 Cycle 8 (same tasks, after the cycle 7 fixes): 4 of 4. Servo mount 411 and 174 s ($0.64, $0.30); phone swap 149 and 90 s ($0.28, $0.16), down from 275 to 413 s. The servo runs used the datum placement at once, but it centred the chosen tab face on the origin with the servo's length along Y, and one run then spent about 4 minutes mapping off-centre hole positions. Fix: on a datum, the whole import is centred on the origin with its longest side along x (the servo's tab holes land at ±13.9, 0).
 
+Cycle 9 (the whole suite once, as a regression check after the region and tool changes): 26 of 26 tasks pass (30 turns counting the conversation follow-ups), 67 minutes and $6.92 in all. Servo mount 241 s. The one slow run was the phone swap (519 s, 465 s of it thinking): it rested the case's short end on the lip, so the case stood portrait, and the agent then set `rotate` by hand for six minutes instead of placing again with a long side. Fix: `place_import`'s contact line gives the placed size and says to place it again resting a different side (a long side for landscape); the guide says not to set `rotate` by hand.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
