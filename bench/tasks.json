@@ -563,5 +563,35 @@
     "gap_max": 1.0
    }
   ]
+ },
+ {
+  "id": "fan_tray_two_imports",
+  "prompt": "pcb.step is a circuit board with four M3 mounting holes and fan40.step is a 40 mm fan. Design a 3D printed open-top tray: the board screws onto four standoffs on the floor, and the fan bolts to the inside of one end wall with four M3 screws, blowing along the board through a round opening in that wall.",
+  "setup_files": [
+   "bench/fixtures/pcb.step",
+   "bench/fixtures/fan40.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "min_refs": 2,
+    "overlap_max": 0.05,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 2.4,
+    "d_max": 3.7,
+    "min": 8
+   },
+   {
+    "kind": "holes",
+    "d_min": 30,
+    "d_max": 40,
+    "min": 1
+   }
+  ]
  }
 ]

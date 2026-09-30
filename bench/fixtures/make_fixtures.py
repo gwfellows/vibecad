@@ -59,4 +59,12 @@ with bd.BuildPart() as srv:
         bd.Cylinder(5.9, 4, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
         bd.Cylinder(2.4, 7.2, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
 bd.export_step(bd.Pos(30, 40, 6.1) * bd.Rot(90, 0, 0) * srv.part, str(here / "servo.step"))
+# a 40 mm fan: 40 x 40 x 10 frame, 38 mm bore, four 3.4 mm holes on a 32 mm square; exported flat, away from the origin
+with bd.BuildPart() as fan:
+    bd.Box(40, 40, 10, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+    bd.Hole(19)
+    with bd.Locations(*[(x, y, 10) for x in (-16, 16) for y in (-16, 16)]):
+        bd.Hole(1.7)
+    bd.Cylinder(11, 10, align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+bd.export_step(bd.Pos(-80, -60, 0) * fan.part, str(here / "fan40.step"))
 print("ok")
