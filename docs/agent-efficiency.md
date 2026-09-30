@@ -194,6 +194,8 @@ Cycle 5 (phone stand, three runs): 2 of 3 (321 and 451 s). The failure left a sc
 - `place_import` returns a `contact` line: "the import's face now points -Z (down), against a face pointing +Z (up)", so a misnamed face shows at once.
 - Guide: try things in the part and `undo`, not in scratch files; read the `contact` line.
 
+Cycle 6 (after the cycle 5 fixes): phone stand 2 of 2, 218 and 290 s, $0.44 to 0.52 (cycle 5: 321 to 451 s, $0.61 to 0.81). New tasks `servo_mount_step` (a bracket holding a micro servo by its tabs) and `phone_swap_edit` (swap the stand's phone for the phone in a case, from a stand an earlier bench run built) were added, but the usage limit stopped them before any finished (`LIMIT`); run them first next time.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
