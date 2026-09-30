@@ -317,6 +317,13 @@ class Workspace:
                    "isn't the face you meant (a misnamed sketch edge), face_labels with the feature id lists each face's normal")
         rep = self.apply_ops([{"op": "update_feature", "id": import_id, "set": {"rotate": rot, "translate": tr}}], message, author)
         out = json.loads(rep) if isinstance(rep, str) else rep
+        placed = s.result.refs.get(import_id)
+        if placed is not None and placed.shape is not None:
+            sz = bd.Shape.cast(placed.shape).bounding_box().size
+            contact += (f". It now spans {sz.X:.1f} x {sz.Y:.1f} x {sz.Z:.1f} mm (x, y, z). If it's the wrong way round, "
+                        "place it again resting a different side of it" + (" on then_target (a long side for landscape)"
+                                                                           if second is not None else " with then_face/then_target")
+                        + "; don't set rotate by hand")
         return {"ok": out.get("ok", False), "rotate": rot, "translate": tr, "contact": contact, "report": out}
 
     def check_fit(self, other_paths: list[str]) -> str:
