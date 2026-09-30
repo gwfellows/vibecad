@@ -207,6 +207,8 @@ Cycle 9 (the whole suite once, as a regression check after the region and tool c
 
 Cycle 10: 4 of 4. Phone swap 175 and 225 s (cycle 9's slow run was 519 s). New task `fan_tray_two_imports` (a board on standoffs and a 40 mm fan bolted inside an end wall, two imports in one part): 404 and 456 s, $0.77 each. Remaining waste: imports still moved by hand-set `translate` after the part was built (5 calls in one run); a `place_import` target that matched two faces (the tray's inside wall, split by a feature) left the agent guessing a `near` point; ops called as if they were tools (`set_param`, `update_feature`) about once in three runs, a 2 s slip each. Fix: the ambiguous-face error lists each match's centre and area and the exact `pick` to add.
 
+Cycle 11 (after the cycle 10 fixes): 4 of 4. Servo mount 246 and 172 s ($0.41, $0.27; cycle 8: 411 and 174 s). Fan tray 311 and 310 s ($0.45, $0.68; cycle 10: 404 and 456 s, $0.77 each), with 0 and 1 hand-set `translate` calls (cycle 10: up to 5).
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
