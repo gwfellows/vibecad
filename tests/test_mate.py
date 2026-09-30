@@ -187,3 +187,22 @@ def test_touch_alignment_also_lines_up_long_sides(tmp_path):
                     {"feature": "wall", "role": "side", "entity": "r"}, align="touch")
     bb = bd.Shape.cast(ws.session().result.refs["cube"].shape).bounding_box()
     assert bb.size.Y == pytest.approx(30, abs=1e-6) and bb.min.X == pytest.approx(-26, abs=1e-6), (bb.size, bb.min)
+
+
+def test_place_import_on_a_datum_plane(tmp_path):
+    """Stand an import that arrived lying on its side on a datum, before the part has any geometry."""
+    from vibecad.workspace import Workspace
+    # a 10 x 20 x 30 block exported lying down: its 'bottom' (local -Z) now faces +Y
+    bd.export_step(bd.Rot(90, 0, 0) * bd.Box(10, 20, 30, align=bd.Align.MIN), str(tmp_path / "blk.step"))
+    feats = [{"id": "blk", "type": "import", "file": "blk.step", "mode": "reference", "translate": [40, 50, 60]}]
+    (tmp_path / "p.vcad.json").write_text(S.Document.model_validate({"name": "p", "features": feats}).model_dump_json())
+    ws = Workspace(tmp_path)
+    ws.open_part(path="p.vcad.json")
+    ref = ws.session().result.refs["blk"]
+    bottom = next(l for f, l in ref.labels if bd.Face(f).normal_at().Y > 0.99 and bd.Face(f).area == pytest.approx(200))
+    out = ws.place_import("blk", {"feature": "blk", "role": bottom.role, "entity": bottom.entity}, {"datum": "XY", "offset": 5})
+    bb = bd.Shape.cast(ws.session().result.refs["blk"].shape).bounding_box()
+    assert bb.min.Z == pytest.approx(5) and bb.size.Z == pytest.approx(30)  # standing on its bottom, on z = 5
+    assert bb.center().X == pytest.approx(0) and bb.center().Y == pytest.approx(0)
+    assert bb.size.X == pytest.approx(20)  # long side along the datum's x
+    assert "points -Z (down)" in __import__("json").loads(out)["contact"]

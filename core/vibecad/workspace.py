@@ -194,6 +194,8 @@ class Workspace:
         res = s.result
 
         def one(ref: dict, what: str):
+            if "datum" in ref and what != "face" and what != "then_face":
+                return _datum_face(ref, what, res.env)
             fr = S.FaceRef.model_validate(ref)
             body = res.refs.get(fr.feature, res.body)
             from .topo import resolve_faces
@@ -407,6 +409,23 @@ def _ref_faces(rid: str, body, limit: int = 80, feature: str | None = None) -> l
     return out
 
 
+def _datum_face(ref: dict, what: str, env: dict):
+    """A datum plane as a target face: {"datum": "XY", "offset": 0}. A 1000 x 500 mm face centred on the plane's
+    origin, long along its x axis, so an import stood on it lands centred at the origin, long side along x."""
+    import build123d as bd
+
+    from .expr import evaluate
+    from .frames import DATUMS, datum_frame
+    name = ref["datum"]
+    if name not in DATUMS:
+        raise ToolError(f"{what}: datum must be one of {sorted(DATUMS)}")
+    try:
+        off = float(evaluate(ref.get("offset", 0), env))
+    except Exception as e:
+        raise ToolError(f"{what}: offset {ref.get('offset')!r}: {e}") from None
+    return bd.Face.make_rect(1000, 500, datum_frame(name, off).plane).wrapped
+
+
 def _heading(n) -> str:
     """A direction in words: '+Z (up)', or the vector with its tilt from the nearest axis."""
     import math
@@ -501,7 +520,7 @@ TOOLS: list[dict] = [
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
     {"name": "measure", "desc": "Volume, surface area, bounding box, centre of mass, mass (from the part's material), face count, validity and params of the active part.", "props": {}, "req": []},
-    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). With one face pair it also lines up the two faces' long sides. Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target): any flat face it rests on, e.g. a phone leaning on a backrest slid down onto the base or the lip's inner face. Use this rather than nudging translate by hand. Faces are FaceRefs; the import's faces have the import id as feature.",
+    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). With one face pair it also lines up the two faces' long sides. Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target): any flat face it rests on, e.g. a phone leaning on a backrest slid down onto the base or the lip's inner face. Use this rather than nudging translate by hand. Faces are FaceRefs; the import's faces have the import id as feature. A target (or then_target) can also be a datum plane, {\"datum\": \"XY\", \"offset\": 0}: stands the import on that face, centred at the plane's origin, before any part exists (a servo shaft-up on its tab undersides, a motor on its mounting face).",
      "props": {"import_id": S_STR, "face": {"type": "object"}, "target": {"type": "object"}, "gap": {"type": "number"},
                "align": {"type": "string", "enum": ["center", "touch"]},
                "then_face": {"type": "object"}, "then_target": {"type": "object"}, "then_gap": {"type": "number"}},
