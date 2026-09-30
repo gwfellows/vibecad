@@ -206,3 +206,19 @@ def test_place_import_on_a_datum_plane(tmp_path):
     assert bb.center().X == pytest.approx(0) and bb.center().Y == pytest.approx(0)
     assert bb.size.X == pytest.approx(20)  # long side along the datum's x
     assert "points -Z (down)" in __import__("json").loads(out)["contact"]
+
+
+def test_agent_tools_open_the_only_part_and_import_faces_need_no_role(tmp_path):
+    import json
+
+    from vibecad.workspace import Workspace, call
+    bd.export_step(bd.Box(10, 20, 30, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    feats = [_rect("sk", 60, 40), {"id": "plate", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 5},
+             {"id": "cube", "type": "import", "file": "cube.step", "mode": "reference", "translate": [100, 0, 0]}]
+    (tmp_path / "p.vcad.json").write_text(S.Document.model_validate({"name": "p", "features": feats}).model_dump_json())
+    ws = Workspace(tmp_path)
+    text, _ = call(ws, "get_tree", {})  # no open_part first: the folder's only part is opened
+    assert "plate" in text
+    bottom = next(l for f, l in ws.session().result.refs["cube"].labels if bd.Face(f).normal_at().Z < -0.99)
+    out = json.loads(ws.place_import("cube", {"feature": "cube", "entity": bottom.entity}, {"feature": "plate", "role": "end"}))
+    assert out["ok"], out

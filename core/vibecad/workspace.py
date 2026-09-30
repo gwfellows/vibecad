@@ -39,7 +39,9 @@ class Workspace:
 
     def session(self):
         if self.active is None:
-            raise ToolError("no part open: call open_part(path) or new_part(path, name) first")
+            parts = sorted(p.name for p in self.root.glob("*.vcad.json"))
+            raise ToolError("no part open: call open_part(path) or new_part(path, name) first"
+                            + (f"; parts here: {', '.join(parts)}" if parts else ""))
         return self.sessions[self.active]
 
     def emit(self, event: dict) -> None:
@@ -196,6 +198,8 @@ class Workspace:
         def one(ref: dict, what: str):
             if "datum" in ref and what != "face" and what != "then_face":
                 return _datum_face(ref, what, res.env)
+            if "role" not in ref and ref.get("feature") in res.refs:  # an import's faces all have role "face"
+                ref = {**ref, "role": "face"}
             fr = S.FaceRef.model_validate(ref)
             body = res.refs.get(fr.feature, res.body)
             from .topo import resolve_faces
@@ -541,6 +545,10 @@ def call(ws: Workspace, name: str, args: dict) -> tuple[str | None, bytes | None
     spec = next((t for t in TOOLS if t["name"] == name), None)
     if spec is None:
         raise ToolError(f"unknown tool {name!r}")
+    if ws.active is None and name not in ("open_part", "new_part", "list_parts", "ir_reference"):
+        parts = sorted(ws.root.glob("*.vcad.json"))
+        if len(parts) == 1:  # the only part here is the one meant: open it rather than cost the agent a round trip
+            ws.open_part(parts[0].name)
     out = getattr(ws, name)(**{k: v for k, v in args.items() if v is not None})
     if spec.get("image"):
         return None, out
