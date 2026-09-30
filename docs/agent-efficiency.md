@@ -196,6 +196,11 @@ Cycle 5 (phone stand, three runs): 2 of 3 (321 and 451 s). The failure left a sc
 
 Cycle 6 (after the cycle 5 fixes): phone stand 2 of 2, 218 and 290 s, $0.44 to 0.52 (cycle 5: 321 to 451 s, $0.61 to 0.81). New tasks `servo_mount_step` (a bracket holding a micro servo by its tabs) and `phone_swap_edit` (swap the stand's phone for the phone in a case, from a stand an earlier bench run built) were added, but the usage limit stopped them before any finished (`LIMIT`); run them first next time.
 
+Cycle 7 (the two new tasks, two runs each): 4 of 4. Servo mount 306 and 234 s ($0.47, $0.31); phone swap 275 and 413 s ($0.59, $0.69). The first servo run spent 246 s in one think working out by hand that the servo lay on its side and which rotation stands it shaft-up; the phone swap runs lost calls to `get_tree` before `open_part`, a face ref without `role`, and five `place_import` retries trading a 2.6 mm³ corner overlap against the gap. Fixes:
+- `place_import` takes a datum plane as target (`{"datum": "XY"}`): the import's face goes on the plane, centred at the origin, before the part has geometry. Guide line added.
+- Agent tools open the folder's only part when none is open; otherwise the error lists the parts.
+- A face ref on an import defaults to `role: face`.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
