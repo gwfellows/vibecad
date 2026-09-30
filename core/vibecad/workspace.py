@@ -219,11 +219,14 @@ class Workspace:
             if then_face.get("feature") != import_id:
                 raise ToolError(f"then_face must be on {import_id}")
             second = (one(then_face, "then_face"), one(then_target, "then_target"), then_gap)
+        on_datum = "datum" in target and second is None and align == "center"
+        where = f"datum {target['datum']}" if "datum" in target else f"{target.get('feature')}.{target.get('role')}"
         return json.dumps(self.place_faces(import_id, one(face, "face"), one(target, "target"), gap, align,
-                                           f"place {import_id} against {target.get('feature')}.{target.get('role')}", "agent",
-                                           second=second))
+                                           f"place {import_id} against {where}", "agent", second=second,
+                                           center_body=on_datum))
 
-    def place_faces(self, import_id: str, fa, fb, gap: float, align: str, message: str, author: str, second=None) -> dict:
+    def place_faces(self, import_id: str, fa, fb, gap: float, align: str, message: str, author: str, second=None,
+                    center_body: bool = False) -> dict:
         """The shared core of placing an import: two faces (TopoDS) to a new rotate / translate, applied as one edit."""
         import build123d as bd
         from OCP.TopoDS import TopoDS
@@ -280,7 +283,35 @@ class Workspace:
                 tr = slide(rot, tr, n_b, n_a2, c_a2, tuple(B2.normal_at()), tuple(B2.center()), float(gap2))
             except ValueError as e:
                 raise ToolError(str(e)) from None
-        from .mate import rot_xyz
+        from .mate import rot_xyz, xyz_of
+        if center_body:
+            # on a datum: the whole body centred on the plane's origin, its longest extent along the plane's x, so
+            # symmetric features of it (a servo's two tab holes) land symmetric about the origin
+            from .topo import explore
+            from OCP.TopAbs import TopAbs_VERTEX
+            from OCP.BRep import BRep_Tool
+            from OCP.TopoDS import TopoDS as _T
+            body = s.result.refs.get(import_id)
+            pts0 = np.array([[q.X(), q.Y(), q.Z()] for q in (BRep_Tool.Pnt_s(_T.Vertex(v))
+                             for v in explore(body.shape, TopAbs_VERTEX))]) if body is not None else np.zeros((0, 3))
+            if len(pts0):
+                Fb = bd.Face(TopoDS.Face(fb))
+                n = np.array(tuple(Fb.normal_at()))
+                ox, oc = np.array(tuple(bd.Plane(Fb).x_dir)), np.array(tuple(Fb.center()))
+                oy = np.cross(n, ox)
+                place = lambda R, t: (R @ rot_xyz(rot0).T @ (pts0 - np.array(tr0)).T).T + np.array(t)
+                p = place(rot_xyz(rot), tr)
+                if np.ptp(p @ oy) > np.ptp(p @ ox) + 1e-6:  # turn a quarter about the normal
+                    c = p.mean(0)
+                    q = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1.0]])
+                    basis = np.stack([ox, oy, n], 1)
+                    spin = basis @ q @ basis.T
+                    rot = [float(v) for v in xyz_of(spin @ rot_xyz(rot))]
+                    tr = list(spin @ (np.array(tr) - c) + c)
+                    p = place(rot_xyz(rot), tr)
+                u, v = p @ ox, p @ oy
+                shift = ((u.min() + u.max()) / 2 - oc @ ox) * ox + ((v.min() + v.max()) / 2 - oc @ oy) * oy
+                tr = [float(a) for a in np.array(tr) - shift]
         n_now = rot_xyz(rot) @ rot_xyz(rot0).T @ np.array(n_a)
         contact = (f"the import's face now points {_heading(n_now)}, against a face pointing {_heading(n_b)}. If that "
                    "isn't the face you meant (a misnamed sketch edge), face_labels with the feature id lists each face's normal")
@@ -414,8 +445,8 @@ def _ref_faces(rid: str, body, limit: int = 80, feature: str | None = None) -> l
 
 
 def _datum_face(ref: dict, what: str, env: dict):
-    """A datum plane as a target face: {"datum": "XY", "offset": 0}. A 1000 x 500 mm face centred on the plane's
-    origin, long along its x axis, so an import stood on it lands centred at the origin, long side along x."""
+    """A datum plane as a target face: {"datum": "XY", "offset": 0}: a 1000 x 500 mm face centred on the plane's
+    origin, long along its x axis. place_import then centres the whole import on it (center_body)."""
     import build123d as bd
 
     from .expr import evaluate
@@ -524,7 +555,7 @@ TOOLS: list[dict] = [
      "props": {"sketch_id": S_STR, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}},
      "req": ["sketch_id", "x", "y", "z"]},
     {"name": "measure", "desc": "Volume, surface area, bounding box, centre of mass, mass (from the part's material), face count, validity and params of the active part.", "props": {}, "req": []},
-    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). With one face pair it also lines up the two faces' long sides. Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target): any flat face it rests on, e.g. a phone leaning on a backrest slid down onto the base or the lip's inner face. Use this rather than nudging translate by hand. Faces are FaceRefs; the import's faces have the import id as feature. A target (or then_target) can also be a datum plane, {\"datum\": \"XY\", \"offset\": 0}: stands the import on that face, centred at the plane's origin, before any part exists (a servo shaft-up on its tab undersides, a motor on its mounting face).",
+    {"name": "place_import", "desc": "Move an import (by rewriting its rotate/translate) so a flat face of it lies against a flat face of the part or another import: normals opposed, `gap` mm apart, centred on the target (align center) or only moved along its normal (align touch). With one face pair it also lines up the two faces' long sides. Optionally then slide it along that contact until a second face of it (then_face) meets a second target (then_target): any flat face it rests on, e.g. a phone leaning on a backrest slid down onto the base or the lip's inner face. Use this rather than nudging translate by hand. Faces are FaceRefs; the import's faces have the import id as feature. A target (or then_target) can also be a datum plane, {\"datum\": \"XY\", \"offset\": 0}: stands the import on that face before any part exists, its whole body centred on the plane's origin and its longest side along the plane's x (so a servo's two tab holes land at ±x) (a servo shaft-up on its tab undersides, a motor on its mounting face).",
      "props": {"import_id": S_STR, "face": {"type": "object"}, "target": {"type": "object"}, "gap": {"type": "number"},
                "align": {"type": "string", "enum": ["center", "touch"]},
                "then_face": {"type": "object"}, "then_target": {"type": "object"}, "then_gap": {"type": "number"}},

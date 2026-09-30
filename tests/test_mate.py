@@ -222,3 +222,37 @@ def test_agent_tools_open_the_only_part_and_import_faces_need_no_role(tmp_path):
     bottom = next(l for f, l in ws.session().result.refs["cube"].labels if bd.Face(f).normal_at().Z < -0.99)
     out = json.loads(ws.place_import("cube", {"feature": "cube", "entity": bottom.entity}, {"feature": "plate", "role": "end"}))
     assert out["ok"], out
+
+
+def test_datum_placement_centres_the_whole_body(tmp_path):
+    """The bench's micro servo arrives lying on its side; stood shaft-up on one tab's underside, its body is
+    centred on the origin, long along x, so its tab holes are symmetric: (±13.9, 0)."""
+    import shutil
+    from pathlib import Path
+
+    from vibecad.workspace import Workspace
+    shutil.copy(Path(__file__).parents[1] / "bench/fixtures/servo.step", tmp_path / "servo.step")
+    feats = [{"id": "servo", "type": "import", "file": "servo.step", "mode": "reference"}]
+    (tmp_path / "p.vcad.json").write_text(S.Document.model_validate({"name": "p", "features": feats}).model_dump_json())
+    ws = Workspace(tmp_path)
+    ws.open_part(path="p.vcad.json")
+    ref = ws.session().result.refs["servo"]
+    shaft = next(f for f, _ in ref.labels if bd.Face(f).geom_type == bd.GeomType.CYLINDER and bd.Face(f).radius > 2.3
+                 and bd.Face(f).radius < 2.5)
+    up = -np.array(tuple(bd.Face(shaft).axis_of_rotation.direction))  # the shaft's axis; which sign is up is below
+    # the tab undersides: small faces facing away from the shaft end
+    tabs = [l for f, l in ref.labels if bd.Face(f).geom_type == bd.GeomType.PLANE and bd.Face(f).area < 60
+            and abs(float(np.dot(tuple(bd.Face(f).normal_at()), up))) > 0.99]
+    for lab in tabs:
+        ws.place_import("servo", {"feature": "servo", "entity": lab.entity}, {"datum": "XY"})
+        r = ws.session().result.refs["servo"]
+        bb = bd.Shape.cast(r.shape).bounding_box()
+        if bb.min.Z < -1:  # the face on the other end of the tab pair: shaft down; try the next
+            continue
+        holes = sorted((round(c.X, 2), round(c.Y, 2)) for c in (bd.Face(f).axis_of_rotation.position for f, _ in r.labels
+                       if bd.Face(f).geom_type == bd.GeomType.CYLINDER and abs(bd.Face(f).radius - 1.0) < 1e-6))
+        xs = sorted({x for x, _ in holes})
+        assert xs == [-13.9, 13.9] and all(abs(y) < 1e-6 for _, y in holes)
+        assert bb.center().X == pytest.approx(0) and bb.center().Y == pytest.approx(0) and bb.size.X == pytest.approx(32.3)
+        return
+    pytest.fail("no tab underside stood the servo shaft-up")
