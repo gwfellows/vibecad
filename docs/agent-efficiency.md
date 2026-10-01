@@ -211,6 +211,8 @@ Cycle 11 (after the cycle 10 fixes): 4 of 4. Servo mount 246 and 172 s ($0.41, $
 
 Cycle 12 (hard import tasks): motor bracket 2 of 2 (215 and 275 s). Two-part enclosure: one failure, then the usage limit cut the second run off. The failure reported with the tray overlapping the battery by 232 mm³, which the agent called "a numerical touching artifact" (the battery's cable-exit block ran into the wall). Fix: the edit report's `fit` line and `check_fit` say where the overlap is in world mm and its size, and that it is a real collision.
 
+Cycle 13 (two-part enclosure, after the overlap-location fix): 2 of 2, 254 and 236 s, $0.47 to 0.49. Run 2 hit the same cable-block collision ("48.0 mm³ at x 71.0..72.0 y -4.0..4.0 z 8.0..14.0 (1.0 x 8.0 x 6.0 mm)") and cleared it before reporting.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
