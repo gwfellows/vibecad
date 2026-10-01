@@ -351,9 +351,13 @@ class Workspace:
             if not other.solids():
                 out[f"reference {rid}"] = {"min_gap_mm": _gap(me, other), "note": "surfaces or mesh only: no overlap volume"}
                 continue
-            ov = (me & other).volume
+            common = me & other
+            ov = common.volume
             gap = _gap(me, other)
             out[f"reference {rid}"] = {"overlap_mm3": round(ov, 4), "min_gap_mm": gap, "touching": ov < 1e-6 and gap is not None and gap < 1e-4}
+            if ov > 1e-3:
+                from .session import overlap_where
+                out[f"reference {rid}"]["overlap_at"] = overlap_where(common).strip()
         for p in other_paths:
             key = str(self._path(p))
             if key not in self.sessions and not Path(key).exists():

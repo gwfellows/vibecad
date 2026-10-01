@@ -48,11 +48,22 @@ def _ref_overlaps(r: RegenResult, max_faces: int = 3000) -> list[str]:
         except Exception:
             continue
         if ov > 1e-3:
-            out.append(f"the part overlaps reference {rid} by {ov:.1f} mm³: in the assembly (and in the user's view) {rid} runs "
+            out.append(f"the part overlaps reference {rid} by {ov:.1f} mm³{overlap_where(common)}: in the assembly (and in the user's view) {rid} runs "
                        "through the part. Fine mid-build if the cut for it is still to come; before you report, make it 0: put "
                        f"the geometry where {rid} is, or move {rid} to where you designed for it (translate, place_import). Keep the "
                        "import: it ties the part to the real body; don't remove it to clear this")
     return out
+
+
+def overlap_where(common) -> str:
+    """Where an overlap is, in world mm: 'at x 65..69 y -4..4 z 6..12 (4 x 8 x 6 mm)'. An overlap is a real
+    collision (a cable block through a wall), never a numerical artifact; saying where makes that plain."""
+    try:
+        bb = common.bounding_box()
+    except Exception:
+        return ""
+    return (f" at x {bb.min.X:.1f}..{bb.max.X:.1f} y {bb.min.Y:.1f}..{bb.max.Y:.1f} z {bb.min.Z:.1f}..{bb.max.Z:.1f} "
+            f"({bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f} mm; a real collision, not a rounding artifact)")
 
 
 def _ref_apart(r: RegenResult, max_gap: float = 2.0, max_faces: int = 3000) -> list[str]:

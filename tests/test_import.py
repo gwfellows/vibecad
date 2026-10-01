@@ -333,6 +333,9 @@ def test_edit_reports_say_when_the_part_runs_into_a_reference(tmp_path):
                                    {"op": "add_rectangle", "sketch": "sk", "id": "b", "width": 20, "height": 20, "center": [5, 5]},
                                    {"op": "add_feature", "feature": {"id": "block", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 4}}], "b"))
     assert rep["ok"] and "overlaps reference cube by 400.0" in rep["fit"][0], rep
+    assert "at x 0.0..10.0 y 0.0..10.0 z 0.0..4.0 (10.0 x 10.0 x 4.0 mm" in rep["fit"][0]  # where, not just how much
+    fit = json.loads(ws.check_fit([]))
+    assert fit["reference cube"]["overlap_at"].startswith("at x 0.0..10.0")
     rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "nest", "type": "boolean", "tool": "cube"}}], "nest"))
     assert "fit" not in rep, rep
 

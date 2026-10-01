@@ -209,6 +209,8 @@ Cycle 10: 4 of 4. Phone swap 175 and 225 s (cycle 9's slow run was 519 s). New t
 
 Cycle 11 (after the cycle 10 fixes): 4 of 4. Servo mount 246 and 172 s ($0.41, $0.27; cycle 8: 411 and 174 s). Fan tray 311 and 310 s ($0.45, $0.68; cycle 10: 404 and 456 s, $0.77 each), with 0 and 1 hand-set `translate` calls (cycle 10: up to 5).
 
+Cycle 12 (hard import tasks): motor bracket 2 of 2 (215 and 275 s). Two-part enclosure: one failure, then the usage limit cut the second run off. The failure reported with the tray overlapping the battery by 232 mm³, which the agent called "a numerical touching artifact" (the battery's cable-exit block ran into the wall). Fix: the edit report's `fit` line and `check_fit` say where the overlap is in world mm and its size, and that it is a real collision.
+
 ## Hypotheses to test next
 
 - Multi-turn tasks: is a follow-up edit much cheaper than the create (it should be: the tree is already built), and does the agent keep intents and notes accurate across edits?
