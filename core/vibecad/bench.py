@@ -62,7 +62,11 @@ def check_parts(workdir: Path, task: dict, prev: dict[str, float | None] | None 
     setup = {Path(f).name for f in ([task["setup_copy"]] if task.get("setup_copy") else []) + task.get("setup_files", [])}
     made = [p for p in parts if p.name not in setup] or parts  # checks default to the part the agent made
     for chk in task.get("checks", []):
-        msg = _check(chk, made, workdir, prev, parts)
+        if chk.get("each"):  # on every part the agent made (names it chose): a case's base and its lid
+            msgs = [_check(chk, [p], workdir, prev, parts) for p in made]
+            msg = next((f"{p.name}: {m}" for p, m in zip(made, msgs) if m), None)
+        else:
+            msg = _check(chk, made, workdir, prev, parts)
         if msg:
             out["problems"].append(msg)
     out["pass"] = not out["problems"]

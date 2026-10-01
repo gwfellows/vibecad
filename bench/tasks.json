@@ -593,5 +593,28 @@
     "min": 1
    }
   ]
+ },
+ {
+  "id": "case_with_lid_step",
+  "prompt": "pcb.step is a circuit board with four M3 mounting holes. Design a 3D printed two-part case for it: a base the board screws into, and a lid held on with four M3 screws into the base. Leave an opening in a wall for the connector block.",
+  "setup_files": [
+   "bench/fixtures/pcb.step"
+  ],
+  "expect_parts": 2,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "each": true,
+    "or_parts": true,
+    "overlap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "each": true,
+    "d_min": 2.4,
+    "d_max": 3.7,
+    "min": 4
+   }
+  ]
  }
 ]
