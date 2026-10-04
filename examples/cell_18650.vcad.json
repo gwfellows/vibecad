@@ -1,0 +1,57 @@
+{
+  "vibecad": "0.1",
+  "name": "cell_18650",
+  "material": "Li-ion cell (stand-in)",
+  "process": "purchased part",
+  "design_notes": "An 18650 cell as a simple cylinder, standing on XY at the origin. cell_holder.vcad.json imports it as a reference and cuts nests around it.",
+  "params": {
+    "cell_d": 18.4,
+    "cell_l": 65.0
+  },
+  "features": [
+    {
+      "id": "cell_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "can",
+          "center": [
+            0.0,
+            0.0
+          ],
+          "r": 9.2,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "can"
+          ],
+          "value": "cell_d",
+          "name": "can_diameter"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "can.center",
+            "origin"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cell",
+      "type": "extrude",
+      "intent": "the cell's can",
+      "profile": {
+        "sketch": "cell_sk"
+      },
+      "distance": "cell_l"
+    }
+  ]
+}

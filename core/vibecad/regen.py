@@ -54,7 +54,7 @@ class RegenResult:
     features: list[FeatureResult]
     sketches: dict[str, tuple[SolvedSketch, Frame]]
     seconds: float
-    refs: dict[str, Body] = field(default_factory=dict)  # imported reference geometry, not part of the body
+    refs: dict[str, Body] = field(default_factory=dict)  # reference imports, by feature id
     _summary: dict | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -95,9 +95,8 @@ class RegenResult:
 
 class Regenerator:
     def __init__(self, base_dir: str | Path | None = None) -> None:
-        """`base_dir`: where relative `import` file paths are resolved (the part file's folder)."""
         self._cache: dict[str, tuple[Body, dict, dict, dict, FeatureResult]] = {}
-        self.base_dir = Path(base_dir) if base_dir is not None else None
+        self.base_dir = Path(base_dir) if base_dir is not None else Path.cwd()  # import paths are relative to it
 
     def run(self, doc: S.Document, overrides: dict[str, float | str] | None = None) -> RegenResult:
         t0 = time.perf_counter()
@@ -127,7 +126,7 @@ class Regenerator:
                     dump["_file"] = None
             used = sorted(set().union(*[names_in(s) for s in _strings(dump)]) & set(env))
             key = hashlib.sha256(
-                (key + json.dumps(dump, sort_keys=True) + json.dumps({k: env[k] for k in used})).encode()
+                (key + json.dumps(dump, sort_keys=True) + json.dumps({k: env[k] for k in used}) + _file_key(feat, self.base_dir)).encode()
             ).hexdigest()
             if key in self._cache:
                 body, sketches, tools, refs, res = self._cache[key]
@@ -165,7 +164,7 @@ class Regenerator:
         _check_refs(ctx, results)
         if rebuilt:
             _progress(doc.name, len(doc.features), len(doc.features), None)
-        return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0, dict(ctx.refs))
+        return RegenResult(doc, env, ctx.body, results, debug_sketches, time.perf_counter() - t0, refs=dict(ctx.refs))
 
 
 def _check_refs(ctx, results: list[FeatureResult]) -> None:
@@ -194,12 +193,24 @@ def _check_refs(ctx, results: list[FeatureResult]) -> None:
             results[k] = res
 
 
+def _file_key(feat, base_dir: Path) -> str:
+    """An import rebuilds when its file changes on disk."""
+    if feat.type != "import":
+        return ""
+    from .importer import file_stamp
+    p = Path(feat.file)
+    return file_stamp(p if p.is_absolute() else base_dir / p)
+
+
 def _collapse(warnings: list[str]) -> list[str]:
     """One line per distinct warning (a pattern repeats its tool's warning for every copy)."""
     counts: dict[str, int] = {}
+    first: dict[str, str] = {}
     for w in warnings:
-        counts[w] = counts.get(w, 0) + 1
-    return [w if n == 1 else f"{w} (x{n})" for w, n in counts.items()]
+        key = w.split(" In world mm,")[0]  # copies differ only in where they are: keep the first one's positions
+        counts[key] = counts.get(key, 0) + 1
+        first.setdefault(key, w)
+    return [first[k] if n == 1 else f"{first[k]} (x{n})" for k, n in counts.items()]
 
 
 def _strings(obj):

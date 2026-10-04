@@ -5,6 +5,8 @@
 <title>VibeCAD</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/static/app.css">
+<script>try { const t = localStorage.getItem("vibecad.theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = t; } catch {}</script>
 <link rel="icon" href="data:,">
 <script type="importmap">
 { "imports": {
@@ -15,40 +17,69 @@
 </head>
 <body>
 <header>
-  <span class="brand">VibeCAD</span>
+  <span class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/><path d="M12 12l8.5-5M12 12v10M12 12L3.5 7"/></svg>VibeCAD</span>
   <select id="partSelect" title="Open a part"></select>
-  <button id="newBtn" title="New part">New</button>
+  <button id="newBtn" class="hb" data-icon="new" title="New part">New</button>
   <span class="sep"></span>
-  <button id="undoBtn" title="Undo (Ctrl/Cmd+Z)">Undo</button>
-  <button id="redoBtn" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+  <button id="undoBtn" class="hb" data-icon="undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+  <button id="redoBtn" class="hb" data-icon="redo" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
   <span class="sep"></span>
-  <button id="historyBtn" title="Every change to this part">History</button>
-  <button id="rendersBtn" title="The rendered views the agent sees">Renders</button>
+  <button id="propsBtn" class="hb" data-icon="part" title="Part properties: name, material (for the mass), process, design notes">Part</button>
+  <button id="historyBtn" class="hb" data-icon="history" title="Every change to this part">History</button>
+  <button id="rendersBtn" class="hb" data-icon="renders" title="The rendered views the agent sees">Renders</button>
   <span id="partStatus" class="status"></span>
   <span class="grow"></span>
+  <button id="themeBtn" class="hb" title="Dark / light theme"></button>
   <span id="conn" class="conn">connecting</span>
 </header>
 
 <main>
   <section id="left">
     <div class="panel-title">Feature tree <span id="partName" class="muted small"></span></div>
-    <ol id="tree"></ol>
-    <div class="panel-title">Parameters</div>
-    <table id="params"><colgroup><col class="n"><col><col class="v"></colgroup><tbody></tbody></table>
-    <div class="panel-title">Selected <span id="selName" class="muted"></span></div>
-    <div id="details" class="muted small">Click a feature in the tree or a face in the view.</div>
+    <div id="treePane" class="pane"><ol id="tree"></ol></div>
+    <div id="splitter" class="splitter" title="Drag to give the tree more or less room"></div>
+    <div id="lowerPane" class="pane">
+      <div class="panel-title">Parameters</div>
+      <table id="params"><colgroup><col class="n"><col><col class="v"></colgroup><tbody></tbody></table>
+      <div class="panel-title">Selected <span id="selName" class="muted"></span></div>
+      <div id="details" class="muted small">Click a feature in the tree or a face in the view.</div>
+    </div>
   </section>
 
   <section id="center">
     <div id="viewer"></div>
+    <div id="welcome" class="welcome" hidden>
+      <div class="wbrand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/><path d="M12 12l8.5-5M12 12v10M12 12L3.5 7"/></svg>
+        <div><b>VibeCAD</b><span>Parametric CAD you can talk to</span></div></div>
+      <div class="wacts"><button id="wNew" class="go">New part</button><button id="wImport">Import a CAD file…</button></div>
+      <div class="wlist"><div class="muted small">Open a part</div><div id="wParts"></div></div>
+      <div class="muted small">Or describe a part to the agent on the right.</div>
+    </div>
     <div id="refHint" hidden>Click a face or edge to reference it · Esc cancels</div>
     <div id="rebuild" class="rebuild" hidden><span class="spin"></span><span id="rebuildText">Rebuilding…</span></div>
     <div id="edgeEdit" class="edgeedit" hidden><span id="edgeEditText"></span>
       <button id="edgeEditDone" class="go">Done</button><button id="edgeEditCancel">Cancel</button></div>
-    <div class="vtools left">
-      <button data-view="iso" title="Isometric">Iso</button><button data-view="front">Front</button>
-      <button data-view="top">Top</button><button data-view="right">Right</button>
-      <button id="fitBtn" title="Fit the part in view">Fit</button>
+    <div id="mateBar" class="edgeedit" hidden><span id="mateText"></span><button id="mateCancel">Cancel</button></div>
+    <div id="modelTools" class="ribbon">
+      <div class="rgroup"><button id="newSketchBtn" class="rb" data-icon="sketch" data-label="Sketch" title="New sketch: on a datum plane, or on the face you clicked"></button></div>
+      <div class="rgroup"><button id="extrude3dBtn" class="rb" data-icon="extrude" data-label="Extrude"></button>
+        <button id="revolve3dBtn" class="rb" data-icon="revolve" data-label="Revolve"></button>
+        <button id="loftBtn" class="rb" data-icon="loft" data-label="Loft"></button>
+        <button id="sweepBtn" class="rb" data-icon="sweep" data-label="Sweep"></button>
+        <button id="holeBtn" class="rb" data-icon="hole" data-label="Hole"></button>
+        <button id="textBtn" class="rb" data-icon="text" data-label="Text"></button></div>
+      <div class="rgroup"><button id="filletBtn" class="rb" data-icon="fillet" data-label="Fillet" data-kind="Fillet"></button>
+        <button id="chamferBtn" class="rb" data-icon="chamfer" data-label="Chamfer" data-kind="Chamfer"></button>
+        <button id="shellBtn" class="rb" data-icon="shell" data-label="Shell"></button></div>
+      <div class="rgroup"><button id="patternBtn" class="rb" data-icon="pattern" data-label="Pattern"></button>
+        <button id="mirrorBtn" class="rb" data-icon="mirror" data-label="Mirror"></button></div>
+      <div class="rgroup"><button id="importBtn" class="rb" data-icon="import" data-label="Import" title="Import a STEP, IGES, BREP or STL file: as the part's base solid, added or cut, or as a reference body to design around"></button>
+        <button id="combineBtn" class="rb" data-icon="combine" data-label="Combine"></button></div>
+      <div class="rgroup"><button id="measureBtn" class="rb" data-icon="measure" data-label="Measure" title="Measure: click faces, edges or points (M)"></button>
+        <button id="sectionBtn" class="rb" data-icon="section" data-label="Section" title="Section view: cut the view with a plane"></button>
+        <button id="clashBtn" class="rb" data-icon="fit" data-label="Clash"></button></div>
+      <div class="rgroup"><button id="exportBtn" class="rb" data-icon="export" data-label="Export" title="Download the part as STEP, STL, 3MF, BREP or glTF"></button></div>
+      <input id="importFile" type="file" accept=".step,.stp,.iges,.igs,.brep,.brp,.stl" multiple hidden>
     </div>
     <div id="modelTools" class="sktools mtools">
       <span class="skgroup">
@@ -62,9 +93,17 @@
         <input type="file" id="importInput" accept=".step,.stp,.brep" hidden>
       </span>
     </div>
-    <div class="vtools right">
+    <div class="vtools left viewbar">
+      <button data-view="iso" title="Isometric view">Iso</button><button data-view="front" title="Front view (looking along +Y)">Front</button>
+      <button data-view="top" title="Top view">Top</button><button data-view="right" title="Right view">Right</button>
+      <button id="fitBtn" title="Fit the part in view (F)">Fit</button>
+      <span class="vsep"></span>
       <button id="projBtn" title="Switch between orthographic and perspective">Orthographic</button>
     </div>
+    <svg id="gizmo" class="gizmo" viewBox="-50 -50 100 100" aria-label="View orientation: click an axis to look along it"></svg>
+    <div id="measurePanel" class="floatpanel" hidden></div>
+    <div id="sectionPanel" class="floatpanel" hidden></div>
+    <div id="clashPanel" class="floatpanel" hidden></div>
     <div id="sketchBar" class="sketchbar" hidden>
       <div class="skhead"><span>Sketch <b id="sketchName"></b> <span id="sketchInfo" class="muted"></span></span>
         <span class="skacts"><button id="extrudeBtn" class="ico" data-icon="extrude" title="Extrude this sketch's closed profiles: add, cut or a new body"></button>
@@ -111,6 +150,33 @@
   </section>
 </main>
 
+<dialog id="propsDlg" class="formdlg"><form method="dialog" id="propsForm">
+  <div class="dlg-head"><b>Part properties</b></div>
+  <label>Name<input id="ppName" autocomplete="off"></label>
+  <label>Material<input id="ppMat" list="materials" autocomplete="off" placeholder="e.g. PLA, 6061-T6 aluminium, mild steel"></label>
+  <datalist id="materials"><option>PLA</option><option>PETG</option><option>ABS</option><option>ASA</option><option>Nylon (PA12)</option><option>TPU</option>
+    <option>Polycarbonate</option><option>Acetal (POM)</option><option>6061-T6 aluminium</option><option>Mild steel</option><option>304 stainless steel</option>
+    <option>Brass</option><option>Titanium Ti-6Al-4V</option><option>Plywood</option></datalist>
+  <div class="muted small" id="ppDensity"></div>
+  <label>Process<input id="ppProc" list="processes" autocomplete="off" placeholder="e.g. FDM 3D print, CNC milled, laser-cut sheet"></label>
+  <datalist id="processes"><option>FDM 3D print</option><option>SLA resin print</option><option>SLS print</option><option>CNC milled</option><option>CNC turned</option>
+    <option>Laser-cut sheet</option><option>Sheet metal, bent</option><option>Injection moulded</option></datalist>
+  <label>Design notes<textarea id="ppNotes" rows="6" placeholder="What the part is for, what it mates with, assumptions"></textarea></label>
+  <div class="dlg-foot"><button value="cancel">Cancel</button><button value="save" class="go" id="ppSave">Save</button></div>
+</form></dialog>
+<dialog id="newDlg" class="formdlg"><form method="dialog" id="newForm">
+  <div class="dlg-head"><b>New part</b></div>
+  <label>Name<input id="npName" autocomplete="off" placeholder="e.g. motor_bracket" pattern="[A-Za-z0-9_\-]+" required></label>
+  <div class="muted small" id="npWhere"></div>
+  <label>Material <span class="muted">(optional; gives the mass)</span><input id="npMat" list="materials" autocomplete="off" placeholder="e.g. PETG, 6061-T6 aluminium"></label>
+  <label>Start from</label>
+  <div class="npstart">
+    <label class="opt"><input type="radio" name="npStart" value="empty" checked> <span><b>An empty part</b><br><span class="muted">sketch and extrude, or ask the agent</span></span></label>
+    <label class="opt"><input type="radio" name="npStart" value="import"> <span><b>A CAD file</b><br><span class="muted">STEP, IGES, BREP or STL: as the base solid or a reference</span></span></label>
+  </div>
+  <div class="dlg-foot"><button value="cancel" formnovalidate>Cancel</button><button value="create" class="go" id="npCreate">Create</button></div>
+</form></dialog>
+<dialog id="keysDlg"><div class="dlg-head"><b>Keyboard shortcuts</b><form method="dialog"><button>Close</button></form></div><div id="keysList"></div></dialog>
 <dialog id="historyDlg"><div class="dlg-head"><b>History</b><form method="dialog"><button>Close</button></form></div><ol id="history"></ol></dialog>
 <dialog id="rendersDlg"><div class="dlg-head"><b>Renders</b> <span class="muted small">(what the agent sees; selected feature in orange)</span><form method="dialog"><button>Close</button></form></div><img id="rendersImg" alt=""></dialog>
 <dialog id="imgDialog"><img id="imgBig" alt=""><form method="dialog"><button>Close</button></form></dialog>

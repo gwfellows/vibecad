@@ -129,48 +129,89 @@ GUI (Playwright, `scripts/gui_smoke.sh`, 66 checks; the agent panel is driven by
 
 **Don't run `vibecad-bench` from inside a Claude Code on the web session.** The nested agent reported the parent session's id and the CLI logged "message history mutated" on it, despite `agent.py` clearing the session env vars; the account also returned a five-hour rate-limit event. Run the benchmark from a local terminal.
 
-## 2026-09-26: realistic design workflows (holes, STEP imports), Sonnet at effort low
+## 2026-09-28: new features, guide lines not yet measured
 
-Ten workflows of the kind a robotics team asks for (`bench/workflows.json`, `bench/workflows2.json`), five of them around STEP models of the real parts (`examples/imports/`: controller board, 608 bearing, 2020 extrusion, NEMA 17). Checks include `clear_of_refs` (the part must not collide with the parts it is designed around) and `hole_spec` (fastener size and hole kind).
+The agent gained extrude `draft` / `up_to_face`, `loft`, `sweep`, the SVG drawing export and the `mirror_entities` op. The guide got two small changes: patterns and mirrors now name every replayable feature type, and one line tells the agent to draw half a symmetric profile and mirror it. Neither was benched. Later the same day: the `place_import` tool (placing an import by a face of it and a target face) and the `boolean` feature with `clearance`, each with a guide line; also not benched. A task worth adding to the suite: "a holder for this STEP part" (import, place, nest with clearance, check_fit). Worth a run: does `mirror_entities` cut output tokens and rejected batches on symmetric parts (a T-slot nut, a bracket with a symmetric gusset) against drawing the whole outline with `add_polygon`?
 
-**Round 1** (before the fixes below): 4 of 6 passed.
+## 2026-09-28: suite with the design-around-import tasks (Sonnet, effort low)
 
-| Workflow | Result | Time, cost | Review |
-|---|---|---|---|
-| controller tray (board STEP), then "8 mm standoffs + 1 mm fillets" | pass, pass | 123 s + 51 s, $0.38 | flat PETG plate, standoffs on the board's holes, inserts 4.2 × 5.5 deep |
-| adapter plate, then "M4 now", then "5 mm corner radii" | pass ×3 | 40 s, 9 s, 15 s, $0.16 | clean tree; intents updated with the size |
-| plate on the NEMA 17 STEP | pass | 70 s, $0.16 | hole positions typed in from `describe_import`, not projected |
-| hole_plate edit: M4 tapped 10 deep, 30 mm apart | pass | 35 s, $0.11 | thickened the plate to 14 mm on its own so the threads stay blind |
-| pillow block for the 608 STEP | **fail** | 122 s, $0.22 | never imported the STEP; designed from memorised sizes |
-| NEMA 17 bracket beside a 2020 extrusion (two STEPs) | **fail** | 189 s, $0.32 | motor placed through the plate (10 cm³ overlap); the agent reported "no warnings" |
+Two tasks added: `cell_holder_step` (a holder for two 18650 cells from a STEP, 0.3 mm clearance) and `pcb_base` (standoffs under an imported board that arrives standing on edge, off the origin). New check `ref_fit`: no overlap with any reference import, gap within a range. Bench fix: the agent SDK refuses `bypassPermissions` as root, so runs in a container set `IS_SANDBOX=1`.
 
-**Fixes** (tools first, then the guide):
+Baseline (one run each): 18 of 19 turns pass, about $3.80 in all. The existing 13 tasks all pass. The import tasks are the weak spot:
 
-| Problem | Evidence | Fix |
+| task | pass | wall s | tool calls | cost $ | what went wrong |
+|---|---|---|---|---|---|
+| cell_holder_step | no (2 of 2 runs) | 72 | 17 | 0.16 | drilled pockets where it chose, left the reference cell at the origin; `check_fit` said 2505 mm³ overlap and it exported anyway |
+| pcb_base | yes | 311 | 47 | 0.66 | about 290 s spent finding where the board and its holes are: dozens of probe sketches to read frames, a solid copy of the import, external edges |
+| tube_corner_bracket | yes | 215 | 29 | 0.44 | about 100 s on a hole that cut nothing: the points were at world y = +10, the body at y −20..0; the warning didn't say where either was |
+
+Causes, and the changes made:
+- A reference import told the agent nothing: no size in the report, and `face_labels` ignored reference bodies. Now the tree line gives its size and world extents (`60 x 9.6 x 40 mm, x 10..70 y 20.4..30 z 5..45`), and `face_labels <import id>` lists its faces with plane normals and centres, and cylinder axes and diameters (its mounting holes).
+- `check_fit` returned numbers only. It now ends with a verdict: `OVERLAP with reference X: ... Fix this before reporting ...`.
+- A cut or add that changes nothing now says where the tool and the body are, in world mm.
+- Guide: a four-step "Designing around an imported part" recipe (import as reference and read it, decide where it sits, take sizes from it with `boolean` + `clearance` for nests, `check_fit` must show no overlap), replacing one long bullet.
+
+Measured after the changes (same variant):
+
+| task | before | after |
 |---|---|---|
-| Renders crashed | a visibility ray hit the apex of a blind hole's drill point (no normal): 3 failed renders in one run | treat a singular hit as hiding |
-| Collisions with the reference went unseen | the agent said it "can't run a fit check against reference imports" | the import gets a warning after every batch when the part overlaps it (> 0.5 % of its volume, so press fits pass), with the overlap's extent |
-| Reference holes typed as numbers | every STEP run copied coordinates, so the part wouldn't follow the reference | `describe_import` lists each round face's rims as ready-made EdgeRefs to paste into `external` entities |
-| STEP ignored for a standard part | pillow block designed from memory | guide: always import a given STEP and check against it |
+| cell_holder_step | 0 of 2 pass | 3 of 3 pass, about 47 s and $0.12 each (after the fixes below) |
+| pcb_base | 1 of 1 pass, 311 s, 47 calls, $0.66 | 2 of 2 pass, about 123 s, 10 to 15 calls, $0.25 |
+| tube_corner_bracket | 215 s, 29 calls | 71 s and 56 s, 9 and 5 calls |
 
-**Round 2** (after the fixes): 10 of 10 passed, including every follow-up.
+Two more fixes came out of the re-runs:
+- The agent still ignored overlaps (never called `check_fit`, or read its OVERLAP verdict and exported anyway), and one run left a 36 mm gap because an XZ sketch offset went to −Y. Now every edit report has a `fit` line when the part runs into a reference, `export` answers `NOT READY: ...`, `check_fit` names references the part doesn't touch, and datum sketches show their world plane in the tree (`on XZ+o (world y = -5)`).
+- With the `fit` line, the agent then deleted the reference to clear it (in 3 of 3 runs: "used only for measuring"). The line and the guide now say to keep the import, and for several copies to place it once and pattern.
 
-| Workflow | Runs | Time, cost | Review |
-|---|---|---|---|
-| pillow block (608 STEP) | 2/2 | 175 s, 140 s; $0.38, $0.23 | imports the bearing, places it on the bore axis; M5 counterbores; no bearing shoulder (bore straight through) |
-| NEMA 17 + 2020 bracket | 2/2 | 600 s, 202 s; $0.93, $0.34 | the overlap warning drove the fix in both; the 600 s run spent 5 min moving the motor and a gusset until the warning cleared |
-| plate on the NEMA 17 STEP | 2/2 | 128 s, 154 s; $0.24, $0.26 | both now project the motor's hole rims (4 `external`s) |
-| two-part enclosure around the board STEP | 1/1 | 339 s, $0.61 | shelled tray, standoffs with inserts, corner bosses, USB and jack cutouts in the right wall, flat lid with countersinks |
-| MG996R servo bracket from datasheet sizes, then "3.5 mm pilot holes 10 deep" | 1/1, 1/1 | 230 s + 41 s, $0.46 | servo passes through a window in an upright wall, tabs screwed to it |
-| shaft collar with a radial M4 set screw | 1/1 | 60 s, $0.10 | tapped hole from a datum plane tangent to the OD |
-| gusset joining two 2020 extrusions (one STEP, imported twice) | 1/1 | 208 s, $0.31 | imported the extrusion a second time, rotated upright; L plate on both -Y faces |
+A full re-run of the suite after these changes got through 9 of 15 tasks before the account's usage limit stopped it: all 9 passed. The other 6 ran after the limit reset, and all passed. So with the changes the suite passes 19 of 19 turns (baseline 18 of 19), with both import tasks passing. Wall time on the 9 is mixed: tube_corner_bracket 215 → 56 s and tube_bracket 196 → 94 s, but vbelt_pulley 316 → 347 s, shelf_bracket 198 → 296 s and battery_mount 236 → 299 s. bushing_longer also went 66 → 174 s, while stiffen_bracket stayed at about 70 s and the conversation tasks were unchanged. These are single runs, so treat the slowdowns as variance until repeated: none of the changes touch those tasks' tools, but the longer guide is in every prompt.
 
-Round 2 total: about $5.
+## 2026-09-29: expanded suite, two more cycles
 
-**Remaining friction:**
-- **Placement reasoning is the slow part.** Positioning a rotated reference (which way the motor hangs, which face is which) took most of the 600 s run. Candidates: an op that places a reference by mating one of its faces to a face or plane (`mate: {face, to, offset}`), and faces named by role in `describe_import` (e.g. "front face with the pilot").
-- **Projection is used only when the reference face is the sketch plane.** When the plate is offset from the motor face, the agent types coordinates again. Projecting onto a parallel plane already works; the guide could show it.
-- **Mechanical refinements are rare at effort low.** No bearing shoulder, no fillets unless asked. A review pass at higher effort is still an open hypothesis.
+Seven tasks added (a NEMA 17 bracket from a motor STEP that arrives lying down, a phone stand, a tray for a board and a battery, a loft fan duct, a swept towel rail, a drawing export, a drafted molded knob), then two more (a base plate for `enclosure_lid.vcad.json`, a three-cell edit of `cell_holder`). New checks: `file_glob` (an export exists), `feature_type` with `field` (e.g. an extrude with a draft); checks default to the part the agent made, not setup files.
+
+Cycle 1 (new tasks, two runs each): 13 of 14 pass. Loft, sweep, drawing and draft tasks are quick (5 to 90 s, $0.03 to 0.16). The import tasks cost the most (160 to 250 s, $0.30 to 0.50). Findings and fixes:
+- Phone stand run 1 built the stand at the origin and left the phone where its file put it, 81 mm away; nothing flagged it. Export now says `NOT READY` when a reference is more than 2 mm from the part.
+- `render` crashed ("vector has zero norm") on a part with blind drilled holes: the hidden-line test asked for a normal at a drill tip's cone apex. Fixed.
+- Rejected batches: the agent assumed partial success and sent follow-ups referring to a sketch that was never added. Errors now say nothing in the batch was applied. An op nested as a field (`add_rectangle` inside a sketch) gets a hint to send it as its own op. Calls to op names as tools (`update_feature`) recurred in 4 runs; the apply_ops description now says ops aren't tools.
+- Hole `points` given as `m3_1.center` are accepted.
+- About 60 s of hand geometry to slide a placed phone down onto the lip: `place_import` gained `then_face` / `then_target`.
+
+Cycle 2 (import tasks, two runs each): motor 2 of 2, phone stand 2 of 2 (both correct now) but 430 to 445 s and $0.73 to 0.82, tray 1 of 2 (the failure was the account's usage limit cutting the run off mid-way). The phone stand's time went into: 183 s planning; 180 s after `place_import` because the smallest-rotation mate left the phone twisted (portrait, or turned about the contact), and the agent worked out the rotation by hand; renders don't show reference bodies, so it couldn't see where the phone was; and it assumed trig takes radians. Fixes, not yet benched:
+- With a second face pair, `place_import` also turns the import about the first contact so that pair faces each other: two face pairs fix the orientation (back on the backrest, long edge on the lip is landscape).
+- Renders draw reference bodies see-through in violet (orange when highlighted).
+- The IR reference says trig takes and returns degrees.
+- The bench marks runs cut off by the usage limit as `LIMIT`, not as failures.
+
+Cycle 3 (import and assembly tasks, two runs each): 7 of 8. Phone stand 2 of 2 (298 to 431 s), two-part enclosure 2 of 2 (225 to 532 s), cell holder for three 2 of 2 (about 20 s). The one failure made a base that fits the lid without importing it: the check was too strict (a base built from the lid's shared params is fine), so it now accepts either.
+
+Cycle 4 (phone stand and enclosure again): enclosure 2 of 2; phone stand 0 of 2. One run left the phone 1.6 mm off the backrest; the other never moved it (95 mm away) and reported. Fixes:
+- With one face pair, `place_import` also turns the import so the long sides of the two faces line up (the phone lands landscape on a wide backrest), for `align: touch` too.
+- Every edit report has a `fit` line when a reference is far from the part ("at least 95 mm from the part: ... put it where the part holds it"), not only when they overlap.
+
+Cycle 5 (phone stand, three runs): 2 of 3 (321 and 451 s). The failure left a scratch part (`test_extrude.vcad.json`) behind: the agent drew the side profile as three touching rectangles, got an OCCT `TopoDS::Face` type mismatch, and spent minutes on a scratch file finding out why. In the slow pass, the agent's `add_polygon` edge names were two edges off (`wall_front_top_to_slot` was the slot floor), so `place_import` onto it correctly put the phone flat, and the agent spent 4 minutes on rotation math by hand. Fixes:
+- Sketch loops that touch or cross (an L or T drawn as stacked rectangles) make one region, their union, through an OCCT edge arrangement.
+- `face_labels` with a part feature's id lists each face's outward normal and centre (as it already did for imports). The normals come from the solid's own faces: the stored label faces can carry the opposite orientation.
+- `place_import` returns a `contact` line: "the import's face now points -Z (down), against a face pointing +Z (up)", so a misnamed face shows at once.
+- Guide: try things in the part and `undo`, not in scratch files; read the `contact` line.
+
+Cycle 6 (after the cycle 5 fixes): phone stand 2 of 2, 218 and 290 s, $0.44 to 0.52 (cycle 5: 321 to 451 s, $0.61 to 0.81). New tasks `servo_mount_step` (a bracket holding a micro servo by its tabs) and `phone_swap_edit` (swap the stand's phone for the phone in a case, from a stand an earlier bench run built) were added, but the usage limit stopped them before any finished (`LIMIT`); run them first next time.
+
+Cycle 7 (the two new tasks, two runs each): 4 of 4. Servo mount 306 and 234 s ($0.47, $0.31); phone swap 275 and 413 s ($0.59, $0.69). The first servo run spent 246 s in one think working out by hand that the servo lay on its side and which rotation stands it shaft-up; the phone swap runs lost calls to `get_tree` before `open_part`, a face ref without `role`, and five `place_import` retries trading a 2.6 mm³ corner overlap against the gap. Fixes:
+- `place_import` takes a datum plane as target (`{"datum": "XY"}`): the import's face goes on the plane, centred at the origin, before the part has geometry. Guide line added.
+- Agent tools open the folder's only part when none is open; otherwise the error lists the parts.
+- A face ref on an import defaults to `role: face`.
+
+Cycle 8 (same tasks, after the cycle 7 fixes): 4 of 4. Servo mount 411 and 174 s ($0.64, $0.30); phone swap 149 and 90 s ($0.28, $0.16), down from 275 to 413 s. The servo runs used the datum placement at once, but it centred the chosen tab face on the origin with the servo's length along Y, and one run then spent about 4 minutes mapping off-centre hole positions. Fix: on a datum, the whole import is centred on the origin with its longest side along x (the servo's tab holes land at ±13.9, 0).
+
+Cycle 9 (the whole suite once, as a regression check after the region and tool changes): 26 of 26 tasks pass (30 turns counting the conversation follow-ups), 67 minutes and $6.92 in all. Servo mount 241 s. The one slow run was the phone swap (519 s, 465 s of it thinking): it rested the case's short end on the lip, so the case stood portrait, and the agent then set `rotate` by hand for six minutes instead of placing again with a long side. Fix: `place_import`'s contact line gives the placed size and says to place it again resting a different side (a long side for landscape); the guide says not to set `rotate` by hand.
+
+Cycle 10: 4 of 4. Phone swap 175 and 225 s (cycle 9's slow run was 519 s). New task `fan_tray_two_imports` (a board on standoffs and a 40 mm fan bolted inside an end wall, two imports in one part): 404 and 456 s, $0.77 each. Remaining waste: imports still moved by hand-set `translate` after the part was built (5 calls in one run); a `place_import` target that matched two faces (the tray's inside wall, split by a feature) left the agent guessing a `near` point; ops called as if they were tools (`set_param`, `update_feature`) about once in three runs, a 2 s slip each. Fix: the ambiguous-face error lists each match's centre and area and the exact `pick` to add.
+
+Cycle 11 (after the cycle 10 fixes): 4 of 4. Servo mount 246 and 172 s ($0.41, $0.27; cycle 8: 411 and 174 s). Fan tray 311 and 310 s ($0.45, $0.68; cycle 10: 404 and 456 s, $0.77 each), with 0 and 1 hand-set `translate` calls (cycle 10: up to 5).
+
+Cycle 12 (hard import tasks): motor bracket 2 of 2 (215 and 275 s). Two-part enclosure: one failure, then the usage limit cut the second run off. The failure reported with the tray overlapping the battery by 232 mm³, which the agent called "a numerical touching artifact" (the battery's cable-exit block ran into the wall). Fix: the edit report's `fit` line and `check_fit` say where the overlap is in world mm and its size, and that it is a real collision.
+
+Cycle 13 (two-part enclosure, after the overlap-location fix): 2 of 2, 254 and 236 s, $0.47 to 0.49. Run 2 hit the same cable-block collision ("48.0 mm³ at x 71.0..72.0 y -4.0..4.0 z 8.0..14.0 (1.0 x 8.0 x 6.0 mm)") and cleared it before reporting.
 
 ## Hypotheses to test next
 

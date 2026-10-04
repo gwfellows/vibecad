@@ -1,0 +1,548 @@
+{
+  "vibecad": "0.1",
+  "name": "phone_stand",
+  "process": "3D printed (FDM), material PLA/PETG assumed, min wall back_t/lip_t=6mm well above 1.2mm FDM minimum.",
+  "design_notes": "Desk stand for phone (measured from phone.step: 146.7 x 71.5 x 9 mm) held in landscape, leaning back lean_deg=20deg from vertical against a back panel, with a front lip catching the bottom edge. Slot gap = phone_t+clearance=10.5mm sized for 9mm phone plus 1.5mm total clearance. Back panel embedded 'embed'=5mm below desk level (z=-5) into the base slab to guarantee solid union regardless of the tilt trig. Single YZ-plane profile sketch extruded symmetrically along X (stand_width) contains base slab, front lip, and tilted back panel as three regions unioned in one extrude.",
+  "params": {
+    "phone_w": "146.7",
+    "phone_h": "71.5",
+    "phone_t": "9",
+    "clearance": "1.5",
+    "lean_deg": "20",
+    "stand_width": "phone_w + 25",
+    "base_depth": "65",
+    "base_t": "8",
+    "lip_t": "6",
+    "lip_h": "14",
+    "gap": "phone_t + clearance",
+    "y_back": "lip_t + gap",
+    "back_len": "55",
+    "back_t": "6",
+    "embed": "5"
+  },
+  "features": [
+    {
+      "id": "phone_ref",
+      "type": "import",
+      "intent": "Reference phone geometry to design stand around",
+      "file": "phone.step",
+      "mode": "reference",
+      "rotate": [
+        0.0,
+        70.0,
+        -90.0
+      ],
+      "translate": [
+        -100.0,
+        125.49,
+        219.74
+      ]
+    },
+    {
+      "id": "profile_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ"
+      },
+      "entities": [
+        {
+          "id": "base_rect_bottom",
+          "p1": [
+            0.0,
+            0.0
+          ],
+          "p2": [
+            65.0,
+            0.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_rect_right",
+          "p1": [
+            65.0,
+            0.0
+          ],
+          "p2": [
+            65.0,
+            8.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_rect_top",
+          "p1": [
+            65.0,
+            8.0
+          ],
+          "p2": [
+            0.0,
+            8.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "base_rect_left",
+          "p1": [
+            0.0,
+            8.0
+          ],
+          "p2": [
+            0.0,
+            0.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "front_face",
+          "p1": [
+            11.768387,
+            -5.0
+          ],
+          "p2": [
+            36.518363,
+            63.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "back_top",
+          "p1": [
+            36.518363,
+            63.0
+          ],
+          "p2": [
+            42.156519,
+            60.947879
+          ],
+          "type": "line"
+        },
+        {
+          "id": "back_face",
+          "p1": [
+            42.156519,
+            60.947879
+          ],
+          "p2": [
+            17.406543,
+            -7.052121
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bottom",
+          "p1": [
+            17.406543,
+            -7.052121
+          ],
+          "p2": [
+            11.768387,
+            -5.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "base_rect_bottom.p2",
+            "base_rect_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_rect_right.p2",
+            "base_rect_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_rect_top.p2",
+            "base_rect_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "base_rect_left.p2",
+            "base_rect_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_rect_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "base_rect_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_rect_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "base_rect_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_rect_bottom"
+          ],
+          "value": "base_depth",
+          "name": "base_rect_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "base_rect_right"
+          ],
+          "value": "base_t",
+          "name": "base_rect_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "base_rect_bottom.p1"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "base_rect_bottom.p1"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "front_face.p2",
+            "back_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "back_top.p2",
+            "back_face.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "back_face.p2",
+            "bottom.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bottom.p2",
+            "front_face.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "front_face.p1"
+          ],
+          "value": "y_back - (base_t+embed)*tan(lean_deg)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "front_face.p1"
+          ],
+          "value": "-embed"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "back_top.p1"
+          ],
+          "value": "y_back + back_len*tan(lean_deg)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "back_top.p1"
+          ],
+          "value": "base_t + back_len"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "back_face.p1"
+          ],
+          "value": "y_back + back_len*tan(lean_deg) + back_t*cos(lean_deg)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "back_face.p1"
+          ],
+          "value": "base_t + back_len - back_t*sin(lean_deg)"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "bottom.p1"
+          ],
+          "value": "y_back - (base_t+embed)*tan(lean_deg) + back_t*cos(lean_deg)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "bottom.p1"
+          ],
+          "value": "-embed - back_t*sin(lean_deg)"
+        }
+      ]
+    },
+    {
+      "id": "base_body",
+      "type": "extrude",
+      "intent": "Base slab that sits on the desk.",
+      "profile": {
+        "sketch": "profile_sk",
+        "regions": [
+          "base_rect_bottom",
+          "base_rect_right",
+          "base_rect_top",
+          "base_rect_left"
+        ]
+      },
+      "distance": "stand_width",
+      "direction": "symmetric"
+    },
+    {
+      "id": "back_body",
+      "type": "extrude",
+      "intent": "Back panel leaning back lean_deg from vertical, embedded into base, supports the phone's back face.",
+      "profile": {
+        "sketch": "profile_sk",
+        "regions": [
+          "front_face",
+          "back_top",
+          "back_face",
+          "bottom"
+        ]
+      },
+      "distance": "stand_width",
+      "direction": "symmetric"
+    },
+    {
+      "id": "lip_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ"
+      },
+      "entities": [
+        {
+          "id": "lip_rect_bottom",
+          "p1": [
+            0.0,
+            8.0
+          ],
+          "p2": [
+            6.0,
+            8.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "lip_rect_right",
+          "p1": [
+            6.0,
+            8.0
+          ],
+          "p2": [
+            6.0,
+            22.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "lip_rect_top",
+          "p1": [
+            6.0,
+            22.0
+          ],
+          "p2": [
+            0.0,
+            22.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "lip_rect_left",
+          "p1": [
+            0.0,
+            22.0
+          ],
+          "p2": [
+            0.0,
+            8.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "lip_rect_bottom.p2",
+            "lip_rect_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lip_rect_right.p2",
+            "lip_rect_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lip_rect_top.p2",
+            "lip_rect_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "lip_rect_left.p2",
+            "lip_rect_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "lip_rect_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "lip_rect_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "lip_rect_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "lip_rect_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "lip_rect_bottom"
+          ],
+          "value": "lip_t",
+          "name": "lip_rect_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "lip_rect_right"
+          ],
+          "value": "lip_h",
+          "name": "lip_rect_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "lip_rect_bottom.p1"
+          ],
+          "value": 0.0
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "lip_rect_bottom.p1"
+          ],
+          "value": "base_t"
+        }
+      ]
+    },
+    {
+      "id": "lip_body",
+      "type": "extrude",
+      "intent": "Front lip catching the phone's bottom edge, flush with the base's front face.",
+      "profile": {
+        "sketch": "lip_sk"
+      },
+      "distance": "stand_width",
+      "direction": "symmetric"
+    },
+    {
+      "id": "ease_edges",
+      "type": "fillet",
+      "intent": "Break sharp top edges of the lip and back panel for comfort and cleaner FDM printing.",
+      "edges": [
+        {
+          "between": [
+            {
+              "feature": "lip_body",
+              "role": "side",
+              "entity": "lip_rect_left"
+            },
+            {
+              "feature": "lip_body",
+              "role": "side",
+              "entity": "lip_rect_top"
+            }
+          ],
+          "note": "top-front edge of the lip, softened for comfort/handling"
+        },
+        {
+          "between": [
+            {
+              "feature": "back_body",
+              "role": "side",
+              "entity": "front_face"
+            },
+            {
+              "feature": "back_body",
+              "role": "side",
+              "entity": "back_top"
+            }
+          ],
+          "note": "top edge of the leaning back panel"
+        }
+      ],
+      "radius": "1.5"
+    }
+  ]
+}

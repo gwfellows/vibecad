@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from vibecad import schema as S
+from vibecad.ops import OpError, apply_ops
 from vibecad.session import Session
 
 EX = Path(__file__).resolve().parent.parent / "examples"
@@ -240,3 +242,71 @@ def test_hole_off_the_surface_warns(tmp_path):
     rep = json.loads(ws.apply_ops([{"op": "add_feature", "feature": {"id": "h", "type": "hole", "sketch": "hi", "size": "M3", "direction": "reverse"}}], "h", "user"))
     w = " ".join(rep.get("warnings") or [])
     assert "not on the part's surface" in w and "q (14 mm away)" in w, rep
+
+
+def test_fillet_corner_rounds_a_rectangle_keeping_it_fully_constrained(tmp_path):
+    from math import pi
+
+    from vibecad.regen import Regenerator
+    doc = S.Document(name="t", params={"r": 3})
+    doc, _ = apply_ops(doc, [
+        {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+        {"op": "add_rectangle", "sketch": "sk", "id": "plate", "width": 40, "height": 20, "center": [0, 0]},
+        {"op": "add_feature", "feature": {"id": "ex", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 2}},
+    ])
+    base = Regenerator().run(doc).part.volume
+    corners = [("plate_bottom.p2", None), ("plate_top.p2", "r")]  # one numeric, one param-driven
+    for corner, rad in corners:
+        doc, notes = apply_ops(doc, [{"op": "fillet_corner", "sketch": "sk", "corner": corner, "radius": rad or 5}])
+        assert "rounded" in notes[0]
+    res = Regenerator().run(doc)
+    assert res.ok, [(f.id, f.message) for f in res.features]
+    assert res.sketches["sk"][0].report.dof == 0
+    cut = lambda r: r * r * (1 - pi / 4)
+    assert res.part.volume == pytest.approx(base - 2 * (cut(5) + cut(3)), rel=1e-6)
+    doc, _ = apply_ops(doc, [{"op": "set_param", "name": "r", "value": 4}])
+    res = Regenerator().run(doc)
+    assert res.part.volume == pytest.approx(base - 2 * (cut(5) + cut(4)), rel=1e-6)
+
+
+def test_fillet_corner_errors(tmp_path):
+    doc = S.Document(name="t")
+    doc, _ = apply_ops(doc, [
+        {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+        {"op": "add_rectangle", "sketch": "sk", "id": "p", "width": 10, "height": 10, "center": [0, 0]},
+        {"op": "add_circle", "sketch": "sk", "id": "c", "diameter": 2, "center": [20, 0]},
+    ])
+    with pytest.raises(OpError, match="too big"):
+        apply_ops(doc, [{"op": "fillet_corner", "sketch": "sk", "corner": "p_bottom.p2", "radius": 20}])
+    with pytest.raises(OpError, match="line endpoint"):
+        apply_ops(doc, [{"op": "fillet_corner", "sketch": "sk", "corner": "c.center", "radius": 1}])
+
+
+def test_fillet_all_four_corners_keeps_the_rectangle_size():
+    from math import pi
+
+    from vibecad.regen import Regenerator
+    doc = S.Document(name="t", params={"w": 40, "h": 20})
+    doc, _ = apply_ops(doc, [
+        {"op": "add_feature", "feature": {"id": "sk", "type": "sketch", "plane": {"datum": "XY"}}},
+        {"op": "add_rectangle", "sketch": "sk", "id": "p", "width": "w", "height": "h", "center": [0, 0]},
+        {"op": "add_feature", "feature": {"id": "ex", "type": "extrude", "profile": {"sketch": "sk"}, "distance": 1}},
+    ])
+    doc, _ = apply_ops(doc, [{"op": "fillet_corner", "sketch": "sk", "corner": c, "radius": 4}
+                             for c in ("p_bottom.p2", "p_right.p2", "p_top.p2", "p_left.p2")])
+    res = Regenerator().run(doc)
+    assert res.ok and res.sketches["sk"][0].report.dof == 0
+    assert res.part.volume == pytest.approx(40 * 20 - 4 * 16 * (1 - pi / 4), rel=1e-6)
+    bb = res.part.bounding_box()
+    assert (round(bb.size.X, 6), round(bb.size.Y, 6)) == (40, 20)
+    doc, _ = apply_ops(doc, [{"op": "set_param", "name": "w", "value": 60}])  # the rounded plate still resizes
+    res = Regenerator().run(doc)
+    assert round(res.part.bounding_box().size.X, 6) == 60 and res.sketches["sk"][0].report.dof == 0
+
+
+def test_rejected_batches_explain_themselves():
+    from vibecad.ops import OpError, apply_ops
+    doc = S.Document.model_validate({"name": "t", "features": []})
+    with pytest.raises(OpError, match="is an op, not a field"):
+        apply_ops(doc, [{"op": "add_feature", "feature": {"id": "s", "type": "sketch", "plane": {"datum": "XY"},
+                                                         "add_rectangle": {"width": 1}}}])

@@ -59,21 +59,31 @@ def check_parts(workdir: Path, task: dict, prev: dict[str, float | None] | None 
         out["parts"].append(info)
         if errs or warns or dof or not s.get("valid"):
             out["problems"].append(f"{p.name}: errors={errs} warnings={warns} dof={dof} valid={s.get('valid')}")
+    setup = {Path(f).name for f in ([task["setup_copy"]] if task.get("setup_copy") else []) + task.get("setup_files", [])}
+    made = [p for p in parts if p.name not in setup] or parts  # checks default to the part the agent made
     for chk in task.get("checks", []):
-        msg = _check(chk, parts, workdir, prev)
+        if chk.get("each"):  # on every part the agent made (names it chose): a case's base and its lid
+            msgs = [_check(chk, [p], workdir, prev, parts) for p in made]
+            msg = next((f"{p.name}: {m}" for p, m in zip(made, msgs) if m), None)
+        else:
+            msg = _check(chk, made, workdir, prev, parts)
         if msg:
             out["problems"].append(msg)
     out["pass"] = not out["problems"]
     return out
 
 
-def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | None] | None = None) -> str | None:
+def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | None] | None = None,
+           parts_all: list[Path] | None = None) -> str | None:
     """Task-specific checks. Returns a problem description, or None if the check passes.
 
     In a follow-up turn, `volume_change` with `"from": "@prev"` compares against the part as it was
     before that turn."""
     import math
 
+    if chk["kind"] == "file_glob":  # an output the task asked for (an export, a drawing)
+        hits = list(workdir.rglob(chk["pattern"]))
+        return None if hits else f"no file matching {chk['pattern']}"
     target = workdir / chk["file"] if "file" in chk else (parts[0] if parts else None)
     if target is None or not target.exists():
         return f"check {chk['kind']}: part file {chk.get('file')} missing"
@@ -95,7 +105,7 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
             if not base:
                 return f"check volume_change: no previous volume for {target.name}"
         else:
-            base = Regenerator().run(load(ROOT / chk["from"])).part.volume
+            base = Regenerator((ROOT / chk["from"]).parent).run(load(ROOT / chk["from"])).part.volume
         r = part.volume / base - 1
         ok = chk.get("min", -1e9) <= r <= chk.get("max", 1e9)
         return None if ok else f"volume change {r:+.1%} outside [{chk.get('min')}, {chk.get('max')}]"
@@ -122,9 +132,39 @@ def _check(chk: dict, parts: list[Path], workdir: Path, prev: dict[str, float | 
         n = len(axes)
         ok = chk.get("min", 0) <= n <= chk.get("max", math.inf)
         return None if ok else f"{n} holes of d {chk['d_min']}-{chk['d_max']} mm, expected {chk.get('min')}-{chk.get('max')}"
-    if kind == "feature_type":
-        types = [f.type for f in res.doc.features]
-        return None if chk["type"] in types else f"no {chk['type']} feature"
+    if kind == "ref_fit":  # against the part's reference imports: none overlapped, gaps in range
+        from .measure import min_distance
+        refs = dict(res.refs)
+        if not refs and chk.get("or_parts"):  # multi-part workflow: the mating part as its own file, same world coordinates
+            from .topo import Body
+            for other in parts_all:
+                if other.resolve() != target.resolve():
+                    op = Regenerator(other.parent).run(load(other)).part
+                    if op is not None:
+                        refs[other.name] = Body(op.wrapped, [])
+        if len(refs) < chk.get("min_refs", 1):
+            return f"{len(refs)} reference import(s), expected at least {chk.get('min_refs', 1)}"
+        for rid, rb in refs.items():
+            other = bd.Shape.cast(rb.shape)
+            if other.solids():
+                common = part & other
+                ov = common.volume if common is not None else 0.0
+                if ov > chk.get("overlap_max", 0.01):
+                    return f"part overlaps reference {rid} by {ov:.1f} mm³"
+            d = min_distance(part.wrapped, rb.shape)
+            gap = d[0] if d else None
+            if gap is None or not chk.get("gap_min", 0) - 1e-6 <= gap <= chk.get("gap_max", 1e9) + 1e-6:
+                return f"gap to {rid} is {gap}, expected {chk.get('gap_min', 0)}-{chk.get('gap_max', 'any')}"
+        return None
+    if kind == "import_file":  # the part imports this file (a swapped-in model, not the old one)
+        names = [Path(f.file).name for f in res.doc.features if f.type == "import" and not f.suppressed]
+        return None if chk["name"] in names else f"no import of {chk['name']} (imports: {names})"
+    if kind == "feature_type":  # with "field": one of them sets that field to something non-zero
+        feats = [f for f in res.doc.features if f.type == chk["type"]]
+        if "field" in chk:
+            feats = [f for f in feats if getattr(f, chk["field"], None) not in (None, 0, 0.0, "0", False)]
+            return None if feats else f"no {chk['type']} feature with {chk['field']}"
+        return None if feats else f"no {chk['type']} feature"
     if kind == "hole_spec":  # hole features of a fastener size (and kind), counting their holes
         n = sum(f.info.get("holes", 0) for f in res.features if f.type == "hole" and f.status == "ok"
                 and str(f.info.get("size", "")).lower() == chk["size"].lower()
@@ -148,16 +188,19 @@ async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunn
     checking the parts after every turn."""
     workdir.mkdir(parents=True, exist_ok=True)
     copies = task.get("setup_copy") or []
-    for src in [copies] if isinstance(copies, str) else copies:  # a starting part, reference STEP files, ...
-        shutil.copy(ROOT / src, workdir / Path(src).name)
+    for f in (([copies] if isinstance(copies, str) else copies) + task.get("setup_files", [])):
+        shutil.copy(ROOT / f, workdir / Path(f).name)
     if variant.get("prompt_mode") == "claude_code":  # give it what a repo checkout would have
         shutil.copy(ROOT / "CLAUDE.md", workdir / "CLAUDE.md")
         (workdir / "agent").mkdir(exist_ok=True)
         shutil.copy(ROOT / "agent" / "GUIDE.md", workdir / "agent" / "GUIDE.md")
     events = (workdir / "events.jsonl").open("w")
     t0 = time.time()
+    limit_hit = []
 
     def on_event(e):
+        if e["type"] == "agent_text" and "hit your session limit" in str(e.get("text", "")):
+            limit_hit.append(e["text"])  # the account's usage ran out: the run says nothing about the agent
         if e["type"] == "agent_phase" and e.get("chars"):
             return  # progress ticks: too many to log
         e = {k: v for k, v in e.items() if k != "png_b64"}
@@ -184,7 +227,7 @@ async def run_one(task: dict, variant: dict, workdir: Path, runner_cls=AgentRunn
                               "check": check_parts(workdir, {"expect_parts": task.get("expect_parts"), **fu}, prev)})
     events.close()
     result = {"task": task["id"], "variant": variant["name"], "metrics": m.summary(), "check": check,
-              "followups": followups}
+              "followups": followups, **({"aborted": limit_hit[0]} if limit_hit else {})}
     (workdir / "metrics.json").write_text(json.dumps(result, indent=1))
     return result
 
@@ -197,7 +240,8 @@ def table(results: list[dict]) -> str:
         turns += [(f"{r['task']} +{f['n']}", f["metrics"], f["check"]) for f in r.get("followups", [])]
         for name, m, c in turns:
             f1 = m.get("first_output_s")
-            rows.append(f"| {name} | {r['variant']} | {'yes' if c['pass'] else 'NO'} | {m['wall_s']:.0f} | "
+            verdict = "LIMIT" if r.get("aborted") else ("yes" if c["pass"] else "NO")
+            rows.append(f"| {name} | {r['variant']} | {verdict} | {m['wall_s']:.0f} | "
                         f"{f1 if f1 is None else round(f1)} | {m['thinking_s']:.0f} | {m['tool_input_s']:.0f} | {m['text_s']:.0f} | "
                         f"{m['tool_s']:.0f} | {m['turns']} | {m['n_tool_calls']} | {m['ops_rejected']} | "
                         f"{m['tool_counts'].get('render', 0)} | {m['output_tokens']} | {m['cost_usd']:.2f} |")
@@ -225,7 +269,7 @@ def main(argv=None) -> None:
                 r = asyncio.run(run_one(t, variants[vn], out / f"{t['id']}_{i + 1}"))
                 results.append(r)
                 m = r["metrics"]
-                print(f"  {'pass' if r['check']['pass'] else 'FAIL'}  {m['wall_s']:.0f}s  {m['n_tool_calls']} tools  "
+                print(f"  {'LIMIT' if r.get('aborted') else ('pass' if r['check']['pass'] else 'FAIL')}  {m['wall_s']:.0f}s  {m['n_tool_calls']} tools  "
                       f"${m['cost_usd']:.2f}  {r['check']['problems'][:2]}", flush=True)
                 for f in r["followups"]:
                     fm = f["metrics"]

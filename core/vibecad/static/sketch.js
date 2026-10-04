@@ -3,7 +3,10 @@
 // sketch-local (u, v); the server returns them with the plane's frame and we map them into the scene.
 import * as THREE from "three";
 
-const COLORS = { dim: 0x2563eb, ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const LIGHT = { dim: 0x2563eb, ext: 0x7c3aed, mark: 0xdb2777, fixed: 0x15803d, free: 0x1d4ed8, sel: 0xf08a24, hover: 0x60a5fa, bad: 0xdc2626, cons: 0x64748b, point: 0x334155 };
+const DARK = { dim: 0x6aa2ff, ext: 0xa78bfa, mark: 0xf472b6, fixed: 0x4ade80, free: 0x7cb2ff, sel: 0xf59e0b, hover: 0x93c5fd, bad: 0xf87171, cons: 0x94a3b8, point: 0xcbd5e1 };
+const COLORS = { ...LIGHT };
+export function setSketchTheme(dark) { Object.assign(COLORS, dark ? DARK : LIGHT); }
 const GLYPH = { horizontal: "H", vertical: "V", parallel: "∥", perpendicular: "⊥", equal: "=", tangent: "T", concentric: "◎",
   midpoint: "M", symmetric: "⇔", point_on: "∈", fix: "⚲", coincident: "•" };
 const DIMS = new Set(["distance", "distance_x", "distance_y", "radius", "diameter", "angle"]);
@@ -15,6 +18,8 @@ export const TOOLS = [
   { id: "rect", label: "Rect", key: "r", title: "Rectangle: click two opposite corners (R)" },
   { id: "circle", label: "Circle", key: "c", title: "Circle: click centre, click a point on the rim (C)" },
   { id: "arc", label: "Arc", key: "a", title: "Arc: click centre, start, end (counterclockwise) (A)" },
+  { id: "slot", label: "Slot", key: "o", title: "Slot: click one end's centre, the other end's centre, then the width (O)" },
+  { id: "polygon", label: "Polygon", key: "n", title: "Polygon: click the centre, then a corner; asks how many sides (N)" },
   { id: "point", label: "Point", key: "p", title: "Point: click to place one, e.g. a hole centre; keeps placing until Esc (P)" },
   { id: "mark", label: "Mark", key: "m", title: "Mark: draw freehand to show the agent what you mean; goes with your next prompt, never into the part (M)" },
 ];
@@ -166,7 +171,28 @@ export function createSketchEditor(ctx) {
       if (tool === "circle" || pending.length === 1) addLine(polyline({ type: "circle", center: ctr, r }), pv, pending.length === 1 && tool === "arc", 14);
       else addLine(polyline({ type: "arc", center: ctr, r, start_angle: angOf(ctr, pending[1].uv), end_angle: angOf(ctr, c) }), pv, false, 14);
     }
+    if (tool === "slot" && pending.length) {
+      const a = pending[0].uv, b = pending[1]?.uv || c;
+      if (pending.length === 1) addLine([a, c], pv, true, 14);
+      else addLine(slotOutline(a, b, Math.max(distToLine(c, a, b), 1e-6)), pv, false, 14);
+    }
+    if (tool === "polygon" && pending.length) addLine(polygonOutline(pending[0].uv, c, 6), pv, false, 14);
     addPoints([c], snapInfo?.ref || snapInfo?.on ? COLORS.sel : COLORS.hover, 7);
+  }
+  function distToLine(p, a, b) {
+    const d = [b[0] - a[0], b[1] - a[1]], l = Math.hypot(...d) || 1;
+    return Math.abs((p[0] - a[0]) * d[1] - (p[1] - a[1]) * d[0]) / l;
+  }
+  function slotOutline(a, b, r) {
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), out = [];
+    for (let k = 0; k <= 16; k++) { const t = ang + Math.PI / 2 + (Math.PI * k) / 16; out.push([a[0] + r * Math.cos(t), a[1] + r * Math.sin(t)]); }
+    for (let k = 0; k <= 16; k++) { const t = ang - Math.PI / 2 + (Math.PI * k) / 16; out.push([b[0] + r * Math.cos(t), b[1] + r * Math.sin(t)]); }
+    out.push(out[0]);
+    return out;
+  }
+  function polygonOutline(c, corner, n) {
+    const r = dist(c, corner), a0 = Math.atan2(corner[1] - c[1], corner[0] - c[0]);
+    return Array.from({ length: n + 1 }, (_, k) => [c[0] + r * Math.cos(a0 + (2 * Math.PI * k) / n), c[1] + r * Math.sin(a0 + (2 * Math.PI * k) / n)]);
   }
 
   // ── dimensions, drawn like a CAD sketcher: extension lines, dimension line, arrows, value ──
@@ -404,7 +430,7 @@ export function createSketchEditor(ctx) {
   }
 
   async function drawClick(uv) {
-    const s = snap(uv, (tool === "line" || tool === "rect") && pending.length ? pending[0].uv : null);
+    const s = snap(uv, (tool === "line" || tool === "rect" || (tool === "slot" && pending.length === 1)) && pending.length ? pending[0].uv : null);
     if (tool === "line") {
       if (!pending.length) { pending = [s]; return render(); }
       const a = pending[0];
@@ -435,6 +461,37 @@ export function createSketchEditor(ctx) {
       }
       pending = [];
       await commit(ops, `draw rectangle ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "slot") {
+      if (pending.length < 2) {
+        if (pending.length === 1 && dist(pending[0].uv, s.uv) < 1e-9) return;
+        pending.push(s);
+        return render();
+      }
+      const [a, b] = pending.map((p) => p.uv), w = 2 * distToLine(uv, a, b);
+      if (w < 1e-6) return;
+      const id = newId("slot"), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      pending = [];
+      await commit([{ op: "add_slot", sketch: sid, id, length: +dist(a, b).toFixed(4), width: +w.toFixed(4), center: r4(mid),
+        angle: +((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI).toFixed(4) }], `draw slot ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "polygon") {
+      if (!pending.length) { pending = [s]; return render(); }
+      const c = pending[0].uv, r = dist(c, s.uv);
+      if (r < 1e-9) return;
+      const n = parseInt(ctx.ask("Number of sides (3 or more):", "6") || "", 10);
+      pending = [];
+      if (!(n >= 3)) return render();
+      const id = newId(n === 6 ? "hex" : "poly");
+      await commit([{ op: "add_regular_polygon", sketch: sid, id, sides: n, diameter: +(2 * r).toFixed(4), across: "corners", center: r4(c),
+        angle: +((Math.atan2(s.uv[1] - c[1], s.uv[0] - c[0]) * 180) / Math.PI).toFixed(4) }], `draw ${n}-gon ${id} in ${sid}`);
+      return render();
+    }
+    if (tool === "point") {
+      const id = newId("pt");  // snapped to a point (the origin, a corner) or onto a curve: stays attached to it
+      await commit([E({ id, type: "point", at: r4(s.uv) }), ...attach(s, id)], `place ${id} in ${sid}`);
       return render();
     }
     if (tool === "circle") {
@@ -581,6 +638,84 @@ export function createSketchEditor(ctx) {
       inp.onblur = () => done(null);
     });
   }
+  // offset: the selected curves, or the whole connected chain of a single selected curve, copied at a distance
+  function chainOf(id) {
+    const geo = D.entities.filter((e) => ["line", "arc"].includes(e.type) && !e.offset);
+    const ends = (e) => (e.type === "line" ? [e.p1, e.p2] : [0, 1].map((k) => {
+      const a = ((k ? e.end_angle : e.start_angle) * Math.PI) / 180;
+      return [e.center[0] + e.r * Math.cos(a), e.center[1] + e.r * Math.sin(a)];
+    }));
+    const tol = 1e-5 * Math.max(1, ...geo.flatMap((e) => ends(e).flat().map(Math.abs)));
+    const out = [id], todo = [ent(id)];
+    while (todo.length) {
+      const e = todo.pop();
+      for (const f of geo) {
+        if (out.includes(f.id)) continue;
+        if (ends(e).some((p) => ends(f).some((q) => dist(p, q) < tol))) { out.push(f.id); todo.push(f); }
+      }
+    }
+    return out;
+  }
+  function canOffset() {
+    const ids = [...sel].filter((k) => !k.startsWith("#") && !k.includes(".") && ["line", "arc", "circle"].includes(ent(k)?.type) && !ent(k)?.offset);
+    return ids.length > 0 && ids.length === [...sel].length;
+  }
+  async function offsetSel() {
+    if (!canOffset()) return ctx.note("Offset: select a line, arc or circle (its whole connected outline is offset)", "err");
+    let ids = [...sel];
+    if (ids.length === 1 && ent(ids[0]).type !== "circle") ids = chainOf(ids[0]);
+    const el = ctx.labelsBox.querySelector(".sel") || null;
+    const text = await askValue(el, "2", "offset (− for inside) =");
+    if (text == null) return;
+    const inside = text.trim().startsWith("-"), v = parseValue(inside ? text.trim().slice(1) : text);
+    if (v.error) return ctx.note(v.error, "err");
+    const closed = ids.length > 1 || ent(ids[0]).type === "circle";
+    const loop = closed && (ent(ids[0]).type === "circle" || chainOf(ids[0]).length === ids.length);
+    const id = newId("offset");
+    sel = new Set();
+    await commit([{ op: "add_entity", sketch: sid, entity: { id, type: "offset", of: ids, distance: v.value,
+      side: loop ? (inside ? "inside" : "outside") : (inside ? "right" : "left") } }], `offset ${ids.length} curve(s) in ${sid}`);
+  }
+  // mirror the selected curves and points; a selected construction line is the axis, otherwise ask (x, y or a line)
+  function mirrorParts() {
+    const ids = [...sel].filter((k) => !k.startsWith("#") && !k.includes(".") && ["line", "arc", "circle", "point"].includes(ent(k)?.type) && !ent(k)?.offset);
+    const axes = ids.filter((k) => ent(k).type === "line" && ent(k).construction);
+    const axis = axes.length === 1 && ids.length > 1 ? axes[0] : null;
+    return { ids: ids.filter((k) => k !== axis), axis };
+  }
+  function canMirror() { return mirrorParts().ids.length > 0; }
+  async function mirrorSel() {
+    const { ids, axis: picked } = mirrorParts();
+    if (!ids.length) return ctx.note("Mirror: select the curves to mirror, and a construction line as the axis (or pick the X or Y axis next)", "err");
+    let axis = picked;
+    if (!axis) {
+      const el = ctx.labelsBox.querySelector(".sel") || null;
+      const text = await askValue(el, "y", "mirror across (x, y or a line) =");
+      if (text == null) return;
+      const t = text.trim().toLowerCase();
+      axis = t === "x" || t === "x_axis" ? "x_axis" : t === "y" || t === "y_axis" ? "y_axis" : text.trim();
+      if (!["x_axis", "y_axis"].includes(axis) && ent(axis)?.type !== "line") return ctx.note(`Mirror: ${text.trim()} is not x, y or a line in this sketch`, "err");
+    }
+    sel = new Set();
+    await commit([{ op: "mirror_entities", sketch: sid, entities: ids, axis }], `mirror ${ids.length} entit${ids.length > 1 ? "ies" : "y"} across ${axis} in ${sid}`);
+  }
+  // round the corner where two lines meet (the selected point): the server trims them and adds a tangent arc
+  function canRound() {
+    if (sel.size !== 1) return false;
+    const [k] = sel, [eid, end] = k.split(".");
+    if (ent(eid)?.type !== "line" || !["p1", "p2"].includes(end)) return false;
+    return D.constraints.some((c) => c.type === "coincident" && c.on.includes(k) && c.on.some((r) => r !== k && ent(r.split(".")[0])?.type === "line"));
+  }
+  async function roundCorner() {
+    if (!canRound()) return ctx.note("Round corner: select the point where two lines meet", "err");
+    const [k] = sel, el = ctx.labelsBox.querySelector(".sel") || null;
+    const text = await askValue(el, "2", "corner radius =");
+    if (text == null) return;
+    const v = parseValue(text);
+    if (v.error) return ctx.note(v.error, "err");
+    sel = new Set();
+    await commit([{ op: "fillet_corner", sketch: sid, corner: k, radius: v.value }], `round corner ${k} in ${sid}`);
+  }
   async function editDim(c, el) {
     const shown = c.param || (c.expr && isNaN(+c.expr) ? c.expr : String(+(+c.value).toFixed(6)));
     const text = await askValue(el, shown, `${c.name || c.type} =`);
@@ -619,7 +754,9 @@ export function createSketchEditor(ctx) {
     const pts = [...sel].filter((k) => ent(k)?.type === "point");
     if (!cons.length && !curves.length && !pts.length) return;
     const ops = cons.map((c) => c.index).sort((a, b) => b - a).map((i) => ({ op: "remove_constraint", sketch: sid, match: { index: i } }));
-    for (const id of [...curves.map((e) => e.id), ...pts]) ops.push({ op: "remove_entity", sketch: sid, id });
+    // an offset's pieces are removed as the offset; projected pieces as their entity
+    const ids = [...new Set([...curves.map((e) => e.offset || e.id), ...pts])];
+    for (const id of ids) ops.push({ op: "remove_entity", sketch: sid, id });
     sel = new Set();
     await commit(ops, `delete ${ops.length} item(s) in ${sid}`);
   }
@@ -842,6 +979,9 @@ export function createSketchEditor(ctx) {
     const c = CONSTRAINTS.find((x) => x.key === k);
     if (c) { constrain(c.id); return true; }
     if (k === "g") { toggleConstruction(); return true; }
+    if (k === "f" && canRound()) { roundCorner(); return true; }
+    if (k === "k" && canOffset()) { offsetSel(); return true; }
+    if (k === "i" && canMirror()) { mirrorSel(); return true; }
     return false;
   }
 
@@ -891,7 +1031,7 @@ export function createSketchEditor(ctx) {
 
   return {
     enter, exit, refresh, key, setTool, constrain, del, toggleConstruction, placeLabels, bounds, available,
-    rename, toParam, canRename, canParam, projectOutline,
+    rename, toParam, canRename, canParam, projectOutline, roundCorner, canRound, offsetSel, canOffset, mirrorSel, canMirror,
     marks: () => marks.map((m) => m.map(([u, v]) => [+u.toFixed(2), +v.toFixed(2)])),
     clearMarks: () => { marks = []; stroke = null; render(); ctx.onChange?.(); },
     active: () => sid,

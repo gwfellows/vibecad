@@ -36,12 +36,36 @@ def tree_text(res: RegenResult) -> str:
         if f.type == "sketch":
             plane = f.plane.datum + (f"+{f.plane.offset}" if getattr(f.plane, "offset", 0) not in (0, 0.0, "0") else "") \
                 if hasattr(f.plane, "datum") else f"face {f.plane.face.feature}.{f.plane.face.role}"
+            fr = r.info.get("frame")
+            if fr and hasattr(f.plane, "datum"):  # where the plane really is: XZ's normal is -Y, so an offset goes to -Y
+                k = {"XY": 2, "XZ": 1, "YZ": 0}[f.plane.datum]
+                plane += f" (world {'xyz'[k]} = {fr['origin'][k] + 0:g})"
             dims = [c.name for c in f.constraints if c.name]
             extra = f"on {plane}; {len(f.entities)} entities; dof {r.info.get('dof', '?')}" + \
                 (f"; dims {', '.join(dims)}" if dims else "")
         elif f.type in ("extrude", "revolve"):
-            extra = f"{f.mode} {f.profile.sketch}" + (
-                f" {f.extent if f.extent != 'blind' else f.distance} {f.direction}" if f.type == "extrude" else f" axis {f.axis} {f.angle} deg")
+            if f.type == "extrude":
+                if f.extent == "up_to_face":
+                    t = f.to_face
+                    how = f"up to {t.feature}.{t.role}" + (f"[{t.entity}]" if t.entity else "")
+                    how += f" +{f.distance}" if f.distance not in (0, 0.0, "0") else ""
+                else:
+                    how = f"{f.distance if f.extent == 'blind' else f.extent} {f.direction}"
+                extra = f"{f.mode} {f.profile.sketch} {how}" + (f" draft {f.draft} deg" if f.draft not in (0, 0.0, "0") else "")
+            else:
+                extra = f"{f.mode} {f.profile.sketch} axis {f.axis} {f.angle} deg"
+        elif f.type == "boolean":
+            extra = f"{f.mode} {f.tool}" + (f" clearance {f.clearance}" if f.clearance not in (0, 0.0, "0") else "")
+        elif f.type == "import":
+            extra = f"{f.mode} {f.file}"
+            lo, hi = r.info.get("bbox_min"), r.info.get("bbox_max")
+            if lo and hi:  # where the body is, in world mm: what the agent designs around
+                size = " x ".join(f"{b - a:g}" for a, b in zip(lo, hi))
+                extra += f"; {size} mm, x {lo[0]:g}..{hi[0]:g} y {lo[1]:g}..{hi[1]:g} z {lo[2]:g}..{hi[2]:g}"
+        elif f.type == "loft":
+            extra = f"{f.mode} through {', '.join(f.sections)}" + (" ruled" if f.ruled else "")
+        elif f.type == "sweep":
+            extra = f"{f.mode} {f.profile.sketch} along {f.path}"
         elif f.type in ("fillet", "chamfer"):
             extra = f"{getattr(f, 'radius', None) or getattr(f, 'distance', None)} on {r.info.get('edges', '?')} edges"
         elif f.type in ("linear_pattern", "circular_pattern", "mirror"):

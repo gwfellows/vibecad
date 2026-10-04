@@ -44,11 +44,30 @@ class Ctx:
     sketches: dict[str, tuple[SolvedSketch, Frame]] = field(default_factory=dict)
     tools: dict[str, Tool] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
-    refs: dict[str, Body] = field(default_factory=dict)  # imported reference geometry (import mode "reference")
-    base_dir: Path | None = None                          # the part file's folder: relative import paths
+    refs: dict[str, Body] = field(default_factory=dict)  # reference imports: shown and referenced, not part of the solid
+    base_dir: Path = field(default_factory=Path.cwd)  # the part file's folder: import paths are relative to it
 
     def num(self, v) -> float:
         return evaluate(v, self.env)
+
+
+def faces_of(ctx: Ctx, ref: S.FaceRef) -> list:
+    """resolve_faces on the solid, or on a reference import when the ref names one."""
+    if ref.feature in ctx.refs:
+        return resolve_faces(ctx.refs[ref.feature], ref)
+    if ctx.body.shape is None:
+        raise FeatureError("a face reference needs an existing body")
+    return resolve_faces(ctx.body, ref)
+
+
+def edges_of(ctx: Ctx, ref: S.EdgeRef) -> list:
+    feats = {r.feature for r in (ref.between or [ref.of]) if r is not None}
+    ref_bodies = [ctx.refs[f] for f in feats if f in ctx.refs]
+    if ref_bodies:
+        if len(feats) > 1:
+            raise FeatureError("an edge ref can't mix a reference import's faces with the part's faces")
+        return resolve_edges(ref_bodies[0], ref)
+    return resolve_edges(ctx.body, ref)
 
 
 def _compound(shapes) -> TopoDS_Compound:
@@ -72,10 +91,7 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
     if isinstance(f.plane, S.DatumPlane):
         frame = datum_frame(f.plane.datum, ctx.num(f.plane.offset))
     else:
-        src_body = ctx.refs.get(f.plane.face.feature, ctx.body)  # a face of imported reference geometry, or the part
-        if src_body.shape is None:
-            raise FeatureError("sketch on a face needs an existing body")
-        faces = resolve_faces(src_body, f.plane.face)
+        faces = faces_of(ctx, f.plane.face)
         frames = [face_frame(bd.Face(TopoDS.Face(x)), ctx.num(f.plane.offset)) for x in faces]
         frame = frames[0]
         for fr in frames[1:]:  # several faces are fine if they lie in one plane (e.g. a top face split by a boss)
@@ -83,6 +99,19 @@ def do_sketch(ctx: Ctx, f: S.Sketch) -> dict:
                 raise FeatureError(f"sketch plane face ref matched {len(faces)} faces that are not coplanar; "
                                    "add `entity`, or `pick: largest|smallest|nearest`")
     src = _resolve_externals(ctx, f, frame)
+    if any(isinstance(e, S.Offset) for e in src.entities):
+        from .offset import OffsetError, resolve_offsets
+
+        def solve_base(sk):
+            base = solve_sketch(sk, ctx.env)
+            if not base.report.ok:
+                raise FeatureError(f"the geometry an offset copies did not solve ({base.report.status}); "
+                                   f"conflicting: {base.report.conflicting or 'none reported'}")
+            return base
+        try:
+            src = resolve_offsets(src, ctx.env, solve_base)
+        except OffsetError as e:
+            raise FeatureError(str(e)) from None
     solved = solve_sketch(src, ctx.env)
     solved.source = src
     solved.externals = frozenset(e.id for e in f.entities if isinstance(e, S.External))
@@ -107,17 +136,15 @@ def _resolve_externals(ctx: Ctx, f: S.Sketch, frame: Frame) -> S.Sketch:
     constraints go after the user's, so constraint indices don't change."""
     if not any(isinstance(e, S.External) for e in f.entities):
         return f
+    if ctx.body.shape is None and not ctx.refs:
+        raise FeatureError("external geometry needs an existing body to project")
     ents, cons = [], []
     fix = lambda ref, uv: cons.append(S.Constraint(type="fix", on=[ref], at=(uv[0], uv[1])))
     for e in f.entities:
         if not isinstance(e, S.External):
             ents.append(e)
             continue
-        owners = {r.feature for r in ([*e.edge.between] if e.edge.between else [e.edge.of])}
-        src_body = next((ctx.refs[o] for o in owners if o in ctx.refs), ctx.body)  # project reference edges too
-        if src_body.shape is None:
-            raise FeatureError("external geometry needs an existing body to project")
-        edges = resolve_edges(src_body, e.edge)
+        edges = edges_of(ctx, e.edge)
         if len(edges) != 1:
             raise FeatureError(f"external {e.id!r}: its edge ref matched {len(edges)} edges; it must name one "
                                "(use `between` two faces, or a `filter`)")
@@ -180,8 +207,26 @@ def _profile(ctx: Ctx, p: S.Profile):
         regs = [r for r in regs if r.outer_entities & want]
     if not regs:
         raise FeatureError(f"no closed regions selected in sketch {p.sketch!r} (regions={p.regions})")
-    faces = [(frame.location * r.face).wrapped for r in regs]
+    local = [r.face for r in regs]
+    if len(local) > 1 and _any_touch(local):
+        # overlapping or touching regions (a panel sunk into a slab): one face of their union, or the extrude
+        # makes overlapping solids and double-counts the shared part
+        local = local[0].fuse(*local[1:]).clean().faces()
+    faces = [(frame.location * f).wrapped for f in local]
     return solved, frame, faces
+
+
+def _any_touch(faces: list) -> bool:
+    boxes = [f.bounding_box() for f in faces]
+    for i in range(len(faces)):
+        for j in range(i + 1, len(faces)):
+            a, b = boxes[i], boxes[j]
+            if (a.min.X > b.max.X + 1e-6 or b.min.X > a.max.X + 1e-6 or a.min.Y > b.max.Y + 1e-6
+                    or b.min.Y > a.max.Y + 1e-6):
+                continue
+            if faces[i].distance_to(faces[j]) < 1e-6:
+                return True
+    return False
 
 
 def _side_labels(gen, tool, faces, solved: SolvedSketch, frame: Frame, fid: str, caps: list) -> list:
@@ -262,11 +307,21 @@ def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str, rev
             hint = " The tool lies entirely inside the body."
         else:
             hint = ""
-        ctx.warnings.append(f"{mode} changed no volume (the tool does not overlap the body as intended).{hint}")
+        span = lambda sh: (lambda b: f"x {b.min.X:.4g}..{b.max.X:.4g} y {b.min.Y:.4g}..{b.max.Y:.4g} z {b.min.Z:.4g}..{b.max.Z:.4g}")(
+            bd.Shape.cast(sh).bounding_box())
+        where = f" In world mm, the {mode} tool spans {span(tool)}; the body spans {span(body.shape)}."
+        ctx.warnings.append(f"{mode} changed no volume (the tool does not overlap the body as intended).{hint}{where}")
     n0, n1 = _n_solids(body.shape), _n_solids(merged)
     if mode == "cut" and n1 > n0:
         ctx.warnings.append(f"cut split the body into {n1} separate solids (it had {n0}); a cut wider than the "
                             "material around it leaves disconnected pieces. Check the cut's size against the part.")
+    if mode == "add" and n1 > n0 and _n_solids(tool) <= 1:
+        ctx.warnings.append(f"add left {n1} separate solids: the new material doesn't touch the body (or only along "
+                            "an edge). Move it so it overlaps the body.")
+    if _is_valid(body.shape) and not _is_valid(merged):
+        ctx.warnings.append(f"the {mode} left an invalid solid. Usually two faces only touch: an edge of the new "
+                            "profile lying exactly on an existing face, or two sketch loops sharing an edge. Make them "
+                            "overlap by a little, or leave a gap.")
     ctx.body = Body(merged, pairs)
 
 
@@ -274,19 +329,35 @@ def _combine(ctx: Ctx, fid: str, tool: TopoDS_Shape, tool_labels, mode: str, rev
 def do_extrude(ctx: Ctx, f: S.Extrude) -> dict:
     solved, frame, faces = _profile(ctx, f.profile)
     n = frame.n
+    direction = f.direction
+    draft = ctx.num(f.draft)
+    if abs(draft) >= 45:
+        raise FeatureError(f"draft must be between -45 and 45 degrees, got {draft:g}")
+    if draft and direction == "symmetric":
+        raise FeatureError("draft works with direction 'normal' or 'reverse', not 'symmetric'")
     if f.extent == "through_all":
         d = _through_all_length(ctx, faces)
+    elif f.extent == "up_to_face":
+        if direction == "symmetric":
+            raise FeatureError("up_to_face extrudes one way; use direction 'normal' (it turns around by itself)")
+        t = _distance_to_face(ctx, f.to_face, frame)
+        direction = "normal" if t > 0 else "reverse"
+        d = abs(t) + ctx.num(f.distance)
+        if d <= 1e-9:
+            raise FeatureError("the face is on the sketch plane: nothing to extrude up to")
     else:
         d = ctx.num(f.distance)
         if d <= 0:
             raise FeatureError(f"extrude distance must be > 0, got {d:g}")
-    if f.direction == "symmetric":
+    if draft:
+        return _extrude_drafted(ctx, f, solved, frame, faces, d, direction, draft)
+    if direction == "symmetric":
         t = gp_Trsf()
         t.SetTranslation(_vec(n * (-d / 2)))
         faces = [BRepBuilderAPI_Transform(fc, t, True).Shape() for fc in faces]
         vec = n * d
     else:
-        vec = n * (d if f.direction == "normal" else -d)
+        vec = n * (d if direction == "normal" else -d)
     src = _compound(faces)
     prism = BRepPrimAPI_MakePrism(src, _vec(vec))
     prism.Build()
@@ -299,8 +370,263 @@ def do_extrude(ctx: Ctx, f: S.Extrude) -> dict:
     def reversed_tool():
         return BRepPrimAPI_MakePrism(src, _vec(vec * -1)).Shape()
 
-    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool if f.direction != "symmetric" else None)
+    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool if direction != "symmetric" else None)
     return {"length": round(d, 6)}
+
+
+class _Generated:
+    """Generated() history over several LocOpe_DPrism builds (one per profile face)."""
+
+    def __init__(self, builds):
+        self.builds = builds
+
+    def Generated(self, e):
+        for b in self.builds:
+            lst = b.Shapes(e)
+            if lst.Size():
+                return list(lst)
+        return []
+
+
+def _drafted(faces, n: bd.Vector, d: float, draft: float):
+    """Tapered prisms of the faces along n, walls leaning `draft` degrees inward, `d` long along n."""
+    from OCP.LocOpe import LocOpe_DPrism
+    builds = []
+    pinched = FeatureError(f"a draft of {draft:g}° pinches the profile off before {d:g} mm; reduce the draft or the length")
+    for fc in faces:
+        face = TopoDS.Face(fc)
+        # LocOpe extrudes and tapers relative to the surface normal; a negative height and angle go the other way
+        sign = 1 if bd.Face(face).normal_at().dot(n) > 0 else -1
+        b = LocOpe_DPrism(face, sign * d / math.cos(math.radians(draft)), sign * math.radians(draft))
+        if not b.IsDone():
+            raise pinched
+        # a profile that pinches off gives a self-crossing solid that stops short of the full length
+        hs = [bd.Vector(v).dot(n) for v in bd.Shape.cast(b.Shape()).vertices()]
+        if abs(max(hs) - min(hs) - d) > 1e-6 * max(1.0, d):
+            raise pinched
+        builds.append(b)
+    return builds
+
+
+def _extrude_drafted(ctx: Ctx, f: S.Extrude, solved, frame, faces, d: float, direction: str, draft: float) -> dict:
+    n = frame.n * (1 if direction == "normal" else -1)
+    builds = _drafted(faces, n, d, draft)
+    tool = builds[0].Shape() if len(builds) == 1 else _compound([b.Shape() for b in builds])
+    labels = [(x, Label(f.id, "start")) for b in builds for x in list_faces(b.FirstShape())]
+    labels += [(x, Label(f.id, "end")) for b in builds for x in list_faces(b.LastShape())]
+    labels += _side_labels(_Generated(builds), tool, faces, solved, frame, f.id, labels)
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+
+    def reversed_tool():
+        bs = _drafted(faces, n * -1, d, draft)
+        return _compound([b.Shape() for b in bs])
+
+    _combine(ctx, f.id, tool, labels, f.mode, reversed_tool)
+    return {"length": round(d, 6), "draft": draft}
+
+
+# ── Loft / sweep ───────────────────────────────────────────────────
+def _single_loop(ctx: Ctx, sid: str, what: str):
+    solved, frame, faces = _profile(ctx, S.Profile(sketch=sid))
+    if len(faces) != 1:
+        raise FeatureError(f"{what} sketch {sid!r} has {len(faces)} closed regions; it needs exactly one")
+    F = bd.Face(TopoDS.Face(faces[0]))
+    if F.inner_wires():
+        raise FeatureError(f"{what} sketch {sid!r} has a hole in its profile; loft the outside, then cut the inside "
+                           "with a second loft or an extrude")
+    return solved, frame, faces[0], F.outer_wire().wrapped
+
+
+def do_loft(ctx: Ctx, f: S.Loft) -> dict:
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+    if len(set(f.sections)) != len(f.sections):
+        raise FeatureError("a loft's sections must be different sketches")
+    secs = [_single_loop(ctx, sid, "loft section") for sid in f.sections]
+    for (_, fa, _, _), (_, fb, _, _), a, b in zip(secs, secs[1:], f.sections, f.sections[1:]):
+        if abs(fa.n.dot(fb.n)) > 0.9999 and abs((fb.origin - fa.origin).dot(fa.n)) < 1e-9:
+            raise FeatureError(f"loft sections {a!r} and {b!r} lie in the same plane; offset one of them")
+    ts = BRepOffsetAPI_ThruSections(True, f.ruled, 1e-6)
+    for *_, w in secs:
+        ts.AddWire(TopoDS.Wire(w))
+    ts.Build()
+    if not ts.IsDone():
+        raise FeatureError("the loft failed; check that the sections are ordered and don't cross each other")
+    tool = ts.Shape()
+    sol = bd.Shape.cast(tool)
+    if not sol.is_valid or sol.volume <= 1e-9:
+        raise FeatureError("the loft made no valid solid; sections may twist or cross (keep their starting "
+                           "points and directions alike)")
+    labels = [(x, Label(f.id, "start")) for x in list_faces(ts.FirstShape())]
+    labels += [(x, Label(f.id, "end")) for x in list_faces(ts.LastShape())]
+    solved, frame, face0, _ = secs[0]
+    labels += _side_labels(ts, tool, [face0], solved, frame, f.id, labels)
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    return {"sections": len(secs)}
+
+
+def _path_wire(ctx: Ctx, sid: str):
+    """The non-construction lines and arcs of sketch `sid`, chained into one wire in world space."""
+    from .sketch import _edge
+    if sid not in ctx.sketches:
+        raise FeatureError(f"path sketch {sid!r} is missing, later in the tree, or failed to build")
+    solved, frame = ctx.sketches[sid]
+    geo = [e for e in solved.entities.values() if not e.construction and e.type in ("line", "arc", "circle")]
+    if not geo:
+        raise FeatureError(f"path sketch {sid!r} has no lines or arcs")
+    wires = list(bd.Wire.combine([_edge(e) for e in geo], tol=1e-4))
+    if len(wires) != 1:
+        raise FeatureError(f"path sketch {sid!r} has {len(wires)} separate chains; a sweep path is one chain "
+                           "(mark other geometry construction)")
+    return frame.location * wires[0], frame
+
+
+def do_sweep(ctx: Ctx, f: S.Sweep) -> dict:
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_TransitionMode
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipeShell
+    from OCP.gp import gp_Dir
+    if f.path == f.profile.sketch:
+        raise FeatureError("the path must be a different sketch from the profile")
+    solved, frame, faces = _profile(ctx, f.profile)
+    path, pframe = _path_wire(ctx, f.path)
+    t0 = path.edges()[0].tangent_at(0)
+
+    def pipe(wire):
+        ps = BRepOffsetAPI_MakePipeShell(path.wrapped)
+        # a path in one plane: keep the profile's orientation to that plane, so it doesn't twist
+        ps.SetMode(gp_Dir(pframe.n.X, pframe.n.Y, pframe.n.Z))
+        ps.SetTransitionMode(BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
+        ps.Add(wire, False, False)
+        ps.Build()
+        if not ps.IsDone() or not ps.MakeSolid():
+            raise FeatureError("the sweep failed; check the profile crosses the path and the path has no "
+                               "corner tighter than the profile")
+        return ps
+
+    pipes, labels, solids, holes = [], [], [], []
+    for fc in faces:
+        F = bd.Face(TopoDS.Face(fc))
+        if abs(F.normal_at().dot(t0)) < 1e-3:
+            raise FeatureError(f"the profile sketch {f.profile.sketch!r} lies along the path; it must cross it "
+                               "(put it on a plane across the path's start)")
+        outer = pipe(F.outer_wire().wrapped)
+        pipes.append(outer)
+        solids.append(outer.Shape())
+        labels += [(x, Label(f.id, "start")) for x in list_faces(outer.FirstShape())]
+        labels += [(x, Label(f.id, "end")) for x in list_faces(outer.LastShape())]
+        for w in F.inner_wires():  # a hollow profile (a tube): sweep each hole and cut it out below
+            inner = pipe(w.wrapped)
+            pipes.append(inner)
+            holes.append(inner.Shape())
+    tool = solids[0] if len(solids) == 1 else _compound(solids)
+    labels += _side_labels(_PipeHistory(pipes), _compound(solids + holes), faces, solved, frame, f.id, labels)
+    if holes:
+        op = BRepAlgoAPI_Cut(tool, _compound(holes))
+        op.Build()
+        if not op.IsDone():
+            raise FeatureError("cutting the profile's holes out of the sweep failed")
+        tool, labels = op.Shape(), propagate(op, labels, op.Shape(), Label(f.id, "side"))
+    sol = bd.Shape.cast(tool)
+    if not sol.is_valid or sol.volume <= 1e-9:
+        raise FeatureError("the sweep made no valid solid; a path corner may be tighter than the profile")
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    return {"path_length": round(path.length, 6)}
+
+
+def do_boolean(ctx: Ctx, f: S.Boolean) -> dict:
+    """Cut, add or intersect a reference body, grown by `clearance`. Faces made by the body are named after the
+    reference face they came from: `nest.wall[phone.face:f3]`, and `nest.wall`."""
+    if f.tool not in ctx.refs:
+        raise FeatureError(f"tool {f.tool!r} is not a reference import built before this feature; import the part with "
+                           "mode 'reference' first")
+    rb = ctx.refs[f.tool]
+    if not bd.Shape.cast(rb.shape).solids():
+        raise FeatureError(f"{f.tool!r} has no solid (open surfaces or a mesh that didn't close); a boolean needs a "
+                           "closed body. Re-import it as a solid, or sketch around it instead")
+    c = ctx.num(f.clearance)
+    if c < 0:
+        raise FeatureError(f"clearance must be >= 0, got {c:g}")
+    info = {"clearance": c}
+    if c > 1e-9:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid
+        from OCP.BRepLib import BRepLib
+        from OCP.BRepOffset import BRepOffset_Skin
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffsetShape
+        from OCP.GeomAbs import GeomAbs_Arc, GeomAbs_Intersection
+        from OCP.TopAbs import TopAbs_SHELL
+        from OCP.TopExp import TopExp_Explorer
+        # constant-gap (rounded) corners first; OCCT sometimes manages only sharp ones on complicated bodies
+        for join, name in ((GeomAbs_Arc, "rounded"), (GeomAbs_Intersection, "sharp")):
+            mk = BRepOffsetAPI_MakeOffsetShape()
+            try:
+                mk.PerformByJoin(rb.shape, c, 1e-4, BRepOffset_Skin, False, False, join)
+                mk.Build()
+            except Exception:
+                continue
+            if not mk.IsDone():
+                continue
+            ms = BRepBuilderAPI_MakeSolid()
+            ex = TopExp_Explorer(mk.Shape(), TopAbs_SHELL)
+            while ex.More():
+                ms.Add(TopoDS.Shell(ex.Current()))
+                ex.Next()
+            try:
+                tool = ms.Solid()
+            except Exception:
+                continue
+            BRepLib.OrientClosedSolid_s(tool)
+            if _is_valid(tool) and bd.Shape.cast(tool).volume > 0:
+                break
+        else:
+            raise FeatureError(f"couldn't grow {f.tool!r} by a {c:g} mm clearance (OCCT offset failed on its shape); "
+                               "try clearance 0 and an offset sketch instead")
+        labels = [(g, lb) for x, lab in rb.labels for g in mk.Generated(x)
+                  for lb in (Label(f.id, "wall", _short(lab)), Label(f.id, "wall"))]
+        info["corners"] = name
+    else:
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        cp = BRepBuilderAPI_Copy(rb.shape)
+        tool = cp.Shape()
+        labels = [(cp.Modified(x).First() if cp.Modified(x).Size() else x, lb) for x, lab in rb.labels
+                  for lb in (Label(f.id, "wall", _short(lab)), Label(f.id, "wall"))]
+    labels = propagate(_Identity(), labels, tool, Label(f.id, "wall"))
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    info["tool_volume"] = round(bd.Shape.cast(tool).volume, 6)
+    return info
+
+
+class _PipeHistory:
+    """Generated() over several pipe builds (outer walls and hole walls)."""
+
+    def __init__(self, builds):
+        self.builds = builds
+
+    def Generated(self, e):
+        out = []
+        for b in self.builds:
+            out += list(b.Generated(e))
+        return out
+
+
+def _distance_to_face(ctx: Ctx, ref: S.FaceRef, frame) -> float:
+    """Signed distance along the sketch normal from the sketch plane to a planar face parallel to it."""
+    fs = faces_of(ctx, ref)
+    if not fs:
+        raise FeatureError("up_to_face: the face reference matched no face")
+    ts = []
+    for fc in fs:
+        F = bd.Face(TopoDS.Face(fc))
+        if F.geom_type != bd.GeomType.PLANE:
+            raise FeatureError("up_to_face needs a planar face")
+        m = F.normal_at()
+        if abs(abs(m.dot(frame.n)) - 1) > 1e-6:
+            raise FeatureError("up_to_face needs a face parallel to the sketch plane")
+        ts.append((F.center() - frame.origin).dot(frame.n))
+    if max(ts) - min(ts) > 1e-6:
+        raise FeatureError("up_to_face matched faces at different heights; make the reference pick one")
+    return ts[0]
 
 
 def _through_all_length(ctx: Ctx, faces) -> float:
@@ -656,12 +982,33 @@ def _edges(ctx: Ctx, refs: list[S.EdgeRef]):
     return out
 
 
+def _short(lab: Label) -> str:
+    """A label as an entity name inside another label: `box.side:box_front` (no brackets or @)."""
+    return f"{lab.feature}.{lab.role}" + (f":{lab.entity}" if lab.entity else "") + (f"~{lab.instance}" if lab.instance else "")
+
+
+def _edge_name(body: Body, edge) -> str | None:
+    """An edge named by the faces it joins, `A|B`: tells apart the faces a fillet or chamfer makes on it."""
+    names = []
+    for f in list_faces(body.shape):
+        if any(edge.IsSame(x) for x in list_edges(f)):
+            labs = body.labels_of(f)
+            if labs:
+                names.append(_short(labs[0]))
+    return "|".join(sorted(names)) if len(names) == 2 else None
+
+
 def _dressup(ctx: Ctx, fid: str, maker, edges, role: str) -> dict:
     maker.Build()
     if not maker.IsDone():
         raise FeatureError(f"{role} failed on {len(edges)} edge(s); try a smaller size or fewer edges")
     result = maker.Shape()
-    pairs = [(g, Label(fid, role)) for e in edges for g in maker.Generated(e)]
+    # each face named after the edge it rounds (A|B), and plainly too, so refs without an entity still match
+    pairs = []
+    for e in edges:
+        n = _edge_name(ctx.body, e)
+        labs = ([Label(fid, role, n)] if n else []) + [Label(fid, role)]
+        pairs += [(g, lab) for g in maker.Generated(e) for lab in labs]
     pairs = propagate(maker, ctx.body.labels, result, None) + pairs
     pairs = propagate(_Identity(), pairs, result, Label(fid, role))
     if not _is_valid(result):
@@ -710,22 +1057,38 @@ def do_shell(ctx: Ctx, f: S.Shell) -> dict:
     for x in faces:
         lst.Append(x)
     t = _positive(ctx.num(f.thickness), "shell thickness")
-    mk = BRepOffsetAPI_MakeThickSolid()
-    mk.MakeThickSolidByJoin(ctx.body.shape, lst, -t, 1e-4)
-    mk.Build()
-    if not mk.IsDone():
-        raise FeatureError("shell failed; thickness may exceed a local feature size")
+    from OCP.BRepOffset import BRepOffset_Skin
+    from OCP.GeomAbs import GeomAbs_Arc, GeomAbs_Intersection
+    # rounded joins first (offset corners follow the part's edges); OCCT often can't build them around a bump or
+    # a boss next to the opening, where sharp (intersection) joins still work
+    for join, name in ((GeomAbs_Arc, "rounded"), (GeomAbs_Intersection, "sharp")):
+        mk = BRepOffsetAPI_MakeThickSolid()
+        try:
+            mk.MakeThickSolidByJoin(ctx.body.shape, lst, t if f.outward else -t, 1e-4, BRepOffset_Skin, False, False, join)
+            mk.Build()
+        except Exception:
+            continue
+        if mk.IsDone() and _is_valid(mk.Shape()):
+            break
+    else:
+        raise FeatureError("shell failed; the wall may be thicker than a local feature (a thin rib, a small boss, a "
+                           "hole near the wall), or a removed face carries other features (remove the face they sit on too)")
     result = mk.Shape()
-    pairs = propagate(mk, ctx.body.labels, result, Label(f.id, "inner"))
+    role = "outer" if f.outward else "inner"
+    # each new wall face is named after the face it was offset from (hollow.inner[box.side:box_front]), so the
+    # inside of a shelled box has as many names as the outside
+    made = [(g, lb) for x, lab in ctx.body.labels for g in mk.Generated(x) for lb in (Label(f.id, role, _short(lab)), Label(f.id, role))]
+    pairs = propagate(mk, ctx.body.labels, result, None) + made
+    pairs = propagate(_Identity(), pairs, result, Label(f.id, role))
     ctx.body = Body(result, pairs)
-    return {"removed_faces": len(faces), "thickness": t}
+    return {"removed_faces": len(faces), "thickness": t, "corners": name}
 
 
 # ── Patterns / mirror ──────────────────────────────────────────────
 def _replay(ctx: Ctx, pid: str, features: list[str], transforms: list[gp_Trsf]) -> dict:
     for src in features:
         if src not in ctx.tools:
-            raise FeatureError(f"can only pattern extrude/revolve features that built before this one; {src!r} is not one")
+            raise FeatureError(f"can only pattern extrude, revolve, loft, sweep, boolean, hole or import features that built before this one; {src!r} is not one")
     for i, trsf in enumerate(transforms, start=1):
         for src in features:
             tool = ctx.tools[src]
@@ -773,8 +1136,236 @@ def do_mirror(ctx: Ctx, f: S.Mirror) -> dict:
     return _replay(ctx, f.id, f.features, [t])
 
 
+# ── Hole ───────────────────────────────────────────────────────────
+def hole_points(ctx: Ctx, f: S.Hole) -> list[tuple[str, tuple[float, float]]]:
+    if f.sketch not in ctx.sketches:
+        raise FeatureError(f"hole sketch {f.sketch!r} is missing, later in the tree, or failed to build")
+    solved, _ = ctx.sketches[f.sketch]
+    # `circle.center` names the circle's centre: the same place as the circle itself
+    wanted = f.points if f.points == "all" else [p[:-len(".center")] if p.endswith(".center") else p for p in f.points]
+    out = []
+    for e in solved.entities.values():
+        if wanted != "all" and e.id not in wanted:
+            continue
+        if e.type == "point":
+            out.append((e.id, tuple(e.p1)))
+        elif e.type in ("circle", "arc") and not (f.points == "all" and e.construction):  # construction circles
+            out.append((e.id, tuple(e.center)))  # (and projected edges) only when named in `points`
+    if wanted != "all":
+        missing = set(wanted) - {i for i, _ in out}
+        if missing:
+            raise FeatureError(f"hole points {sorted(missing)} are not points, circles or arcs in sketch {f.sketch!r}")
+    if not out:
+        raise FeatureError(f"sketch {f.sketch!r} has no points or circles to put holes at")
+    return out
+
+
+def hole_profile(ctx: Ctx, f: S.Hole, depth: float) -> list[tuple[tuple[float, float], str]]:
+    """The hole's half-section as (r, z) vertices, z = 0 at the sketch plane and negative into the part, each
+    with the role of the face the edge from it to the next vertex sweeps. Closed back along the axis."""
+    r = _positive(ctx.num(f.diameter), "hole diameter") / 2
+    # on a face, start just outside the surface so the cut never leaves a sliver; from a datum plane (which may
+    # lie inside the part) start exactly on it
+    src = ctx.sketches[f.sketch][0].source
+    lead = max(0.05, r * 0.05) if src is not None and isinstance(src.plane, S.FacePlane) else 0.0
+    pts: list[tuple[tuple[float, float], str]] = []
+    if f.kind == "counterbore":
+        R, h = ctx.num(f.cbore_diameter) / 2, ctx.num(f.cbore_depth)
+        if R <= r:
+            raise FeatureError(f"counterbore diameter ({2 * R:g}) must be larger than the hole ({2 * r:g})")
+        if not 0 < h < depth:
+            raise FeatureError(f"counterbore depth must be > 0 and less than the hole depth ({depth:g}), got {h:g}")
+        pts += [((0, lead), "top"), ((R, lead), "cbore_wall"), ((R, -h), "cbore_floor"), ((r, -h), "wall")]
+    elif f.kind == "countersink":
+        R, a = ctx.num(f.csk_diameter) / 2, ctx.num(f.csk_angle)
+        if R <= r:
+            raise FeatureError(f"countersink diameter ({2 * R:g}) must be larger than the hole ({2 * r:g})")
+        if not 0 < a < 180:
+            raise FeatureError(f"countersink angle must be between 0 and 180, got {a:g}")
+        t = math.tan(math.radians(a / 2))
+        h = (R - r) / t
+        if h >= depth:
+            raise FeatureError(f"the countersink ({h:.3g} deep) is deeper than the hole ({depth:g})")
+        pts += [((0, lead), "top"), ((R + lead * t, lead), "csk"), ((r, -h), "wall")]
+    else:
+        pts += [((0, lead), "top"), ((r, lead), "wall")]
+    tip = ctx.num(f.tip_angle) if f.extent == "blind" else 0
+    if tip and not 0 < tip < 180:
+        raise FeatureError(f"tip angle must be between 0 and 180 (0 = flat bottom), got {tip:g}")
+    if tip:
+        pts += [((r, -depth), "tip"), ((0, -depth - r / math.tan(math.radians(tip / 2))), "axis")]
+    else:
+        pts += [((r, -depth), "bottom"), ((0, -depth), "axis")]
+    return pts
+
+
+def do_hole(ctx: Ctx, f: S.Hole) -> dict:
+    if ctx.body.shape is None:
+        raise FeatureError("a hole needs an existing body")
+    solved, frame = ctx.sketches.get(f.sketch, (None, None))
+    where = hole_points(ctx, f)
+    if f.extent == "through_all":
+        bb = bd.Shape.cast(ctx.body.shape).bounding_box()
+        depth = 2 * bb.diagonal + 10
+    else:
+        depth = _positive(ctx.num(f.depth), "hole depth")
+    prof = hole_profile(ctx, f, depth)
+    down = frame.n * (-1 if f.direction == "reverse" else 1)
+    tools, labels = [], []
+    for pid, (u, v) in where:
+        o = frame.to_world(u, v)
+        # the profile lives in the plane through the axis spanned by the sketch x (radius) and the axis (depth)
+        to3 = lambda rz: o + frame.x * rz[0] + down * (-rz[1])
+        poly = bd.Wire.make_polygon([to3(p) for p, _ in prof], close=True)
+        face = bd.Face(poly)
+        rev = BRepPrimAPI_MakeRevol(face.wrapped, gp_Ax1(gp_Pnt(o.X, o.Y, o.Z), gp_Dir(down.X, down.Y, down.Z)), 2 * math.pi)
+        rev.Build()
+        if not rev.IsDone():
+            raise FeatureError(f"hole at {pid} failed to build")
+        edges = list_edges(poly.wrapped)
+        roles = {}
+        for e in edges:  # which profile segment each edge is: match by its midpoint
+            mid = bd.Edge(TopoDS.Edge(e)).position_at(0.5)
+            for k, (p, role) in enumerate(prof):
+                a, b = to3(p), to3(prof[(k + 1) % len(prof)][0])
+                if ((a + b) * 0.5 - mid).length < 1e-6 * max(1.0, depth):
+                    roles[k] = (e, role)
+        mine = []
+        for e, role in roles.values():
+            if role in ("axis", "top"):
+                continue
+            for g in rev.Generated(e):
+                mine.append((g, Label(f.id, role, pid)))
+        # OCCT's revolve reports no history for profile edges perpendicular to the axis (a counterbore floor, a
+        # flat bottom): such a face contains its profile edge, so match the rest by geometry
+        for tf in list_faces(rev.Shape()):
+            if any(tf.IsSame(g) for g, _ in mine):
+                continue
+            F = bd.Face(TopoDS.Face(tf))
+            for e, role in roles.values():
+                if role not in ("axis", "top") and F.distance_to(bd.Edge(TopoDS.Edge(e)).position_at(0.5)) < 1e-6:
+                    mine.append((tf, Label(f.id, role, pid)))
+                    break
+        labels += mine
+        tools.append(rev.Shape())
+    tool = _compound(tools) if len(tools) > 1 else tools[0]
+    ctx.tools[f.id] = Tool(tool, labels, "cut")
+    _combine(ctx, f.id, tool, labels, "cut")
+    return {"holes": len(where), "depth": round(depth, 6) if f.extent == "blind" else "through"}
+
+
+# ── Text ───────────────────────────────────────────────────────────
+def do_text(ctx: Ctx, f: S.Text) -> dict:
+    if f.sketch not in ctx.sketches:
+        raise FeatureError(f"text sketch {f.sketch!r} is missing, later in the tree, or failed to build")
+    if not f.text.strip():
+        raise FeatureError("text is empty")
+    solved, frame = ctx.sketches[f.sketch]
+    if f.at == "origin":
+        u, v = 0.0, 0.0
+    else:
+        e = solved.entities.get(f.at)
+        if e is None or e.type != "point":
+            raise FeatureError(f"text position {f.at!r} must be a point of sketch {f.sketch!r} (or origin)")
+        u, v = e.p1
+    size = _positive(ctx.num(f.size), "text size")
+    depth = _positive(ctx.num(f.depth), "text depth")
+    kw = {}
+    if f.font:
+        kw["font_path" if f.font.lower().endswith((".ttf", ".otf")) else "font"] = f.font
+    align = (bd.Align.CENTER, bd.Align.CENTER) if f.align == "center" else (bd.Align.MIN, bd.Align.CENTER)
+    try:
+        txt = bd.Text(f.text, font_size=size, align=align, **kw)
+    except Exception as ex:
+        raise FeatureError(f"could not lay out the text: {ex}") from None
+    loc = frame.location * bd.Location((u, v, 0), (0, 0, ctx.num(f.angle)))
+    faces = [(loc * x).wrapped for x in txt.faces()]
+    if not faces:
+        raise FeatureError("the text has no glyphs to cut (only spaces?)")
+    n = frame.n
+    vec = n * (-depth if f.mode == "cut" else depth)  # cut into the face, raise out of it
+    src = _compound(faces)
+    prism = BRepPrimAPI_MakePrism(src, _vec(vec))
+    prism.Build()
+    tool = prism.Shape()
+    labels = [(x, Label(f.id, "start")) for x in list_faces(prism.FirstShape())]
+    labels += [(x, Label(f.id, "end")) for x in list_faces(prism.LastShape())]
+    labels += [(g, Label(f.id, "side")) for fc in faces for e in list_edges(fc) for g in prism.Generated(e)]
+    labels = propagate(_Identity(), labels, tool, Label(f.id, "side"))
+    ctx.tools[f.id] = Tool(tool, labels, f.mode)
+    _combine(ctx, f.id, tool, labels, f.mode)
+    bb = bd.Shape.cast(src).bounding_box()
+    return {"glyph_faces": len(faces), "width": round(max(bb.size.X, bb.size.Y, bb.size.Z), 3)}
+
+
+# ── Import ─────────────────────────────────────────────────────────
+def import_transform(ctx: Ctx, f: S.Import) -> gp_Trsf:
+    k = ctx.num(f.scale)
+    if k <= 0:
+        raise FeatureError(f"import scale must be > 0, got {k:g}")
+    t = gp_Trsf()
+    if abs(k - 1) > 1e-12:
+        t.SetScale(gp_Pnt(0, 0, 0), k)
+    for ang, axis in zip(f.rotate, ((1, 0, 0), (0, 1, 0), (0, 0, 1))):
+        a = ctx.num(ang)
+        if a:
+            r = gp_Trsf()
+            r.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(*axis)), math.radians(a))
+            t = r * t
+    d = [ctx.num(v) for v in f.translate]
+    if any(d):
+        m = gp_Trsf()
+        m.SetTranslation(gp_Vec(*d))
+        t = m * t
+    return t
+
+
+def do_import(ctx: Ctx, f: S.Import) -> dict:
+    from .importer import ImportError_, is_part, load, load_part, part_label
+
+    path = Path(f.file) if Path(f.file).is_absolute() else ctx.base_dir / f.file
+    part_labels = None
+    try:
+        if is_part(path):
+            shape, part_labels, info = load_part(path)
+        else:
+            shape, info = load(path, as_solid=f.mode != "reference")
+    except ImportError_ as e:
+        raise FeatureError(str(e)) from None
+    tr = BRepBuilderAPI_Transform(shape, import_transform(ctx, f), True)
+    tr.Build()
+    shape = tr.Shape()
+    faces = list_faces(shape)
+    if part_labels is not None:  # another part: its own labels, carried onto the moved copy
+        labels = [(m, Label(f.id, "face", part_label(l))) for x, l in part_labels for m in tr.Modified(x)]
+        labels += [(x, Label(f.id, "face", f"f{i}")) for i, x in enumerate(faces) if not any(x.IsSame(y) for y, _ in labels)]
+    elif info.get("mesh"):
+        labels = [(x, Label(f.id, "mesh")) for x in faces]
+    else:
+        labels = [(x, Label(f.id, "face", f"f{i}")) for i, x in enumerate(faces)]
+    bb = bd.Shape.cast(shape).bounding_box()
+    out = {"format": info["format"], "faces": len(faces),
+           "bbox": [round(v, 3) for v in (bb.size.X, bb.size.Y, bb.size.Z)],
+           "bbox_min": [round(v, 3) for v in (bb.min.X, bb.min.Y, bb.min.Z)],
+           "bbox_max": [round(v, 3) for v in (bb.max.X, bb.max.Y, bb.max.Z)]}
+    if "triangles" in info:
+        out["triangles"] = info["triangles"]
+    if f.mode == "reference":
+        ctx.refs = {**ctx.refs, f.id: Body(shape, labels)}
+        return out
+    solids = bd.Shape.cast(shape).solids()
+    if not solids:
+        raise FeatureError(f"{path.name} has surfaces but no closed solid, so it can't be combined with the part; "
+                           "import it with mode 'reference'")
+    out["volume"] = round(sum(x.volume for x in solids), 3)
+    ctx.tools[f.id] = Tool(shape, labels, f.mode)
+    _combine(ctx, f.id, shape, labels, f.mode)
+    return out
+
+
 BUILDERS = {
     "sketch": do_sketch, "import": do_import, "extrude": do_extrude, "revolve": do_revolve, "hole": do_hole, "fillet": do_fillet,
     "chamfer": do_chamfer, "shell": do_shell, "linear_pattern": do_linear_pattern,
-    "circular_pattern": do_circular_pattern, "mirror": do_mirror,
+    "circular_pattern": do_circular_pattern, "mirror": do_mirror, "import": do_import, "hole": do_hole, "text": do_text,
+    "loft": do_loft, "sweep": do_sweep, "boolean": do_boolean,
 }

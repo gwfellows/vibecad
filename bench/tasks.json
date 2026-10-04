@@ -92,283 +92,325 @@
         "max": 4
       }
     ]
-  },
-  {
-    "id": "spacer_edit",
-    "level": "edit-operation",
-    "expect_parts": 1,
-    "setup_copy": "examples/spacer_plate.vcad.json",
-    "prompt": "Open spacer_plate.vcad.json. Use 8 bolt holes instead of 6 and add a 2 mm chamfer to the center bore on the top face.",
-    "checks": [
-      {
-        "kind": "param",
-        "name": "bolt_n",
-        "value": 8
-      },
-      {
-        "kind": "feature_type",
-        "type": "chamfer"
-      },
-      {
-        "kind": "holes",
-        "d_min": 6.5,
-        "d_max": 6.7,
-        "min": 8,
-        "max": 8
-      }
+   }
+  ]
+ },
+ {
+  "id": "cell_holder_step",
+  "prompt": "cell_18650.step is an 18650 battery cell. Design a 3D printed holder for two of these cells standing upright side by side, with 0.3 mm clearance around each cell.",
+  "setup_files": [
+   "bench/fixtures/cell_18650.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.01,
+    "gap_min": 0,
+    "gap_max": 0.5
+   },
+   {
+    "kind": "holes",
+    "d_min": 18.6,
+    "d_max": 19.6,
+    "min": 2,
+    "max": 2
+   }
+  ]
+ },
+ {
+  "id": "pcb_base",
+  "prompt": "pcb.step is a circuit board with four M3 mounting holes. Design a 3D printed base plate it screws onto: four standoffs under the mounting holes, the board 5 mm above the plate.",
+  "setup_files": [
+   "bench/fixtures/pcb.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.01,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 2.4,
+    "d_max": 3.5,
+    "min": 4
+   }
+  ]
+ },
+ {
+  "id": "motor_bracket_step",
+  "prompt": "nema17.step is a NEMA 17 stepper motor. Design a 3D printed L bracket that bolts to a table and holds this motor horizontally by its front face with four M3 screws; the pilot boss and shaft pass through the bracket.",
+  "setup_files": [
+   "bench/fixtures/nema17.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.01,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 3.1,
+    "d_max": 3.7,
+    "min": 4
+   },
+   {
+    "kind": "holes",
+    "d_min": 22.2,
+    "d_max": 26,
+    "min": 1
+   }
+  ]
+ },
+ {
+  "id": "phone_stand_step",
+  "prompt": "phone.step is a phone. Design a 3D printed desk stand that holds it in landscape, leaning back about 20 degrees from vertical, with a lip in front of its bottom edge.",
+  "setup_files": [
+   "bench/fixtures/phone.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.5,
+    "gap_min": 0,
+    "gap_max": 1.0
+   }
+  ]
+ },
+ {
+  "id": "two_part_enclosure_step",
+  "prompt": "pcb.step is a circuit board and battery_pack.step its battery. Design a 3D printed open-top tray that holds both side by side: the board on four M3 standoffs, the battery in a pocket with 0.5 mm clearance, 2 mm walls.",
+  "setup_files": [
+   "bench/fixtures/pcb.step",
+   "bench/fixtures/battery_pack.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "min_refs": 2,
+    "overlap_max": 0.5
+   }
+  ]
+ },
+ {
+  "id": "fan_duct_loft",
+  "prompt": "Design a 3D printed duct that adapts a 40 x 40 mm fan outlet to a 25 mm diameter round hose, 30 mm long, with 1.5 mm walls, open at both ends.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "feature_type",
+    "type": "loft"
+   },
+   {
+    "kind": "bbox_max",
+    "size": [
+     45,
+     45,
+     35
     ]
-  },
-  {
-    "id": "vents_to_front",
-    "level": "edit-operation",
-    "expect_parts": 1,
-    "setup_copy": "examples/enclosure_lid.vcad.json",
-    "prompt": "Open enclosure_lid.vcad.json. Move the vent slots from the top to the front wall (the -Y side), same count and size, running vertically.",
-    "checks": [
-      {
-        "kind": "volume_change",
-        "from": "examples/enclosure_lid.vcad.json",
-        "min": -0.02,
-        "max": 0.02
-      }
+   }
+  ]
+ },
+ {
+  "id": "bent_rod_sweep",
+  "prompt": "Design a towel rail: a 12 mm diameter aluminium tube (1.5 mm wall) that goes 60 mm out from the wall, bends 90 degrees with a 20 mm bend radius, and runs 300 mm along the wall.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "feature_type",
+    "type": "sweep"
+   }
+  ]
+ },
+ {
+  "id": "drawing_export_edit",
+  "setup_copy": "examples/mounting_plate.vcad.json",
+  "prompt": "Open mounting_plate.vcad.json. Make the plate 90 mm wide instead of 80, then export a 2D drawing of it for the machinist.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "param_any",
+    "value": 90,
+    "why": "plate width 90"
+   },
+   {
+    "kind": "file_glob",
+    "pattern": "*.svg"
+   }
+  ]
+ },
+ {
+  "id": "drafted_molded_boss",
+  "prompt": "Design an injection-molded ABS knob: a 30 mm diameter round cap 15 mm tall with 1.5 degree draft on its outside, a 6 mm D-shaft hole (flat 0.5 mm deep) 12 mm deep in its underside.",
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "bbox_max",
+    "size": [
+     30.5,
+     30.5,
+     16
     ]
-  },
-  {
-    "id": "stiffen_bracket",
-    "level": "edit-functional",
-    "expect_parts": 1,
-    "setup_copy": "examples/l_bracket.vcad.json",
-    "prompt": "Open l_bracket.vcad.json. The wall flexes too much when a load pulls on its holes. Make the bracket stiffer without increasing its mass by more than 20%.",
-    "checks": [
-      {
-        "kind": "volume_change",
-        "from": "examples/l_bracket.vcad.json",
-        "min": 0.005,
-        "max": 0.2
-      }
-    ]
-  },
-  {
-    "id": "bushing_longer",
-    "level": "edit-parameter",
-    "expect_parts": 1,
-    "setup_copy": "examples/flanged_bushing.vcad.json",
-    "prompt": "Open flanged_bushing.vcad.json. Make the sleeve 10 mm longer and add a 1 mm x 1 mm oil groove around the inside of the bore at mid-length.",
-    "checks": [
-      {
-        "kind": "param_any",
-        "value": 30,
-        "why": "length 20 -> 30"
-      }
-    ]
-  },
-  {
-    "id": "standoff_conversation",
-    "level": "create-easy + edits",
-    "expect_parts": 1,
-    "prompt": "Design a hex standoff for M3 screws: 5.5 mm across flats, 12 mm long, with a through clearance hole. Save it as standoff.vcad.json.",
-    "checks": [
-      {
-        "kind": "holes",
-        "d_min": 3.1,
-        "d_max": 3.6,
-        "min": 1,
-        "max": 1
-      },
-      {
-        "kind": "bbox_max",
-        "size": [
-          6.4,
-          5.6,
-          12.1
-        ]
-      }
-    ],
-    "followups": [
-      {
-        "prompt": "Make it 20 mm long.",
-        "checks": [
-          {
-            "kind": "bbox_max",
-            "size": [
-              6.4,
-              5.6,
-              20.1
-            ]
-          },
-          {
-            "kind": "volume_change",
-            "from": "@prev",
-            "min": 0.55,
-            "max": 0.8
-          }
-        ]
-      },
-      {
-        "prompt": "Add a 0.5 mm chamfer on the outer hex edges at both ends.",
-        "checks": [
-          {
-            "kind": "feature_type",
-            "type": "chamfer"
-          },
-          {
-            "kind": "volume_change",
-            "from": "@prev",
-            "min": -0.1,
-            "max": -0.0001
-          },
-          {
-            "kind": "holes",
-            "d_min": 3.1,
-            "d_max": 3.6,
-            "min": 1,
-            "max": 1
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "plate_conversation",
-    "level": "create-easy + edits",
-    "expect_parts": 1,
-    "prompt": "Design a 3 mm aluminum mounting plate, 80 x 50 mm, with four M4 clearance holes 6 mm in from each corner. Save it as plate.vcad.json.",
-    "checks": [
-      {
-        "kind": "holes",
-        "d_min": 4.3,
-        "d_max": 4.6,
-        "min": 4,
-        "max": 4
-      },
-      {
-        "kind": "bbox_max",
-        "size": [
-          80.1,
-          50.1,
-          3.1
-        ]
-      }
-    ],
-    "followups": [
-      {
-        "prompt": "The holes need to be M5 instead.",
-        "checks": [
-          {
-            "kind": "holes",
-            "d_min": 5.3,
-            "d_max": 5.6,
-            "min": 4,
-            "max": 4
-          },
-          {
-            "kind": "holes",
-            "d_min": 4.3,
-            "d_max": 4.6,
-            "min": 0,
-            "max": 0
-          }
-        ]
-      },
-      {
-        "prompt": "Add a 22 mm hole in the center for a cable gland.",
-        "checks": [
-          {
-            "kind": "holes",
-            "d_min": 21.9,
-            "d_max": 22.1,
-            "min": 1,
-            "max": 1
-          },
-          {
-            "kind": "holes",
-            "d_min": 5.3,
-            "d_max": 5.6,
-            "min": 4,
-            "max": 4
-          },
-          {
-            "kind": "bbox_max",
-            "size": [
-              80.1,
-              50.1,
-              3.1
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "motor_adapter_holes",
-    "level": "create-medium",
-    "prompt": "Design a 6 mm aluminium adapter plate, 100 x 60 mm, that bolts to a frame with four M5 socket head screws in counterbored holes 10 mm in from each corner, and carries a NEMA 17 stepper: its 31 mm square pattern of M3 screws and a 22 mm pilot bore in the middle. Save it as motor_adapter.vcad.json.",
-    "checks": [
-      {
-        "kind": "feature_type",
-        "type": "hole"
-      },
-      {
-        "kind": "holes",
-        "d_min": 5.2,
-        "d_max": 5.9,
-        "min": 4,
-        "max": 4
-      },
-      {
-        "kind": "holes",
-        "d_min": 3.1,
-        "d_max": 3.7,
-        "min": 4,
-        "max": 4
-      },
-      {
-        "kind": "holes",
-        "d_min": 21.9,
-        "d_max": 22.6,
-        "min": 1,
-        "max": 1
-      },
-      {
-        "kind": "bbox_max",
-        "size": [
-          100.5,
-          60.5,
-          6.5
-        ]
-      }
-    ],
-    "expect_parts": 1
-  },
-  {
-    "id": "motor_plate_from_step",
-    "level": "create-medium",
-    "expect_parts": 1,
-    "setup_copy": "examples/imports/nema17.step",
-    "prompt": "nema17.step in this folder is the stepper motor we use. Design a 5 mm aluminium plate that bolts to its front face with M3 socket head screws into the motor's own threaded holes, with clearance for its pilot boss. Save it as motor_plate.vcad.json.",
-    "checks": [
-      {
-        "kind": "feature_type",
-        "type": "import"
-      },
-      {
-        "kind": "feature_type",
-        "type": "hole"
-      },
-      {
-        "kind": "holes",
-        "d_min": 3.1,
-        "d_max": 3.7,
-        "min": 4,
-        "max": 4
-      },
-      {
-        "kind": "holes",
-        "d_min": 22.0,
-        "d_max": 25.0,
-        "min": 1,
-        "max": 1
-      }
-    ]
-  }
+   },
+   {
+    "kind": "feature_type",
+    "type": "extrude",
+    "field": "draft"
+   }
+  ]
+ },
+ {
+  "id": "enclosure_base_for_lid",
+  "prompt": "enclosure_lid.vcad.json is the lid of an electronics enclosure, open side down. Design the matching 3D printed base plate that closes it: the lid's rim sits on the plate, and four screws go up through the plate into the lid's screw bosses.",
+  "setup_files": [
+   "examples/enclosure_lid.vcad.json"
+  ],
+  "expect_parts": 2,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.01,
+    "gap_min": 0,
+    "gap_max": 0.05,
+    "or_parts": true
+   },
+   {
+    "kind": "holes",
+    "d_min": 2.6,
+    "d_max": 3.6,
+    "min": 4
+   }
+  ]
+ },
+ {
+  "id": "cell_holder_three",
+  "prompt": "Open cell_holder.vcad.json and make it hold three cells in a row instead of two.",
+  "setup_files": [
+   "examples/cell_holder.vcad.json",
+   "examples/cell_18650.vcad.json"
+  ],
+  "expect_parts": 2,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "file": "cell_holder.vcad.json",
+    "overlap_max": 0.01
+   },
+   {
+    "kind": "holes",
+    "file": "cell_holder.vcad.json",
+    "d_min": 18.6,
+    "d_max": 19.6,
+    "min": 3,
+    "max": 3
+   }
+  ]
+ },
+ {
+  "id": "servo_mount_step",
+  "prompt": "servo.step is a micro servo. Design a 3D printed bracket that screws to a flat surface and holds the servo upright (output shaft up), fastened by its two mounting tabs with M2 screws.",
+  "setup_files": [
+   "bench/fixtures/servo.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "overlap_max": 0.05,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 1.5,
+    "d_max": 2.5,
+    "min": 2
+   }
+  ]
+ },
+ {
+  "id": "phone_swap_edit",
+  "prompt": "phone_stand.vcad.json is a desk stand for phone.step. The phone now lives in a case: phone_case.step is the phone in its case. Update the stand so it holds that instead.",
+  "setup_files": [
+   "bench/fixtures/phone_stand.vcad.json",
+   "bench/fixtures/phone.step",
+   "bench/fixtures/phone_case.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "import_file",
+    "file": "phone_stand.vcad.json",
+    "name": "phone_case.step"
+   },
+   {
+    "kind": "ref_fit",
+    "file": "phone_stand.vcad.json",
+    "overlap_max": 0.5,
+    "gap_min": 0,
+    "gap_max": 1.0
+   }
+  ]
+ },
+ {
+  "id": "fan_tray_two_imports",
+  "prompt": "pcb.step is a circuit board with four M3 mounting holes and fan40.step is a 40 mm fan. Design a 3D printed open-top tray: the board screws onto four standoffs on the floor, and the fan bolts to the inside of one end wall with four M3 screws, blowing along the board through a round opening in that wall.",
+  "setup_files": [
+   "bench/fixtures/pcb.step",
+   "bench/fixtures/fan40.step"
+  ],
+  "expect_parts": 1,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "min_refs": 2,
+    "overlap_max": 0.05,
+    "gap_min": 0,
+    "gap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "d_min": 2.4,
+    "d_max": 3.7,
+    "min": 8
+   },
+   {
+    "kind": "holes",
+    "d_min": 30,
+    "d_max": 40,
+    "min": 1
+   }
+  ]
+ },
+ {
+  "id": "case_with_lid_step",
+  "prompt": "pcb.step is a circuit board with four M3 mounting holes. Design a 3D printed two-part case for it: a base the board screws into, and a lid held on with four M3 screws into the base. Leave an opening in a wall for the connector block.",
+  "setup_files": [
+   "bench/fixtures/pcb.step"
+  ],
+  "expect_parts": 2,
+  "checks": [
+   {
+    "kind": "ref_fit",
+    "each": true,
+    "or_parts": true,
+    "overlap_max": 0.05
+   },
+   {
+    "kind": "holes",
+    "each": true,
+    "d_min": 2.4,
+    "d_max": 3.7,
+    "min": 4
+   }
+  ]
+ }
 ]

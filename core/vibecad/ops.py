@@ -19,6 +19,12 @@ transaction: all apply and the result validates against the schema, or nothing c
     {"op": "set_dimension", "sketch": "<id>", "name": "<dimension name>", "value": "12 mm"}
     {"op": "rename_feature", "id": "<feature id>", "to": "<new id>"}          updates every reference to it
     {"op": "rename_entity", "sketch": "<id>", "id": "<entity id>", "to": "<new id>"}   same, for a sketch entity
+    {"op": "fillet_corner", "sketch": "<id>", "corner": "<line>.p1|p2", "radius": "r", "id": "<arc id>"?}
+          rounds the corner where two lines meet (joined by a coincident): the lines are trimmed to the tangent
+          points and a tangent arc with a named radius dimension joins them
+    {"op": "mirror_entities", "sketch": "<id>", "entities": ["<id>", ...], "axis": "<line id>|x_axis|y_axis"}
+          mirrored copies (ids <id>_mirror) held to the originals by symmetric constraints (coincident where a
+          point is on the axis), so they add no degrees of freedom and follow every change to the originals
 """
 from __future__ import annotations
 
@@ -44,7 +50,7 @@ OP_KINDS = {
     "set_param", "remove_param", "set_meta", "add_feature", "update_feature", "remove_feature", "move_feature",
     "add_entity", "update_entity", "remove_entity", "add_constraint", "update_constraint", "remove_constraint",
     "set_dimension", "add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon", "add_points",
-    "rename_feature", "rename_entity",
+    "rename_feature", "rename_entity", "fillet_corner", "mirror_entities",
 }
 ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 META_FIELDS = {"name", "design_notes", "material", "process"}
@@ -92,6 +98,11 @@ def apply_ops(doc: S.Document, ops: list[dict[str, Any]]) -> tuple[S.Document, l
     return new, notes
 
 
+_SHORTCUT_OPS = {"add_rectangle", "add_circle", "add_slot", "add_polygon", "add_regular_polygon", "fillet_corner",
+                 "mirror_entities"}
+_OP_NAMES = {"add_entity", "add_constraint", "add_feature", "update_feature", "set_param"}
+
+
 def _short_validation(e: ValidationError) -> str:
     lines, hints = [], set()
     for err in e.errors()[:8]:
@@ -102,7 +113,11 @@ def _short_validation(e: ValidationError) -> str:
             hints.add("Sketch coordinates are [x, y] pairs (numbers or expressions), not point ids. Join lines with "
                       "`coincident` constraints on `line.p1` / `line.p2`, or use add_polygon / add_rectangle.")
         if err["type"] == "extra_forbidden":
-            hints.add(f"Unknown field `{last}`; check the field names in the IR reference.")
+            if last in _SHORTCUT_OPS or last in _OP_NAMES:
+                hints.add(f"`{last}` is an op, not a field: send it as its own op in apply_ops, "
+                          f'{{"op": "{last}", "sketch": "<sketch id>", ...}}, after the op that adds the sketch.')
+            else:
+                hints.add(f"Unknown field `{last}`; check the field names in the IR reference.")
     return "\n".join(lines + [f"hint: {h}" for h in sorted(hints)])
 
 
@@ -224,6 +239,9 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
         sk["entities"] = [e for e in sk["entities"] if e["id"] != op["id"]]
         if len(sk["entities"]) == before:
             raise OpError(f"no entity {op['id']!r} in sketch {op['sketch']!r}")
+        users = [e["id"] for e in sk["entities"] if e.get("type") == "offset" and op["id"] in e.get("of", [])]
+        if users:
+            raise OpError(f"{op['id']!r} is copied by offset {', '.join(users)}; remove or change the offset first")
         pre = op["id"] + "."
         dropped = [c for c in sk["constraints"] if any(r == op["id"] or r.startswith(pre) for r in c["on"])]
         sk["constraints"] = [c for c in sk["constraints"] if c not in dropped]
@@ -263,6 +281,10 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
     elif kind == "rename_entity":
         n = _rename_entity(raw, op["sketch"], op["id"], op["to"])
         notes.append(f"renamed {op['sketch']}.{op['id']} to {op['to']!r}; updated {n} reference(s)")
+    elif kind == "fillet_corner":
+        notes.append(_fillet_corner(raw, op))
+    elif kind == "mirror_entities":
+        notes.append(_mirror_entities(raw, op))
     elif kind == "set_dimension":
         sk = _sketch(raw, op["sketch"])
         c = sk["constraints"][_match_constraint(sk, {"name": op["name"]})]
@@ -273,6 +295,181 @@ def _apply_one(raw: dict, op: dict, notes: list[str]) -> None:
             notes.append(f"dimension {op['name']!r} is driven by param {cur.strip()!r}; set that param to {op['value']!r}")
         else:
             c["value"] = op["value"]
+
+
+def _mirror_entities(raw: dict, op: dict) -> str:
+    import math
+
+    from .expr import evaluate
+    sk = _sketch(raw, op["sketch"])
+    env = evaluate_params(raw.get("params", {}))
+    ents = {e["id"]: e for e in sk["entities"]}
+    xy = lambda p: (evaluate(p[0], env), evaluate(p[1], env))
+    axis = op.get("axis")
+    if axis in ("x_axis", "y_axis"):
+        o, d = (0.0, 0.0), ((1.0, 0.0) if axis == "x_axis" else (0.0, 1.0))
+    elif ents.get(axis, {}).get("type") == "line":
+        a, b = xy(ents[axis]["p1"]), xy(ents[axis]["p2"])
+        L = math.dist(a, b)
+        if L < 1e-9:
+            raise OpError(f"mirror axis {axis!r} has no length")
+        o, d = a, ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+    else:
+        raise OpError(f"mirror axis must be a line in sketch {op['sketch']!r}, x_axis or y_axis; got {axis!r}")
+    todo = op.get("entities") or []
+    if not todo:
+        raise OpError("mirror_entities needs entities to mirror")
+
+    def refl(p):
+        v = (p[0] - o[0], p[1] - o[1])
+        t = v[0] * d[0] + v[1] * d[1]
+        f = (o[0] + t * d[0], o[1] + t * d[1])
+        return [round(2 * f[0] - p[0], 9), round(2 * f[1] - p[1], 9)]
+
+    def on_axis(p):
+        return abs((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0]) < 1e-6
+
+    def hold(old_ref, new_ref, p):  # the copy's point mirrors the original's; on the axis they are one point
+        if on_axis(p):
+            return {"type": "coincident", "on": [new_ref, old_ref]}
+        return {"type": "symmetric", "on": [old_ref, new_ref, axis]}
+
+    theta = math.degrees(math.atan2(d[1], d[0]))
+    taken = set(ents)
+    made, cons = [], []
+    for eid in todo:
+        e = ents.get(eid)
+        if e is None:
+            raise OpError(f"no entity {eid!r} in sketch {op['sketch']!r}")
+        if eid == axis:
+            raise OpError(f"{eid!r} is the mirror axis; it can't be mirrored across itself")
+        if e["type"] not in ("line", "arc", "circle", "point"):
+            raise OpError(f"can't mirror {e['type']} {eid!r}; mirror lines, arcs, circles and points")
+        nid = f"{eid}_mirror"
+        k = 2
+        while nid in taken:
+            nid, k = f"{eid}_mirror{k}", k + 1
+        taken.add(nid)
+        n = {"id": nid, "type": e["type"]}
+        if e.get("construction"):
+            n["construction"] = True
+        if e["type"] == "line":
+            p1, p2 = xy(e["p1"]), xy(e["p2"])
+            n.update(p1=refl(p1), p2=refl(p2))
+            cons += [hold(f"{eid}.p1", f"{nid}.p1", p1), hold(f"{eid}.p2", f"{nid}.p2", p2)]
+        elif e["type"] == "point":
+            p = xy(e["at"])
+            n["at"] = refl(p)
+            cons.append(hold(eid, nid, p))
+        elif e["type"] == "circle":
+            c = xy(e["center"])
+            n.update(center=refl(c), r=evaluate(e["r"], env))
+            cons += [hold(f"{eid}.center", f"{nid}.center", c), {"type": "equal", "on": [eid, nid]}]
+        else:  # arc: mirroring reverses its direction, so the copy runs from the image of the end to that of the start
+            c, r = xy(e["center"]), evaluate(e["r"], env)
+            a0, a1 = evaluate(e["start_angle"], env), evaluate(e["end_angle"], env)
+            n.update(center=refl(c), r=r, start_angle=round((2 * theta - a1) % 360, 9), end_angle=round((2 * theta - a0) % 360, 9))
+            end = (c[0] + r * math.cos(math.radians(a1)), c[1] + r * math.sin(math.radians(a1)))
+            start = (c[0] + r * math.cos(math.radians(a0)), c[1] + r * math.sin(math.radians(a0)))
+            cons += [hold(f"{eid}.end", f"{nid}.start", end), hold(f"{eid}.start", f"{nid}.end", start),
+                     {"type": "equal", "on": [eid, nid]}]
+        made.append(n)
+    sk["entities"].extend(made)
+    sk["constraints"].extend(cons)
+    return f"mirrored {', '.join(todo)} across {axis}: added {', '.join(m['id'] for m in made)}"
+
+
+def _fillet_corner(raw: dict, op: dict) -> str:
+    import math
+
+    from .expr import evaluate
+    sk = _sketch(raw, op["sketch"])
+    env = evaluate_params(raw.get("params", {}))
+    ents = {e["id"]: e for e in sk["entities"]}
+    num = lambda v: evaluate(v, env)
+    xy = lambda p: (num(p[0]), num(p[1]))
+    corner = op["corner"]
+    eid, _, end = corner.partition(".")
+    if ents.get(eid, {}).get("type") != "line" or end not in ("p1", "p2"):
+        raise OpError(f"corner {corner!r} must be a line endpoint like 'side.p2'")
+    partner, ci = None, None
+    for i, c in enumerate(sk["constraints"]):
+        if c["type"] == "coincident" and corner in c["on"] and len(c["on"]) == 2:
+            other = c["on"][1] if c["on"][0] == corner else c["on"][0]
+            oid, _, oend = other.partition(".")
+            if ents.get(oid, {}).get("type") == "line" and oend in ("p1", "p2") and oid != eid:
+                partner, ci = other, i
+                break
+    if partner is None:
+        raise OpError(f"{corner} is not joined to another line's end by a coincident constraint; fillet_corner "
+                      "rounds the corner where two lines meet")
+    oid, _, oend = partner.partition(".")
+    l1, l2 = ents[eid], ents[oid]
+    p = xy(l1[end])
+    a = xy(l1["p2" if end == "p1" else "p1"])
+    b = xy(l2["p2" if oend == "p1" else "p1"])
+    r = num(op["radius"])
+    if r <= 0:
+        raise OpError(f"fillet radius must be > 0, got {r:g}")
+    la, lb = math.dist(a, p), math.dist(b, p)
+    if la < 1e-9 or lb < 1e-9:
+        raise OpError("a line at the corner has no length")
+    u = ((a[0] - p[0]) / la, (a[1] - p[1]) / la)
+    v = ((b[0] - p[0]) / lb, (b[1] - p[1]) / lb)
+    theta = math.acos(max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1])))
+    if theta < 1e-6 or math.pi - theta < 1e-6:
+        raise OpError("the two lines are in line at that corner: nothing to round")
+    t = r / math.tan(theta / 2)
+    if t >= la - 1e-9 or t >= lb - 1e-9:
+        raise OpError(f"radius {r:g} is too big for these lines: it needs {t:.3g} of each, and they are "
+                      f"{la:.3g} and {lb:.3g} long")
+    t1 = (p[0] + u[0] * t, p[1] + u[1] * t)
+    t2 = (p[0] + v[0] * t, p[1] + v[1] * t)
+    bis = (u[0] + v[0], u[1] + v[1])
+    bl = math.hypot(*bis)
+    d = r / math.sin(theta / 2)
+    ctr = (p[0] + bis[0] / bl * d, p[1] + bis[1] / bl * d)
+    ang = lambda q: math.degrees(math.atan2(q[1] - ctr[1], q[0] - ctr[0])) % 360
+    s1, s2 = ang(t1), ang(t2)
+    first, second = (corner, partner) if (s2 - s1) % 360 <= 180 else (partner, corner)  # arcs run counterclockwise
+    if first != corner:
+        s1, s2 = s2, s1
+    aid = op.get("id") or f"{eid}_{oid}_round"
+    _check_new_id(aid, set(ents), "entity")
+    r6 = lambda q: [round(q[0], 6), round(q[1], 6)]
+    # dimensions to the corner, and the lines' lengths, keep measuring to the sharp corner (as CAD does): a
+    # construction point held at the lines' intersection stands in for it
+    vc = f"{aid}_corner"
+    _check_new_id(vc, set(ents) | {aid}, "entity")
+    far1, far2 = f"{eid}.{'p2' if end == 'p1' else 'p1'}", f"{oid}.{'p2' if oend == 'p1' else 'p1'}"
+    del sk["constraints"][ci]
+    moved = []
+    for c in sk["constraints"]:
+        on = c["on"]
+        if len(on) == 1 and on[0] in (eid, oid) and c["type"] in ("distance", "distance_x", "distance_y"):
+            corner_end, far = (end, far1) if on[0] == eid else (oend, far2)
+            c["on"] = [far, vc] if corner_end == "p2" else [vc, far]  # p2 - p1 keeps its sign
+            moved.append(c)
+        elif corner in on or partner in on:
+            c["on"] = [vc if r in (corner, partner) else r for r in on]
+            moved.append(c)
+    l1[end], l2[oend] = r6(t1), r6(t2)
+    sk["entities"].append({"id": vc, "type": "point", "at": r6(p), "construction": True})
+    sk["constraints"] += [{"type": "point_on", "on": [vc, eid]}, {"type": "point_on", "on": [vc, oid]}]
+    sk["entities"].append({"id": aid, "type": "arc", "center": r6(ctr), "r": round(r, 6),
+                           "start_angle": round(s1, 6), "end_angle": round(s2, 6)})
+    sk["constraints"] += [
+        {"type": "coincident", "on": [first, f"{aid}.start"]},
+        {"type": "coincident", "on": [second, f"{aid}.end"]},
+        {"type": "tangent", "on": [first.split(".")[0], aid, first]},
+        {"type": "tangent", "on": [second.split(".")[0], aid, second]},
+        {"type": "radius", "on": [aid], "value": op["radius"], "name": op.get("name") or f"{aid}_r"},
+    ]
+    note = f"rounded {corner} / {partner} with arc {aid!r} (radius {op['radius']})"
+    if moved:
+        note += (f"; {len(moved)} constraint(s) that used the corner now use {vc!r}, the sharp corner the lines "
+                 "still meet at: " + ", ".join(c.get("name") or c["type"] for c in moved))
+    return note
 
 
 def _check_new_id(to, taken, what: str) -> None:
@@ -305,8 +502,12 @@ def _rename_feature(raw: dict, old: str, new: str) -> int:
         if g.get("profile", {}).get("sketch") == old:
             g["profile"]["sketch"] = new
             n += 1
-        if g.get("type") == "hole" and g.get("sketch") == old:
-            g["sketch"] = new
+        for key in ("sketch", "path", "tool"):  # hole / text points, sweep path, boolean tool body
+            if g is not f and g.get(key) == old and g.get("type") != "sketch":
+                g[key] = new
+                n += 1
+        if old in g.get("sections", []):  # loft
+            g["sections"] = [new if x == old else x for x in g["sections"]]
             n += 1
         if old in g.get("features", []) and g["type"] in ("linear_pattern", "circular_pattern", "mirror"):
             g["features"] = [new if x == old else x for x in g["features"]]
@@ -334,8 +535,14 @@ def _rename_entity(raw: dict, sid: str, old: str, new: str) -> int:
         refs = [new + r[len(old):] if r == old or r.startswith(old + ".") else r for r in c["on"]]
         n += refs != c["on"]
         c["on"] = refs
+    for e in sk["entities"]:  # offsets name the chain they copy
+        if e.get("type") == "offset" and old in e.get("of", []):
+            e["of"] = [new if x == old else x for x in e["of"]]
+            n += 1
     makers = set()  # extrudes/revolves built from this sketch: their side faces are labelled with its entities
     for g in raw["features"]:
+        if g.get("sections", [None])[0] == sid:  # a loft's sides are labelled with its first section's entities
+            makers.add(g["id"])
         prof = g.get("profile", {})
         if prof.get("sketch") != sid:
             continue

@@ -1,6 +1,6 @@
 # VibeCAD IR reference (v0.1)
 
-A part is one JSON file (`*.vcad.json`): named `params` plus an ordered list of `features`. Units are mm and degrees. Any numeric field marked *Num* takes a number or an expression over params: `"plate_t * 2"`, `"0.25 in"`, `"(width - hole_spacing) / 2"`, `"sqrt(2) * d"`. Examples: `examples/`. Param names are identifiers (`plate_t`, `m`), and can't be the expression functions or constants (`sqrt`, `sin`, `cos`, `tan`, `atan2`, `min`, `max`, `abs`, `round`, `floor`, `ceil`, `pi`).
+A part is one JSON file (`*.vcad.json`): named `params` plus an ordered list of `features`. Units are mm and degrees. Any numeric field marked *Num* takes a number or an expression over params: `"plate_t * 2"`, `"0.25 in"`, `"(width - hole_spacing) / 2"`, `"sqrt(2) * d"`. Trig works in degrees: `sin(20)`, `cos(lean_deg)`, `tan(a)` take degrees and `atan2(y, x)` returns degrees; don't convert with `pi / 180`. Examples: `examples/`. Param names are identifiers (`plate_t`, `m`), and can't be the expression functions or constants (`sqrt`, `sin`, `cos`, `tan`, `atan2`, `min`, `max`, `abs`, `round`, `floor`, `ceil`, `pi`).
 
 ## Conventions
 
@@ -25,8 +25,9 @@ Entities (non-construction geometry forms profiles; set `"construction": true` f
 | circle | `center`, `r` | `id.center` |
 | arc | `center`, `r`, `start_angle`, `end_angle` (CCW, degrees) | `id.center`, `id.start`, `id.end` |
 | external | `edge: EdgeRef` naming one edge of the part built so far | as the projected line (`id.p1`, `id.p2`), circle or arc; a point if the edge is perpendicular to the plane |
+| offset | `of: [entity ids]` (a connected chain of lines / arcs, or one circle; projected edges allowed), `distance`, `side: outside / inside` (closed) or `left / right` (open), `construction` | pieces `id_1`, `id_2`, ... in chain order, as lines and arcs |
 
-Built-in references: `origin`, `x_axis`, `y_axis`. `external` entities are re-projected on every build: fixed construction geometry that follows the part, so constraints to them (a hole centred on a projected corner, a slot a set distance from a projected edge) stay attached when upstream params change. The edge ref must match exactly one edge (usually `between` two faces).
+Built-in references: `origin`, `x_axis`, `y_axis`. An `offset` is derived geometry: rebuilt from the solved chain it copies on every build (sharp corners mitred, arcs grown or shrunk about their centres), fixed, so it adds no DOF and follows the source and its `distance` param. A wall of thickness `t` inside an outline is the outline plus an `offset` of it with `side: inside`, extruded. `external` entities are re-projected on every build: fixed construction geometry that follows the part, so constraints to them (a hole centred on a projected corner, a slot a set distance from a projected edge) stay attached when upstream params change. The edge ref must match exactly one edge (usually `between` two faces).
 
 Constraints: `{"type": ..., "on": [refs], "value": Num, "name": "shown_to_user", "note": "..."}`
 
@@ -49,67 +50,33 @@ Constraints: `{"type": ..., "on": [refs], "value": Num, "name": "shown_to_user",
 
 Rules: fully constrain every sketch (build reports DOF). Where a line meets an arc at an endpoint, use the 3-reference `tangent` with the shared point, never a 2-reference tangent plus coincident: that combination is degenerate and the solver flags it redundant.
 
+Regions: closed loops nest even-odd (a circle inside a plate is a hole, a loop inside that hole is an island). Regions that overlap or touch (a panel sunk into a slab) extrude as their union; each stays selectable on its own. Loops that share parts of edges (an L drawn as two stacked rectangles, a tab standing on a plate's edge) make one region, their union.
+
 ## Features
 
 | type | key fields |
 |---|---|
-| extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind or through_all`, `mode: add / cut / intersect / new` |
+| extrude | `profile {sketch, regions: "all" or [entity ids on a region's outer loop]}`, `distance`, `direction`, `extent: blind / through_all / up_to_face`, `to_face` (up_to_face: a planar face parallel to the sketch; the extrude turns toward it by itself and `distance` goes past it), `draft` (degrees, default 0; positive tapers the walls inward along the extrusion, for molded or printed bosses and pockets; not with `symmetric`), `mode: add / cut / intersect / new` |
 | revolve | `profile`, `axis` (a sketch line id, `x_axis` or `y_axis`), `angle` |
 | import | `file` (STEP / .brep, relative to the part file), `mode: reference / add / cut / new` (default reference), `rotate: [rx, ry, rz]` degrees about world X, then Y, then Z, then `at: [x, y, z]` |
 | hole | `sketch` (holes at its point entities), `points` (optional subset), `kind: simple / counterbore / countersink / tapped`, `size` ("M3", "#4-40", "1/4-20"), `fit: close / normal / loose`, `diameter` (overrides the size), `depth` (omit: through all), `direction` (default `reverse`: into a face sketch's solid), `cbore_diameter`, `cbore_depth`, `csink_diameter`, `csink_angle`, `thread_depth` |
+| boolean | `tool` (a reference import built earlier), `mode: cut` (default: a nest, cradle or case for it) `/ add / intersect`, `clearance` (mm, default 0: the body is grown by this gap all round first, with rounded corners so the gap is constant). The cut follows the import when it moves or its file changes. Faces: `wall[<reference face>]` and `wall`. Can be patterned and mirrored |
+| loft | `sections` (two or more sketch ids, first to last; each has one closed loop without holes, on different planes), `ruled` (default false: a smooth blend; true: straight faces between sections), `mode`. Faces: `start`, `end`, `side[entity]` named by the first section's entities. Hollow it with a second loft through inset sections, `mode: cut` |
+| sweep | `profile {sketch, regions}` (holes are kept: a ring makes a tube), `path` (a sketch id: its non-construction lines and arcs, chained into one open or closed chain), `mode`. The profile should cross the path, usually at its start; sharp path corners are mitred, tangent arcs make bends. Faces: `start`, `end`, `side[entity]` |
 | fillet / chamfer | `edges: [EdgeRef]`, `radius` / `distance` |
-| shell | `remove_faces: [FaceRef]`, `thickness` (inward) |
+| shell | `remove_faces: [FaceRef]`, `thickness` (inward; `outward: true` grows the wall outside: a skin around an imported body) |
 | linear_pattern | `features: [extrude/revolve ids]`, `direction: X, Y, Z or [x,y,z]`, `spacing`, `count` |
 | circular_pattern | `features`, `axis`, `origin`, `count`, `angle` (360 = full circle, evenly spaced) |
 | mirror | `features`, `plane: {datum, offset}` |
+| hole | `sketch` (its points, and circle/arc centres, are the hole positions; `points` picks some), `kind: simple / counterbore / countersink`, `diameter`, `extent: through_all` (default) or `blind` with `depth`, `direction: reverse` (default, into the solid from a face sketch) or `normal`, `tip_angle` (blind: 118, 0 = flat), `cbore_diameter` + `cbore_depth`, `csk_diameter` + `csk_angle` (90), `thread` (e.g. `"M3x0.5"`: tapped; `diameter` is the tap drill) |
+| text | `sketch` + `at` (a point of it, or `origin`: the text's centre, or left end with `align: left`), `text`, `size` (font size, mm), `depth`, `mode: cut` (engraved, default) or `add` (embossed), `angle`, `font` (a name or a .ttf path; default: the system's sans) |
+| import | `file` (STEP / IGES / BREP / STL, or another part `*.vcad.json`, relative to the part file), `mode: new / add / cut / intersect / reference`, `scale` (25.4 for inches), `rotate: [x, y, z]` degrees about the world axes in that order, `translate: [x, y, z]` after rotating |
 
 All features take `id`, optional `name`, `intent` (one line: why it exists), `suppressed`.
 
-### Imported geometry (design around a bought part)
+Holes: `depth` is to the end of the full diameter; a blind hole's drill point is extra. A construction circle is not a hole position unless it is named in `points`. Patterns and mirrors can repeat holes and (solid) imports.
 
-An `import` in `reference` mode brings a STEP file in as geometry you design around (a motor, a PCB, a tube): it is drawn and rendered in pale green, measured by `describe_import`, but is never part of the solid, so it adds no volume and exports nothing. Its faces are labelled in file order, `{"feature": "motor", "role": "face", "entity": "f4"}`: sketch on them (`plane: {"face": ...}`), and project their edges into a sketch with `external` entities so your geometry follows the part when the import moves.
-
-```json
-{"op": "add_feature", "feature": {"id": "motor", "type": "import", "file": "imports/nema17.step", "intent": "the stepper this plate carries"}},
-{"op": "add_feature", "feature": {"id": "plate_sk", "type": "sketch", "plane": {"face": {"feature": "motor", "role": "face", "entity": "f4"}}}},
-{"op": "add_entity", "sketch": "screw_pts", "entity": {"id": "mh1", "type": "external",
-  "edge": {"between": [{"feature": "motor", "role": "face", "entity": "f4"}, {"feature": "motor", "role": "face", "entity": "f13"}]}}}
-```
-
-`describe_import` lists the largest flat faces (normal, centre, area) and every round face (diameter, axis, position), so the motor's pilot and screw holes can be found without guessing. Modes `add` / `cut` / `new` merge the file into the part instead (to modify a vendor part). Example: `examples/motor_plate.vcad.json`.
-
-### Holes
-
-Use a `hole` for every fastener hole, not a circle cut: it sizes the hole from the fastener, and says what it is for. Put the centres in a sketch on the face the holes go into (`add_points`), then one `hole` feature per hole type:
-
-```json
-{"op": "add_feature", "feature": {"id": "mount_pts", "type": "sketch", "plane": {"face": {"feature": "plate", "role": "end"}}}},
-{"op": "add_points", "sketch": "mount_pts", "id": "m", "points": [["-hole_spacing / 2", 0], ["hole_spacing / 2", 0]]},
-{"op": "add_feature", "feature": {"id": "mount_holes", "type": "hole", "sketch": "mount_pts", "kind": "counterbore", "size": "M4",
-  "intent": "M4 socket heads sit flush"}}
-```
-
-- `simple` is a clearance hole for `size` (`fit` picks close / normal / loose, ISO 273), `tapped` is the tap drill (the thread is recorded, not modelled), `counterbore` fits a socket head cap screw flush, `countersink` a flat head (90° metric, 82° inch).
-- Without `depth` the hole goes through; with it, it ends in a 118° drill point.
-- Faces: `hole.side[wall]`, `[cbore_wall]`, `[cbore_floor]`, `[csink]`, `[tip]`, each with `instance` = the point id (`{"feature": "mount_holes", "role": "side", "entity": "wall", "instance": "m_1"}`).
-- Holes can be patterned and mirrored like extrudes. Inch sizes: #2-56 to 1/2-13 (UNC, plus #10-32 and 1/4-28).
-
-Metric sizes (mm):
-
-| size | clearance (normal) | tap drill | c'bore ⌀ × depth | c'sink ⌀ (90°) |
-|---|---|---|---|---|
-| M1.6 | 1.8 | 1.25 | 3.3 × 1.8 | 3.2 |
-| M2 | 2.4 | 1.6 | 4.4 × 2.3 | 4.4 |
-| M2.5 | 2.9 | 2.05 | 5.5 × 2.8 | 5.5 |
-| M3 | 3.4 | 2.5 | 6.5 × 3.3 | 6.7 |
-| M4 | 4.5 | 3.3 | 8 × 4.4 | 9 |
-| M5 | 5.5 | 4.2 | 10 × 5.4 | 11.2 |
-| M6 | 6.6 | 5 | 11 × 6.5 | 13.4 |
-| M8 | 9 | 6.8 | 15 × 8.6 | 17.9 |
-| M10 | 11 | 8.5 | 18 × 10.8 | 22.4 |
-| M12 | 13.5 | 10.2 | 20 × 13 | 26.9 |
-| M16 | 17.5 | 14 | 26 × 17.5 | 33.6 |
-| M20 | 22 | 17.5 | 33 × 21.5 | 40.3 |
+Imports: `mode: reference` keeps the body out of the part: it is shown ghosted, and its faces and edges can be sketch planes, `external` projections and fit checks (a phone to fit a case around, a motor to mount). An STL is sewn into a solid for the other modes (up to 20,000 triangles; bigger meshes can only be references), and so are IGES surfaces that close. The build re-reads the file when it changes on disk. Another part (`*.vcad.json`) is regenerated live, and its faces keep that part's own labels as the entity, with `(` `)` for brackets and `~` for `@`: `{"feature": "enc", "role": "face", "entity": "box.side(box_top)"}`. So references to it survive edits to that part. A part can't import itself, even through other parts.
 
 ## References to faces and edges
 
@@ -121,7 +88,8 @@ EdgeRef: {"between": [FaceRef, FaceRef], "note": "..."}
        | {"of": FaceRef, "filter": {"type": "line", "parallel_to": "Z"}, "note": "..."}
 ```
 
-- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet`; chamfer `chamfer`; shell `inner`; `new` for faces with no better origin.
+- Roles: extrude/revolve `start` (the cap on the sketch plane), `end` (the far cap), `side` (swept from `entity`); fillet `fillet` and chamfer `chamfer` (entity: the edge it rounds, as its two faces `A|B`, e.g. `box.side:box_front|box.side:box_right`); shell `inner` (`outer` when outward; entity: the face it was offset from, e.g. `box.side:box_front`); hole `wall`, `cbore_wall`, `cbore_floor`, `csk`, `tip`, `bottom` (entity = the point's id); text `start`, `end` (the letters' floor or top), `side`; import `face` (entity `f0`, `f1`, ... in the file's face order) or `mesh` for an STL reference; `new` for faces with no better origin.
+- Fillet, chamfer and shell faces also carry the plain label (no entity), so `{"feature": "hollow", "role": "inner"}` still means all of the shell's inside.
 - `instance`: omitted = the original only; `"*"` = original and all copies; `"<pattern_id>#<n>"` = one copy.
 - `pick`: `largest`, `smallest`, or `nearest` (with `near: [x, y, z]`) when one face is required.
 - EdgeRef `pick: "nearest"` with `near: [x, y, z]` keeps the one edge closest to that point, for two faces that meet along more than one edge.
@@ -149,6 +117,12 @@ Parts are edited through ops, applied in batches as one undoable transaction (`a
 {"op": "set_dimension", "sketch": "<id>", "name": "<dimension name>", "value": "12 mm"}
 {"op": "rename_feature", "id": "<feature id>", "to": "<new id>"}          (updates profiles, face/edge refs, pattern lists)
 {"op": "rename_entity", "sketch": "<id>", "id": "<entity id>", "to": "<new id>"}   (updates constraints, regions, face refs)
+{"op": "fillet_corner", "sketch": "<id>", "corner": "<line>.p2", "radius": "corner_r"}
+      (rounds the corner where two lines meet: trims them, adds a tangent arc with a named radius; dimensions to
+       the corner and the lines' lengths move to a construction point at the sharp corner, so sizes are kept)
+{"op": "mirror_entities", "sketch": "<id>", "entities": ["half_1", "half_2"], "axis": "y_axis"}
+      (mirrored copies <id>_mirror of lines, arcs, circles and points across a sketch line, x_axis or y_axis; held by
+       symmetric constraints, coincident where a point is on the axis: no new DOF, and they follow the originals)
 ```
 
 Sketch shortcuts (expand into fully constrained primitives, stored as ordinary entities and constraints):

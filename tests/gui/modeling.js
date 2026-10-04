@@ -61,8 +61,9 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
 
   await page.goto(BASE);
   await page.waitForSelector("#conn.live", { timeout: 15000 });
-  page.once("dialog", (d) => d.accept("handmade"));
   await page.click("#newBtn");
+  await page.fill("#npName", "handmade");
+  await page.click("#npCreate");
   await page.waitForFunction(() => document.querySelector("#partName").textContent.includes("handmade"), null, { timeout: 10000 });
   check("new empty part", (await tree()).length === 0);
   await page.click("#newSketchBtn");
@@ -113,7 +114,7 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); con
   await atRef(await pt("circle1.center")); await dimTool("dy", 10);
   check("hole sketch fully constrained", /0 DOF/.test(await info()), await info());
   await feature("#extrudeBtn", async () => {
-    await page.check("#ffThru");
+    await page.selectOption("#ffExt", "through_all");
     await page.selectOption("#ffDir", "reverse");
     await page.selectOption("#ffMode", "cut");
   });

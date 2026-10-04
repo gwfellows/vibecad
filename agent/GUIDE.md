@@ -23,7 +23,12 @@ Time goes into deliberating before the first tool call, not into the tools. Meas
   - Put your holes on its holes by projecting them: copy a rim `edge` from `describe_import` into an `external` entity and make your point coincident with its `.center`, rather than typing its coordinates. Then the part follows the reference if it moves or is swapped.
   - Projection works onto any parallel plane, not only the reference's own face: a sketch on your plate's top face can take `external` rims from the motor face under it.
   - Place the reference where it will really be (`at`, `rotate`), then check the fit: a warning on the import says if the part runs into it, and `describe_import` gives the overlap and gap. `render` shows it in pale green.
-- Every fastener hole is a `hole` feature at `add_points` centres, with the fastener `size` ("M4") and `kind` (simple clearance, counterbore, countersink, tapped). Don't cut circles for bolts and don't look up clearance diameters yourself: the table is built in, and the intent should name the fastener.
+- For a wall or clearance around an outline (a case lip, a gasket groove, a pocket with a margin) add an `offset` entity of that outline (projected edges work too) instead of redrawing it: it follows the outline and its distance param.
+- Round a sketch corner with `fillet_corner` (the corner point and a radius): it keeps the outline's dimensions. Don't draw the arc and its tangencies by hand.
+- For a symmetric profile, draw one half (an open `add_polygon` with its ends on the axis) and `mirror_entities` it; the copy follows the half.
+- Every fastener hole is a `hole` feature at sketch point centres, with the fastener `size` ("M4") and `kind` (simple clearance, counterbore, countersink, tapped). Don't cut circles for bolts and don't look up clearance diameters yourself: the table is built in, and the intent should name the fastener.
+- To design around an existing part (a phone, a motor, a PCB), follow "Designing around an imported part" below.
+- To try something out, do it in the part and `undo` if it fails; don't create scratch part files.
 - Keep batches to one sketch and its feature. A big batch that fails costs a full rewrite; a small one costs one fix.
 - Render when the main body exists and at the end, or when a number looks wrong. Between those, the report's volume and bbox changes are enough.
 
@@ -47,7 +52,7 @@ Time goes into deliberating before the first tool call, not into the tools. Meas
 
 - Refer to faces by the feature that made them: `{"feature": "base", "role": "end"}`, `{"feature": "wall", "role": "side", "entity": "wall_top"}`. Never by index.
 - Every face and edge reference gets a `note` in plain words ("inside corner where base top meets wall back face"). If a reference later fails, read its note and call `face_labels` to repair it.
-- Patterns and mirrors re-apply extrude/revolve features. Copies are addressed with `"instance": "<pattern_id>#n"` or `"*"`.
+- Patterns and mirrors re-apply extrude, revolve, loft, sweep, hole and import features. Copies are addressed with `"instance": "<pattern_id>#n"` or `"*"`.
 
 ## Verify, every time
 
@@ -71,6 +76,15 @@ Geometry checks can't tell you whether the design works. Before reporting, answe
 5. **Manufacturability** for the stated process: minimum wall for FDM (~1.2 mm and up), inside radii for machining, hole-to-edge distances for sheet metal (at least 1.5 × thickness).
 
 Describe mechanics accurately in your summary; don't claim a clamp, preload or stiffness the geometry doesn't provide.
+
+## Designing around an imported part
+
+1. `import` it with `mode: reference`. The report gives its size and where it is in world mm. `face_labels` with its id lists its faces with their geometry: plane normals and centres, cylinder axes and diameters (its mounting holes). Don't probe it with throwaway sketches or solid copies.
+2. Decide where it sits in the assembly, then build your part there. Either model around it where it is, or move it first: `place_import` puts a flat face of it against a face of your part; `then_face`/`then_target` also slide it along that contact onto a second flat face it rests on (a phone's bottom side on the base or the lip's inner face), which also fixes which way round it is. To stand it the right way up before the part exists (a servo lying on its side, wanted shaft-up), place a face of it onto a datum: `"target": {"datum": "XY"}` puts that face on the plane with the whole body centred on the origin, longest side along x, so symmetric features of it are symmetric about the origin; don't work out the rotation by hand. Don't nudge `translate` or set `rotate` by trial and error: if it lands the wrong way round, place it again resting a different side of it (the result gives its size). To bring it onto features built later (a board onto its standoff tops, a fan against the wall you just made), `place_import` with `"align": "touch"`: it moves only along the target's normal and keeps its position across the face (add `"pick": "largest"` when the target is several faces, like four standoff tops). Read the result's `contact` line: if a face points somewhere you didn't expect, the name is on a different face than you think (`face_labels` with a feature id lists each face's outward normal). Its position is part of the design: leave it where it sits in the assembly (the user and `check_fit` see it there), never move it just to preview and then back. Keep the import in the part even when you only needed its sizes: it is how the part stays tied to the real body. For several of the same body (two cells, four bolts), place it at the first position and pattern the nest or features made from it.
+3. Take sizes and positions from it, not from memory: bosses and standoffs on its hole axes, sketches on or projected from its faces. For a pocket, cradle or case shaped like it, `boolean` cut the reference with a `clearance` (0.2 to 0.5 mm for FDM); a pattern of that boolean makes more pockets.
+4. `check_fit` must show no overlap before you report, and a gap of 0 wherever the body rests on or mounts to your part. An overlap means the part runs into it; an unexpected gap usually means a plane went the wrong way (XZ's normal is −Y: the report shows each datum sketch's world plane).
+
+For a mating part of the same design (a lid for an enclosure), import the other `.vcad.json` as a reference: it stays live, and its faces keep their own labels.
 
 ## Multi-part designs
 

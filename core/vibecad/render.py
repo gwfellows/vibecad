@@ -35,6 +35,16 @@ REF = np.array([0.74, 0.80, 0.66])  # imported reference geometry (a motor to de
 HILITE = np.array([0.95, 0.55, 0.15])
 
 
+def _compound(shapes):
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Compound
+    c, bb = TopoDS_Compound(), BRep_Builder()
+    bb.MakeCompound(c)
+    for x in shapes:
+        bb.Add(c, x)
+    return c
+
+
 def _basis(view):
     b, up = (np.array(v, float) for v in VIEWS[view])
     b /= np.linalg.norm(b)
@@ -45,15 +55,15 @@ def _basis(view):
 
 
 def render_view(body: Body, path: Path, view: str = "iso", title: str = "", highlight: set[str] | None = None,
-                size_px: int = 900, refs: list[Body] | None = None) -> None:
+                size_px: int = 900, refs: dict[str, Body] | None = None) -> None:
     from OCP.BRep import BRep_Builder
     from OCP.TopoDS import TopoDS_Compound
-
     b, right, up2 = _basis(view)
     light = b + 0.4 * up2 + 0.25 * right
     light /= np.linalg.norm(light)
     polys, colors, depths = [], [], []
-    shapes = [x for x in [body.shape, *[r.shape for r in refs or []]] if x is not None]
+    ref_bodies = list((refs or {}).values())
+    shapes = [x for x in [body.shape, *[r.shape for r in ref_bodies]] if x is not None]
     scene = TopoDS_Compound()
     bb_ = BRep_Builder()
     bb_.MakeCompound(scene)
@@ -63,7 +73,7 @@ def render_view(body: Body, path: Path, view: str = "iso", title: str = "", high
     tol = diag / 400
 
     todo = [(f, body, BASE) for f in (list_faces(body.shape) if body.shape is not None else [])]
-    todo += [(f, r, REF) for r in refs or [] for f in list_faces(r.shape)]
+    todo += [(f, r, REF) for r in ref_bodies for f in list_faces(r.shape)]
     for f, owner, base in todo:
         face = bd.Face(TopoDS.Face(f))
         hl = bool(highlight) and any(l.feature in highlight for l in owner.labels_of(f))
@@ -80,7 +90,10 @@ def render_view(body: Body, path: Path, view: str = "iso", title: str = "", high
             if nn < 1e-12:
                 continue
             n /= nn
-            out = fn if planar else np.array([*face.normal_at(bd.Vector(*p0.mean(0)))])
+            try:
+                out = fn if planar else np.array([*face.normal_at(bd.Vector(*p0.mean(0)))])
+            except Exception:  # no normal at a singular point (a cone apex): keep the triangle's own winding
+                out = n
             if n @ out < 0:
                 n = -n
             if n @ b < -1e-6:  # back-facing: hidden on a closed solid
@@ -155,6 +168,11 @@ def render_sketch(solved, frame, path: Path, constraints=(), env=None) -> None:
     ax.axvline(0, color="#ccc", lw=0.6, zorder=0)
     ax.set_aspect("equal")
     ax.margins(0.12)
+    # points in a row (a hole sketch) span nothing across: give both axes a real range, or matplotlib can't lay out
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    half = max(x1 - x0, y1 - y0, 10) / 2
+    ax.set_xlim((x0 + x1) / 2 - half, (x0 + x1) / 2 + half)
+    ax.set_ylim((y0 + y1) / 2 - half, (y0 + y1) / 2 + half)
     ax.tick_params(labelsize=7)
     dims = [f"{c.name or c.type}: {c.type}({', '.join(c.on)}) = {c.value}" for c in constraints if c.value is not None]
     if dims:
@@ -196,7 +214,7 @@ def _visible_edges(shape, b: np.ndarray, diag: float):
             hit = inter.Pnt(i)
             try:
                 n = f.normal_at(bd.Vector(hit.X(), hit.Y(), hit.Z()))
-            except Exception:  # no normal at a singular point (a cone's apex, e.g. a drill point): it still hides
+            except Exception:  # no normal at a singular point (a drill tip's cone apex): the face still hides
                 return False
             if abs(n.X * b[0] + n.Y * b[1] + n.Z * b[2]) > 1e-3:  # ignore faces seen exactly edge-on
                 return False

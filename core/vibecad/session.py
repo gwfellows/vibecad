@@ -18,6 +18,75 @@ from .ops import OpError, apply_ops, touched_features
 from .regen import Regenerator, RegenResult, _strings
 
 
+def _ref_overlaps(r: RegenResult, max_faces: int = 3000) -> list[str]:
+    """Reference bodies the part runs into, shown in every edit report: designs around an import went wrong
+    silently when this waited for a check_fit call. Cheap: bounding boxes first, big meshes skipped."""
+    import build123d as bd
+
+    part = r.part
+    if part is None or not r.refs:
+        return []
+    out = []
+    pb = part.bounding_box()
+    for rid, rb in r.refs.items():
+        other = bd.Shape.cast(rb.shape)
+        if not other.solids() or len(other.faces()) > max_faces:
+            continue
+        ob = other.bounding_box()
+        apart = max(ob.min.X - pb.max.X, pb.min.X - ob.max.X, ob.min.Y - pb.max.Y, pb.min.Y - ob.max.Y,
+                    ob.min.Z - pb.max.Z, pb.min.Z - ob.max.Z)
+        if apart > 5.0:  # boxes clearly apart: the part isn't where the reference is
+            out.append(f"reference {rid} is at least {apart:.0f} mm from the part: the part doesn't hold or meet it yet. "
+                       f"Fine mid-build; before you report, put {rid} where the part holds it (place_import onto the face it "
+                       "rests on, then_face/then_target for a second contact) or build the part around it")
+            continue
+        if apart > 0:
+            continue  # boxes apart: no overlap
+        try:
+            common = part & other
+            ov = common.volume if common is not None else 0.0
+        except Exception:
+            continue
+        if ov > 1e-3:
+            out.append(f"the part overlaps reference {rid} by {ov:.1f} mm³{overlap_where(common)}: in the assembly (and in the user's view) {rid} runs "
+                       "through the part. Fine mid-build if the cut for it is still to come; before you report, make it 0: put "
+                       f"the geometry where {rid} is, or move {rid} to where you designed for it (translate, place_import). Keep the "
+                       "import: it ties the part to the real body; don't remove it to clear this")
+    return out
+
+
+def overlap_where(common) -> str:
+    """Where an overlap is, in world mm: 'at x 65..69 y -4..4 z 6..12 (4 x 8 x 6 mm)'. An overlap is a real
+    collision (a cable block through a wall), never a numerical artifact; saying where makes that plain."""
+    try:
+        bb = common.bounding_box()
+    except Exception:
+        return ""
+    return (f" at x {bb.min.X:.1f}..{bb.max.X:.1f} y {bb.min.Y:.1f}..{bb.max.Y:.1f} z {bb.min.Z:.1f}..{bb.max.Z:.1f} "
+            f"({bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f} mm; a real collision, not a rounding artifact)")
+
+
+def _ref_apart(r: RegenResult, max_gap: float = 2.0, max_faces: int = 3000) -> list[str]:
+    """Reference bodies the finished part doesn't reach: a holder whose phone floats 80 mm away was built
+    somewhere else than the phone. Checked at export (min_distance is too slow for every edit on big bodies)."""
+    import build123d as bd
+
+    from .measure import min_distance
+    part = r.part
+    if part is None:
+        return []
+    out = []
+    for rid, rb in r.refs.items():
+        if len(bd.Shape.cast(rb.shape).faces()) > max_faces:
+            continue
+        d = min_distance(part.wrapped, rb.shape)
+        if d and d[0] > max_gap:
+            out.append(f"reference {rid} is {d[0]:.1f} mm from the part, so the part doesn't hold or meet it where it "
+                       f"sits. Move {rid} to where it goes in the assembly (place_import onto the face it rests on, or "
+                       "translate/rotate), or build the part around it")
+    return out
+
+
 def dump_doc(doc: S.Document) -> str:
     """Compact, human-readable JSON: defaults omitted, discriminator `type` fields kept."""
     raw = doc.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
@@ -90,12 +159,13 @@ class Session:
             new_doc, notes = apply_ops(self.doc, ops)
         except OpError as e:
             self._log({"author": author, "message": message, "rejected": str(e)[:500], "n_ops": len(ops)})
-            return {"ok": False, "applied": 0, "error": str(e)}
+            return {"ok": False, "applied": 0, "error": str(e) + ("\nNothing in this batch was applied (a batch is all or "
+                    "nothing): send the whole batch again with this fixed." if len(ops) > 1 else "")}
         before = self.result
+        result = self.regen.run(new_doc)  # before swapping: readers never see a new doc with an old result
         self.undo_stack.append((self.doc, message))
         self.redo_stack.clear()
-        self.doc = new_doc
-        self.result = self.regen.run(self.doc)
+        self.doc, self.result = new_doc, result
         self._absorb_solved()
         self._save()
         self._log({"author": author, "message": message, "ops": ops})
@@ -127,10 +197,11 @@ class Session:
         if not self.undo_stack:
             return {"ok": False, "error": "nothing to undo"}
         before = self.result
-        doc, msg = self.undo_stack.pop()
+        doc, msg = self.undo_stack[-1]
+        result = self.regen.run(doc)
+        self.undo_stack.pop()
         self.redo_stack.append((self.doc, msg))
-        self.doc = doc
-        self.result = self.regen.run(self.doc)
+        self.doc, self.result = doc, result
         self._save()
         self._log({"author": "undo", "message": f"undo: {msg}"})
         return self._report(before, [f"undid: {msg or '(no message)'}"])
@@ -139,10 +210,11 @@ class Session:
         if not self.redo_stack:
             return {"ok": False, "error": "nothing to redo"}
         before = self.result
-        doc, msg = self.redo_stack.pop()
+        doc, msg = self.redo_stack[-1]
+        result = self.regen.run(doc)
+        self.redo_stack.pop()
         self.undo_stack.append((self.doc, msg))
-        self.doc = doc
-        self.result = self.regen.run(self.doc)
+        self.doc, self.result = doc, result
         self._save()
         self._log({"author": "redo", "message": f"redo: {msg}"})
         return self._report(before, [f"redid: {msg or '(no message)'}"])
@@ -150,8 +222,8 @@ class Session:
     def reload(self) -> dict:
         """Re-read the file (after a user edited it by hand or in another tool)."""
         before = self.result
-        self.doc = S.Document.model_validate_json(self.path.read_text())
-        self.result = self.regen.run(self.doc)
+        doc = S.Document.model_validate_json(self.path.read_text())
+        self.doc, self.result = doc, self.regen.run(doc)
         self._stamp = self._file_stamp()
         return self._report(before, ["reloaded from disk"])
 
@@ -174,6 +246,9 @@ class Session:
             out["ok"] = False
         if underconstrained:
             out["underconstrained_sketches"] = underconstrained
+        fit = _ref_overlaps(r)
+        if fit:
+            out["fit"] = fit
         a, b = before.summary(), r.summary()
         if "volume_mm3" in a or "volume_mm3" in b:
             out["change"] = {

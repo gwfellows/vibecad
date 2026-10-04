@@ -99,7 +99,12 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR
   check("the second fillet removed material", (await exactVol()) < v0 - 1e-6, `${v0} -> ${await exactVol()}`);
   // cancel leaves it alone (double-clicking the fillet in the tree starts the same edge picking)
   await page.dblclick('#tree li.feat[data-id="corner_fillet"] .fid');
-  await page.waitForSelector("#edgeEdit:not([hidden])", { timeout: 10000 });
+  await page.waitForSelector("#edgeEdit:not([hidden])", { timeout: 10000 }).catch(async (e) => {
+    console.log("DEBUG", pageErrors, await page.evaluate(() => [window.vibecadView.edgeEdit(), document.querySelector("#partStatus").textContent]),
+      (await page.$$eval("#log .msg", (l) => l.slice(-3).map((x) => x.textContent))));
+    await shot("debug_dbl");
+    throw e;
+  });
   await page.keyboard.press("Escape");
   await page.waitForSelector("#edgeEdit", { state: "hidden" });
   await page.waitForTimeout(800);
@@ -110,8 +115,9 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR
   await page.goto(AGENT);
   await page.waitForSelector("#conn.live", { timeout: 15000 });
   const newPart = async (name) => {
-    page.once("dialog", (d) => d.accept(name));
     await page.click("#newBtn");
+    await page.fill("#npName", name);
+    await page.click("#npCreate");
     await page.waitForFunction((n) => document.querySelector("#partName").textContent.includes(n), name, { timeout: 10000 });
     await page.waitForTimeout(500);
   };

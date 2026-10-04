@@ -1,0 +1,383 @@
+{
+  "vibecad": "0.1",
+  "name": "lid_gasket",
+  "material": "TPU",
+  "process": "FDM 3D print",
+  "design_notes": "Gasket for enclosure_lid.vcad.json (imported live as a reference, so it follows the lid's width, depth, wall and corner radius). The seal is the lid's bottom rim, pulled in by seal_margin from both the outer and inner edges so it never overhangs the wall; seal_t thick.",
+  "params": {
+    "seal_margin": "0.5 mm",
+    "seal_t": "1.5 mm"
+  },
+  "features": [
+    {
+      "id": "lid",
+      "type": "import",
+      "intent": "The lid this gasket seals, live: its rim is where the gasket goes",
+      "file": "enclosure_lid.vcad.json",
+      "mode": "reference"
+    },
+    {
+      "id": "rim_sk",
+      "type": "sketch",
+      "intent": "The lid's bottom rim, projected, and the seal outline inside it",
+      "plane": {
+        "face": {
+          "feature": "lid",
+          "role": "face",
+          "entity": "box.start",
+          "note": "the lid's open bottom: the rim of its walls"
+        }
+      },
+      "entities": [
+        {
+          "id": "rim_out1",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.side(box_front)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[box.side(box_front)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out2",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "corner_round.fillet(box.side:box_front|box.side:box_right)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_front|box.side:box_right)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out3",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.side(box_right)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[box.side(box_right)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out4",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "corner_round.fillet(box.side:box_back|box.side:box_right)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_back|box.side:box_right)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out5",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.side(box_back)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[box.side(box_back)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out6",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "corner_round.fillet(box.side:box_back|box.side:box_left)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_back|box.side:box_left)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out7",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.side(box_left)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[box.side(box_left)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_out8",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "corner_round.fillet(box.side:box_front|box.side:box_left)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[corner_round.fillet(box.side:box_front|box.side:box_left)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in9",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(box.side:box_front)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_front)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in10",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_left)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_left)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in11",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(box.side:box_left)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_left)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in12",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_left)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_left)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in13",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(box.side:box_back)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_back)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in14",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_right)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_back|box.side:box_right)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in15",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(box.side:box_right)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(box.side:box_right)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "rim_in16",
+          "edge": {
+            "between": [
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "box.start"
+              },
+              {
+                "feature": "lid",
+                "role": "face",
+                "entity": "hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_right)"
+              }
+            ],
+            "note": "edge where rim_sk's face meets lid.face[hollow.inner(corner_round.fillet:box.side:box_front|box.side:box_right)], projected in the GUI"
+          },
+          "type": "external"
+        },
+        {
+          "id": "seal_out",
+          "of": [
+            "rim_out1",
+            "rim_out2",
+            "rim_out3",
+            "rim_out4",
+            "rim_out5",
+            "rim_out6",
+            "rim_out7",
+            "rim_out8"
+          ],
+          "distance": "seal_margin",
+          "side": "inside",
+          "note": "outer edge of the seal: seal_margin inside the lid's outer edge",
+          "type": "offset"
+        },
+        {
+          "id": "seal_in",
+          "of": [
+            "rim_in9",
+            "rim_in10",
+            "rim_in11",
+            "rim_in12",
+            "rim_in13",
+            "rim_in14",
+            "rim_in15",
+            "rim_in16"
+          ],
+          "distance": "seal_margin",
+          "note": "inner edge of the seal: seal_margin outside the lid's inner wall face",
+          "type": "offset"
+        }
+      ],
+      "constraints": []
+    },
+    {
+      "id": "seal",
+      "type": "extrude",
+      "intent": "The gasket: the ring between the two offsets, seal_t thick, below the lid's rim",
+      "profile": {
+        "sketch": "rim_sk"
+      },
+      "distance": "seal_t",
+      "mode": "new"
+    }
+  ]
+}

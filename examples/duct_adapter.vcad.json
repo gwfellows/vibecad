@@ -1,0 +1,766 @@
+{
+  "vibecad": "0.1",
+  "name": "duct_adapter",
+  "material": "PETG",
+  "process": "FDM 3D print",
+  "design_notes": "Adapter from a 40 mm square fan to a 30 x 16 mm outlet. A ruled loft makes the outside, a second ruled loft through inset sections cuts the inside, so the wall stays `wall` thick. The flange has the fan's outline.",
+  "params": {
+    "in_w": 40.0,
+    "in_d": 40.0,
+    "out_w": 30.0,
+    "out_d": 16.0,
+    "duct_len": 35.0,
+    "wall": 1.6,
+    "flange_w": 50.0,
+    "flange_t": 3.0
+  },
+  "features": [
+    {
+      "id": "inlet_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "inlet_bottom",
+          "p1": [
+            -20.0,
+            -20.0
+          ],
+          "p2": [
+            20.0,
+            -20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "inlet_right",
+          "p1": [
+            20.0,
+            -20.0
+          ],
+          "p2": [
+            20.0,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "inlet_top",
+          "p1": [
+            20.0,
+            20.0
+          ],
+          "p2": [
+            -20.0,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "inlet_left",
+          "p1": [
+            -20.0,
+            20.0
+          ],
+          "p2": [
+            -20.0,
+            -20.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "inlet_bottom.p2",
+            "inlet_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "inlet_right.p2",
+            "inlet_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "inlet_top.p2",
+            "inlet_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "inlet_left.p2",
+            "inlet_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "inlet_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "inlet_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "inlet_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "inlet_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "inlet_bottom"
+          ],
+          "value": "in_w",
+          "name": "inlet_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "inlet_right"
+          ],
+          "value": "in_d",
+          "name": "inlet_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "inlet_bottom.p1"
+          ],
+          "value": "(0) - ((in_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "inlet_bottom.p1"
+          ],
+          "value": "(0) - ((in_d) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "outlet_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "duct_len"
+      },
+      "entities": [
+        {
+          "id": "outlet_bottom",
+          "p1": [
+            -15.0,
+            -8.0
+          ],
+          "p2": [
+            15.0,
+            -8.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "outlet_right",
+          "p1": [
+            15.0,
+            -8.0
+          ],
+          "p2": [
+            15.0,
+            8.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "outlet_top",
+          "p1": [
+            15.0,
+            8.0
+          ],
+          "p2": [
+            -15.0,
+            8.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "outlet_left",
+          "p1": [
+            -15.0,
+            8.0
+          ],
+          "p2": [
+            -15.0,
+            -8.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "outlet_bottom.p2",
+            "outlet_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "outlet_right.p2",
+            "outlet_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "outlet_top.p2",
+            "outlet_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "outlet_left.p2",
+            "outlet_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "outlet_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "outlet_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "outlet_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "outlet_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "outlet_bottom"
+          ],
+          "value": "out_w",
+          "name": "outlet_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "outlet_right"
+          ],
+          "value": "out_d",
+          "name": "outlet_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "outlet_bottom.p1"
+          ],
+          "value": "(0) - ((out_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "outlet_bottom.p1"
+          ],
+          "value": "(0) - ((out_d) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "duct",
+      "type": "loft",
+      "intent": "outside of the duct: straight taper from the fan to the outlet",
+      "sections": [
+        "inlet_sk",
+        "outlet_sk"
+      ],
+      "ruled": true
+    },
+    {
+      "id": "flange_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "flange_bottom",
+          "p1": [
+            -25.0,
+            -25.0
+          ],
+          "p2": [
+            25.0,
+            -25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "flange_right",
+          "p1": [
+            25.0,
+            -25.0
+          ],
+          "p2": [
+            25.0,
+            25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "flange_top",
+          "p1": [
+            25.0,
+            25.0
+          ],
+          "p2": [
+            -25.0,
+            25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "flange_left",
+          "p1": [
+            -25.0,
+            25.0
+          ],
+          "p2": [
+            -25.0,
+            -25.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "flange_bottom.p2",
+            "flange_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "flange_right.p2",
+            "flange_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "flange_top.p2",
+            "flange_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "flange_left.p2",
+            "flange_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "flange_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "flange_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "flange_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "flange_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "flange_bottom"
+          ],
+          "value": "flange_w",
+          "name": "flange_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "flange_right"
+          ],
+          "value": "flange_w",
+          "name": "flange_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "flange_bottom.p1"
+          ],
+          "value": "(0) - ((flange_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "flange_bottom.p1"
+          ],
+          "value": "(0) - ((flange_w) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "flange",
+      "type": "extrude",
+      "intent": "mounting flange against the fan",
+      "profile": {
+        "sketch": "flange_sk"
+      },
+      "distance": "flange_t"
+    },
+    {
+      "id": "bore_in_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY"
+      },
+      "entities": [
+        {
+          "id": "bore_in_bottom",
+          "p1": [
+            -18.4,
+            -18.4
+          ],
+          "p2": [
+            18.4,
+            -18.4
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bore_in_right",
+          "p1": [
+            18.4,
+            -18.4
+          ],
+          "p2": [
+            18.4,
+            18.4
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bore_in_top",
+          "p1": [
+            18.4,
+            18.4
+          ],
+          "p2": [
+            -18.4,
+            18.4
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bore_in_left",
+          "p1": [
+            -18.4,
+            18.4
+          ],
+          "p2": [
+            -18.4,
+            -18.4
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "bore_in_bottom.p2",
+            "bore_in_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore_in_right.p2",
+            "bore_in_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore_in_top.p2",
+            "bore_in_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore_in_left.p2",
+            "bore_in_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bore_in_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bore_in_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bore_in_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bore_in_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bore_in_bottom"
+          ],
+          "value": "in_w - 2 * wall",
+          "name": "bore_in_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bore_in_right"
+          ],
+          "value": "in_d - 2 * wall",
+          "name": "bore_in_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "bore_in_bottom.p1"
+          ],
+          "value": "(0) - ((in_w - 2 * wall) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "bore_in_bottom.p1"
+          ],
+          "value": "(0) - ((in_d - 2 * wall) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "bore_out_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "duct_len"
+      },
+      "entities": [
+        {
+          "id": "bore_out_bottom",
+          "p1": [
+            -13.4,
+            -6.4
+          ],
+          "p2": [
+            13.4,
+            -6.4
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bore_out_right",
+          "p1": [
+            13.4,
+            -6.4
+          ],
+          "p2": [
+            13.4,
+            6.4
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bore_out_top",
+          "p1": [
+            13.4,
+            6.4
+          ],
+          "p2": [
+            -13.4,
+            6.4
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bore_out_left",
+          "p1": [
+            -13.4,
+            6.4
+          ],
+          "p2": [
+            -13.4,
+            -6.4
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "bore_out_bottom.p2",
+            "bore_out_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore_out_right.p2",
+            "bore_out_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore_out_top.p2",
+            "bore_out_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bore_out_left.p2",
+            "bore_out_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bore_out_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bore_out_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bore_out_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bore_out_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bore_out_bottom"
+          ],
+          "value": "out_w - 2 * wall",
+          "name": "bore_out_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bore_out_right"
+          ],
+          "value": "out_d - 2 * wall",
+          "name": "bore_out_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "bore_out_bottom.p1"
+          ],
+          "value": "(0) - ((out_w - 2 * wall) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "bore_out_bottom.p1"
+          ],
+          "value": "(0) - ((out_d - 2 * wall) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "bore",
+      "type": "loft",
+      "intent": "air passage, wall thick inside the duct and open at both ends",
+      "sections": [
+        "bore_in_sk",
+        "bore_out_sk"
+      ],
+      "ruled": true,
+      "mode": "cut"
+    }
+  ]
+}

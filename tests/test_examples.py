@@ -72,6 +72,48 @@ def expected_volume(name, p):
         top = strap_len * strap_wid * p["sheet_t"]
         flange = strap_len * p["flange_h"] * p["sheet_t"] - 2 * pi * (p["bolt_d"] / 2) ** 2 * p["sheet_t"]
         return top + 2 * flange
+    if name == "lid_gasket":  # the seal on enclosure_lid's rim, seal_margin in from both of its edges
+        from vibecad.expr import evaluate_params
+        lid = evaluate_params(load(EX / "enclosure_lid.vcad.json").params)
+        W, D, t, r, m = lid["width"], lid["depth"], lid["wall_t"], lid["corner_r"], p["seal_margin"]
+        outer = (W - 2 * m) * (D - 2 * m) - 4 * fillet_corner_area(r - m)
+        inner = (W - 2 * t + 2 * m) * (D - 2 * t + 2 * m) - 4 * fillet_corner_area(r - t + m)
+        return (outer - inner) * p["seal_t"]
+    if name == "cell_18650":
+        return pi * p["cell_d"] ** 2 / 4 * p["cell_l"]
+    if name == "cell_holder":  # two nests: the cell grown by the clearance (rounded bottom rim), cut `sink` deep
+        from vibecad.expr import evaluate_params
+        cell = evaluate_params(load(EX / "cell_18650.vcad.json").params)
+        r, c, d = cell["cell_d"] / 2, p["clearance"], p["sink"]
+        nest = pi * (r + c) ** 2 * d + pi * r * r * c + pi**2 * r * c * c / 2 + 2 * pi * c**3 / 3  # side, bottom slab, rim (Pappus)
+        return p["holder_w"] * p["holder_d"] * p["holder_h"] - 2 * nest
+    if name == "duct_adapter":  # ruled lofts: rectangles whose sides change linearly, so areas are quadratic in z
+        L, t, w = p["duct_len"], p["flange_t"], p["wall"]
+
+        def lofted(w0, d0, w1, d1, z1):  # volume of a ruled rectangle loft (over duct_len) from z = 0 to z1: Simpson
+            area = lambda z: (w0 + (w1 - w0) * z / L) * (d0 + (d1 - d0) * z / L)
+            return z1 / 6 * (area(0) + 4 * area(z1 / 2) + area(z1))
+        outer = (p["in_w"], p["in_d"], p["out_w"], p["out_d"])
+        inner = (p["in_w"] - 2 * w, p["in_d"] - 2 * w, p["out_w"] - 2 * w, p["out_d"] - 2 * w)
+        return lofted(*outer, L) + p["flange_w"] ** 2 * t - lofted(*outer, t) - lofted(*inner, L)
+    if name == "bent_tube":  # Pappus: the ring's centroid follows the path
+        return pi * (p["tube_od"] ** 2 - p["tube_id"] ** 2) / 4 * (p["leg_1"] + pi * p["bend_r"] / 2 + p["leg_2"])
+    if name == "drafted_boss_block":  # plate + back wall + a boss up to the wall's top, a cone frustum from its draft
+        from math import radians
+        h = p["wall_h"]
+        r1 = p["boss_d"] / 2
+        r2 = r1 - h * tan(radians(p["draft"]))
+        return p["base_w"] * p["base_d"] * p["base_t"] + p["base_w"] * p["wall_t"] * h + pi * h / 3 * (r1**2 + r1 * r2 + r2**2)
+    if name == "mounting_plate":
+        t = p["plate_t"]
+        v = p["plate_w"] * p["plate_d"] * t
+        r, R, h = p["m4_clear_d"] / 2, p["m4_cbore_d"] / 2, p["m4_cbore_depth"]
+        v -= 4 * (pi * R**2 * h + pi * r**2 * (t - h))
+        r, R = p["m3_clear_d"] / 2, p["m3_csk_d"] / 2
+        hc = R - r  # 90 degree countersink: depth = radius difference
+        v -= 2 * (pi * hc / 3 * (R**2 + R * r + r**2) + pi * r**2 * (t - hc))
+        r = p["m6_tap_d"] / 2
+        return v - (pi * r**2 * p["m6_depth"] + pi * r**2 * (r / tan(59 * pi / 180)) / 3)
     if name == "hex_standoff":
         a, rb, c, L = p["af"] / 2, p["bore_d"] / 2, p["chamfer"], p["length"]
         hex_area = 6 * a * a * tan(pi / 6)
@@ -141,7 +183,7 @@ def test_cache_reuses_upstream():
 
 def test_edge_holes_keep_their_inset_when_the_plate_grows():
     doc = load(EX / "edge_holes_plate.vcad.json")
-    res = Regenerator().run(doc, {"w": 90, "d": 40})
+    res = Regenerator(EX).run(doc, {"w": 90, "d": 40})
     c = res.sketches["hole_sk"][0].entities["hole"].center
     assert c == pytest.approx((-45 + 8, -20 + 8))
 

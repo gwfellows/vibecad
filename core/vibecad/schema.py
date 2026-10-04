@@ -140,7 +140,21 @@ class External(_M):
     construction: Literal[True] = True
 
 
-Entity = Annotated[Union[Point, Line, Circle, Arc, External], Field(discriminator="type")]
+class Offset(_M):
+    """Derived geometry: the chain of lines and arcs `of` (they may be projected edges) copied at `distance`, on
+    `side` (closed loops: outside / inside; open chains: left / right of the chain's direction). Sharp corners are
+    mitred, arcs grow or shrink. Rebuilt from the solved source on every build, so it follows it; fixed, so it
+    adds no DOF. Its pieces are `<id>_1`, `<id>_2`, ... in chain order, referenced like ordinary lines and arcs."""
+    id: str
+    type: Literal["offset"] = "offset"
+    of: list[str]
+    distance: Num
+    side: Literal["outside", "inside", "left", "right"] = "outside"
+    construction: bool = False
+    note: str | None = None
+
+
+Entity = Annotated[Union[Point, Line, Circle, Arc, External, Offset], Field(discriminator="type")]
 
 
 # ── Planes ──────────────────────────────────────────────────────────
@@ -188,8 +202,16 @@ class Extrude(_Feature):
     profile: Profile
     distance: Num = 0.0
     direction: Literal["normal", "reverse", "symmetric"] = "normal"
-    extent: Literal["blind", "through_all"] = "blind"
+    extent: Literal["blind", "through_all", "up_to_face"] = "blind"
+    to_face: FaceRef | None = None  # up_to_face: a planar face parallel to the sketch; `distance` goes past it
+    draft: Num = 0.0  # degrees; positive tapers the walls inward along the extrusion (a molded boss, a pocket)
     mode: Mode = "add"
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.extent == "up_to_face" and self.to_face is None:
+            raise ValueError("extent 'up_to_face' needs to_face")
+        return self
 
 
 class Revolve(_Feature):
@@ -241,6 +263,35 @@ class Hole(_Feature):
         return self
 
 
+class Loft(_Feature):
+    """A solid blended through the closed profiles of two or more sketches, in order (an adapter from a square
+    duct to a round one, a tapered handle). Each section sketch has one closed loop without holes."""
+    type: Literal["loft"] = "loft"
+    sections: list[str] = Field(min_length=2)  # sketch ids, first to last
+    ruled: bool = False  # straight faces between sections instead of a smooth blend
+    mode: Mode = "add"
+
+
+class Sweep(_Feature):
+    """The profile swept along a path: the lines and arcs of another sketch, chained end to end (a bent tube,
+    a handle, a wire channel). Keep the path tangent at its joins (round sharp corners); the profile sketch
+    usually sits across the path's start."""
+    type: Literal["sweep"] = "sweep"
+    profile: Profile
+    path: str  # sketch id; its non-construction lines and arcs form one chain
+    mode: Mode = "add"
+
+
+class Boolean(_Feature):
+    """Combine the part with a reference body (an import with mode reference): cut it out to make a nest, cradle or
+    case for it, add it, or keep only the overlap. `clearance` grows the body first by that gap all round (rounded
+    corners follow it at a constant distance), so the fit is not metal-to-metal."""
+    type: Literal["boolean"] = "boolean"
+    tool: str  # id of a reference import that builds before this feature
+    mode: Literal["cut", "add", "intersect"] = "cut"
+    clearance: Num = 0.0
+
+
 class Fillet(_Feature):
     type: Literal["fillet"] = "fillet"
     edges: list[EdgeRef]
@@ -257,6 +308,7 @@ class Shell(_Feature):
     type: Literal["shell"] = "shell"
     remove_faces: list[FaceRef]
     thickness: Num
+    outward: bool = False  # the wall grows outside the surfaces: a skin around an imported body (a case around a phone)
 
 
 class LinearPattern(_Feature):
@@ -276,6 +328,62 @@ class CircularPattern(_Feature):
     angle: Num = 360.0  # total span; 360 spaces copies evenly around the full circle
 
 
+class Hole(_Feature):
+    """Drilled holes at a sketch's points (point entities, and circle/arc centres), along the sketch normal.
+    `direction: reverse` (default) drills into the solid from a face sketch. `depth` is to the end of the
+    full diameter; a blind hole also gets a drill-point cone (`tip_angle`, 0 for a flat bottom)."""
+    type: Literal["hole"] = "hole"
+    sketch: str
+    points: Literal["all"] | list[str] = "all"  # entity ids: points, or circles/arcs (their centre)
+    kind: Literal["simple", "counterbore", "countersink"] = "simple"
+    diameter: Num
+    extent: Literal["blind", "through_all"] = "through_all"
+    depth: Num | None = None  # blind holes
+    direction: Literal["reverse", "normal"] = "reverse"
+    tip_angle: Num = 118.0
+    cbore_diameter: Num | None = None
+    cbore_depth: Num | None = None
+    csk_diameter: Num | None = None
+    csk_angle: Num = 90.0
+    thread: str | None = None  # e.g. "M3x0.5": the hole is tapped; `diameter` is the tap drill
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.extent == "blind" and self.depth is None:
+            raise ValueError("a blind hole needs `depth`")
+        if self.kind == "counterbore" and (self.cbore_diameter is None or self.cbore_depth is None):
+            raise ValueError("a counterbore hole needs `cbore_diameter` and `cbore_depth`")
+        if self.kind == "countersink" and self.csk_diameter is None:
+            raise ValueError("a countersink hole needs `csk_diameter`")
+        return self
+
+
+class Text(_Feature):
+    """Text engraved into or raised from a face: placed on a sketch's plane at one of its points (the text's
+    centre, or its left end with `align: left`), `angle` degrees from sketch +x."""
+    type: Literal["text"] = "text"
+    sketch: str
+    at: str  # a point entity (or origin) of that sketch
+    text: str
+    size: Num = 5.0  # cap height-ish: the font size in mm
+    depth: Num = 0.5
+    mode: Literal["cut", "add"] = "cut"
+    angle: Num = 0.0
+    align: Literal["center", "left"] = "center"
+    font: str | None = None  # a font name or a .ttf/.otf path; default: the system's sans
+
+
+class Import(_Feature):
+    """A solid from a STEP / IGES / BREP / STL file. `mode: reference` keeps it out of the part: shown ghosted,
+    usable for sketch planes, projected edges and fit checks (a mating part, a phone, a motor)."""
+    type: Literal["import"] = "import"
+    file: str  # relative to the part file's folder
+    mode: Union[Mode, Literal["reference"]] = "new"
+    scale: Num = 1.0  # e.g. 25.4 for a file in inches
+    rotate: tuple[Num, Num, Num] = (0.0, 0.0, 0.0)  # degrees about world X, then Y, then Z (about the origin)
+    translate: tuple[Num, Num, Num] = (0.0, 0.0, 0.0)  # applied after rotate
+
+
 class Mirror(_Feature):
     type: Literal["mirror"] = "mirror"
     features: list[str]
@@ -283,7 +391,7 @@ class Mirror(_Feature):
 
 
 Feature = Annotated[
-    Union[Sketch, Import, Extrude, Revolve, Hole, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror],
+    Union[Sketch, Extrude, Revolve, Loft, Sweep, Boolean, Fillet, Chamfer, Shell, LinearPattern, CircularPattern, Mirror, Import, Hole, Text],
     Field(discriminator="type"),
 ]
 

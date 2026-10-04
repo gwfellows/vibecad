@@ -301,6 +301,111 @@ def test_mesh_and_render_a_part_with_drill_points(tmp_path):
     assert a.ws.render(["iso"], [], 200)[:4] == b"\x89PNG"
 
 
+def test_import_file_saves_next_to_the_part_and_describes_it(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    bd.export_step(bd.Box(1, 2, 3), str(tmp_path / "tiny.step"))
+    info = a.import_file("my part.STEP", (tmp_path / "tiny.step").read_bytes())
+    assert info["file"] == "imports/my_part.STEP" and (tmp_path / "imports" / "my_part.STEP").exists()
+    assert info["solids"] == 1 and info["volume"] == pytest.approx(6) and info["units_hint"] == "in"
+    again = a.import_file("my part.STEP", (tmp_path / "tiny.step").read_bytes())
+    assert again["file"] == info["file"]  # the same bytes are not copied twice
+    with pytest.raises(Exception, match="can't import"):
+        a.import_file("notes.txt", b"hi")
+    rep = a.ws.apply_ops([{"op": "add_feature", "feature": {"id": "ref_box", "type": "import", "file": info["file"],
+                                                            "mode": "reference", "scale": 25.4}}], "import", "user")
+    assert '"ok": true' in rep, rep
+    m = a.mesh()
+    assert [r["id"] for r in m["refs"]] == ["ref_box"] and len(m["refs"][0]["faces"]) == 6
+    assert m["refs"][0]["faces"][0]["labels"][0].startswith("ref_box.face[f")
+
+
+def test_export_formats(tmp_path):
+    a = _app(tmp_path)
+    for fmt in ("step", "stl", "3mf", "brep", "glb", "svg"):
+        path, name = a.export_file(fmt)
+        assert name == f"l_bracket.{fmt}" and Path(path).stat().st_size > 1000, fmt
+    with pytest.raises(Exception, match="can't export"):
+        a.export_file("dwg")
+
+
+def test_measure_faces_edges_and_mass(tmp_path):
+    from vibecad.topo import list_edges
+
+    a = _app(tmp_path)  # l_bracket: 6061 aluminium, base 60 x 40 x 5, wall 5 thick along y = 0..5, holes 5.5
+    one = a.measure([{"label": "base.end", "point": [30, 25, 5]}])
+    assert one["picks"][0]["surface"] == "plane" and one["picks"][0]["normal"] == [0, 0, 1]
+    assert one["part"]["density"] == 2.70 and one["part"]["mass_g"] == pytest.approx(one["part"]["volume"] / 1000 * 2.7, abs=1e-3)
+    two = a.measure([{"label": "base.start", "point": [30, 20, 0]}, {"label": "base.end", "point": [30, 25, 5]}])
+    b = two["between"]
+    assert b["distance"] == pytest.approx(5) and b["plane_distance"] == pytest.approx(5) and b["angle"] == pytest.approx(0)
+    hole = a.measure([{"label": "hole_cut.side[hole_l]", "point": [15, 2.5, 35 + 2.75]}])
+    assert hole["picks"][0]["surface"] == "cylinder" and hole["picks"][0]["diameter"] == pytest.approx(5.5)
+    holes = a.measure([{"label": "hole_cut.side[hole_l]", "point": [15, 2.5, 37.75]}, {"label": "hole_cut.side[hole_r]", "point": [45, 2.5, 37.75]}])
+    assert holes["between"]["axis_distance"] == pytest.approx(30)  # hole_spacing
+    body = a.view_result().body
+    i = next(k for k, e in enumerate(list_edges(body.shape)) if a.edge_ref(k)["label"] in ("base.side[base_front] | base.start", "base.start | base.side[base_front]"))
+    e = a.measure([{"edge": i}])
+    assert e["picks"][0]["curve"] == "line" and e["picks"][0]["length"] == pytest.approx(60)
+
+
+def test_project_the_outline_of_a_reference_face(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    bd.export_step(bd.Box(30, 20, 5, align=bd.Align.MIN), str(tmp_path / "pcb.step"))
+    ops = [{"op": "add_feature", "feature": {"id": "pcb", "type": "import", "file": "pcb.step", "mode": "reference", "translate": [0, 0, 50]}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "pcb", "user")
+    top = next(l.entity for f, l in a.view_result().refs["pcb"].labels if abs(__import__("vibecad.topo", fromlist=["x"]).face_center(f).Z - 55) < 1e-6)
+    ops = [{"op": "add_feature", "feature": {"id": "on_pcb", "type": "sketch", "plane": {"face": {"feature": "pcb", "role": "face", "entity": top}}}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "sketch on the pcb", "user")
+    out = a.face_outline("on_pcb")
+    assert len(out["entities"]) == 4 and not out["skipped"]
+    rep = a.ws.apply_ops([{"op": "add_entity", "sketch": "on_pcb", "entity": e} for e in out["entities"]], "project", "user")
+    assert '"ok": true' in rep, rep
+    solved = a.ws.session().result.sketches["on_pcb"][0]
+    xs = sorted({round(p[0], 6) for e in (solved.entities[x["id"]] for x in out["entities"]) for p in (e.p1, e.p2)})
+    assert xs == [0, 30] and solved.report.dof == 0
+
+
+def test_fit_reports_overlap_gap_and_clash_mesh_per_reference(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    part = a.view_result().part
+    bb = part.bounding_box()
+    bd.export_step(bd.Box(10, 10, 10, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    ops = [{"op": "add_feature", "feature": {"id": "clash", "type": "import", "file": "cube.step", "mode": "reference",
+                                             "translate": [bb.min.X - 5, bb.min.Y - 5, bb.min.Z - 5]}},
+           {"op": "add_feature", "feature": {"id": "clear", "type": "import", "file": "cube.step", "mode": "reference",
+                                             "translate": [bb.max.X + 3, bb.min.Y, bb.min.Z]}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "two refs", "user")
+    rows = {r["id"]: r for r in a.fit()["refs"]}
+    want = (part & bd.Pos(bb.min.X - 5, bb.min.Y - 5, bb.min.Z - 5) * bd.Box(10, 10, 10, align=bd.Align.MIN)).volume
+    assert want > 1 and rows["clash"]["overlap"] == pytest.approx(want, rel=1e-6) and rows["clash"]["clash"]
+    assert rows["clash"]["gap"] == 0 and not rows["clash"]["touching"]
+    assert rows["clear"]["overlap"] == 0 and rows["clear"]["gap"] == pytest.approx(3, abs=1e-6) and "clash" not in rows["clear"]
+    p, q = rows["clear"]["points"]
+    assert q[0] - p[0] == pytest.approx(3, abs=1e-6)
+    st = a.state()
+    assert [f.get("mode") for f in st["features"] if f["type"] == "import"] == ["reference", "reference"]
+
+
+def test_parallel_faces_include_reference_bodies(tmp_path):
+    import build123d as bd
+
+    a = _app(tmp_path)
+    bd.export_step(bd.Box(10, 10, 10, align=bd.Align.MIN), str(tmp_path / "cube.step"))
+    ops = [{"op": "add_feature", "feature": {"id": "pcb", "type": "import", "file": "cube.step", "mode": "reference", "translate": [200, 0, 40]}},
+           {"op": "add_feature", "feature": {"id": "post_sk", "type": "sketch", "plane": {"datum": "XY"}}}]
+    assert '"ok": true' in a.ws.apply_ops(ops, "a reference above", "user")
+    faces = a.parallel_faces("post_sk")
+    pcb = [f for f in faces if f["label"].startswith("pcb.")]
+    assert sorted(f["distance"] for f in pcb) == [40, 50], pcb  # its underside and its top
+    assert all(f["ref"]["feature"] == "pcb" for f in pcb)
+
+
 # ── STEP import ──
 def _motor_part(tmp_path, mode="reference"):
     import json

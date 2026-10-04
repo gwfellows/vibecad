@@ -80,6 +80,10 @@ class RunMetrics:
         return d
 
 
+# the CLI refuses to skip permission prompts as root unless it is told it is in a sandbox (a container, a CI job)
+_ENV = {"IS_SANDBOX": "1"} if hasattr(os, "geteuid") and os.geteuid() == 0 else {}
+
+
 class AgentRunner:
     """One conversation. Call `run(prompt)` repeatedly for follow-up turns."""
 
@@ -108,7 +112,7 @@ class AgentRunner:
                 setting_sources=["project"],
                 mcp_servers={SERVER: {"type": "stdio", "command": "uv",
                                       "args": ["run", "--quiet", "--project", str(ROOT), "vibecad-mcp"]}},
-                permission_mode="bypassPermissions",
+                permission_mode="bypassPermissions", env=_ENV,
                 model=model, max_turns=max_turns, cwd=str(ws.root), include_partial_messages=True,
                 **({"effort": effort} if effort else {}),
             )
@@ -119,7 +123,7 @@ class AgentRunner:
             allowed_tools=[f"mcp__{SERVER}__{t['name']}" for t in TOOLS],
             system_prompt=system_prompt(prompt_mode, extra_system),
             setting_sources=[],  # ignore CLAUDE.md / user settings: runs are reproducible
-            permission_mode="bypassPermissions",
+            permission_mode="bypassPermissions", env=_ENV,
             model=model,
             max_turns=max_turns,
             cwd=str(ws.root),

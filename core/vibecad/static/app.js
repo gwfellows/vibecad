@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createSketchEditor, TOOLS as SKETCH_TOOLS, CONSTRAINTS as SKETCH_CONSTRAINTS } from "./sketch.js";
+import { createSketchEditor, setSketchTheme, TOOLS as SKETCH_TOOLS, CONSTRAINTS as SKETCH_CONSTRAINTS } from "./sketch.js";
 import { ICON } from "./icons.js";
 
 const $ = (s) => document.querySelector(s);
@@ -27,8 +27,12 @@ const ICONS = {
   linear_pattern: '<rect x="2.5" y="9" width="5" height="6"/><rect x="9.5" y="9" width="5" height="6"/><rect x="16.5" y="9" width="5" height="6"/>',
   circular_pattern: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="4.5" r="1.6"/><circle cx="18.5" cy="15.8" r="1.6"/><circle cx="5.5" cy="15.8" r="1.6"/>',
   mirror: '<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7l-6 5 6 5z"/><path d="M15 7l6 5-6 5z"/>',
-  hole: '<path d="M4 9h5v3h6V9h5v11H4z"/><path d="M9 12v8M15 12v8" stroke-dasharray="1.5 1.5"/>',
-  import: '<path d="M12 3v11M8 10l4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+  import: '<path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 3v11M7.5 9.5L12 14l4.5-4.5"/>',
+  hole: '<ellipse cx="12" cy="6.5" rx="6" ry="2.5"/><path d="M6 6.5V17M18 6.5V17"/><path d="M6 17a6 2.5 0 0 0 12 0"/>',
+  text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+  boolean: '<rect x="3" y="9" width="18" height="11" rx="1.5"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9" stroke-dasharray="2 1.6"/><path d="M9 9v3a3 3 0 0 0 6 0V9"/>',
+  loft: '<path d="M4 20h10l6-4H10z"/><ellipse cx="13" cy="5.5" rx="4" ry="2"/><path d="M6.5 18.5L9 5.5M17.5 17L17 5.5"/>',
+  sweep: '<circle cx="6" cy="18.5" r="2.5"/><path d="M8.5 18.5V12a5 5 0 0 1 5-5H21M3.5 18.5V12a10 10 0 0 1 10-10H21"/>',
 };
 const icon = (t) => `<svg viewBox="0 0 24 24">${ICONS[t] || '<circle cx="12" cy="12" r="6"/>'}</svg>`;
 
@@ -98,6 +102,7 @@ const rollIndex = () => (S && S.rollback != null ? S.rollback : S ? S.features.l
 function setState(state, { fit = false, flash = false } = {}) {
   const before = S ? new Map(S.features.map((f) => [f.id, f.status + (f.warnings || []).join()])) : null;
   S = state;
+  welcomeUpdate();
   if (!S) { $("#tree").innerHTML = ""; return; }
   $("#partName").textContent = S.rel;
   const bb = S.bbox ? S.bbox.map((v) => fmt(v, 1)).join(" × ") : "–";
@@ -173,8 +178,13 @@ function renderTree(before) {
     const meta = f.status === "error" ? "error" : f.warnings?.length ? "warning" : f.status === "suppressed" ? "suppressed"
       : f.type === "sketch" ? `${f.dof ?? "?"} DOF` : "";
     const rows = featureRows(f), open = expanded.has(f.id) && rows.length;
+    const isRef = f.type === "import" && f.mode === "reference";
     li.innerHTML = `<span class="caret" title="${rows.length ? `${open ? "Hide" : "Show"} this feature's parameters` : ""}">${rows.length ? (open ? "▾" : "▸") : ""}</span>`
-      + `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}</span><span class="meta ${st}">${esc(meta)}</span>`
+      + `<span class="ico">${icon(f.type)}</span><span class="fid" title="${esc(f.type)}: ${esc(f.intent || "")}">${esc(f.id)}`
+      + (isRef ? `<span class="refsw" style="background:#${refColor(f.id).getHexString()}" title="reference body: shown ghosted, never part of the solid"></span>` : "")
+      + `</span><span class="meta ${st}">${esc(meta)}`
+      + (isRef ? `<button class="eye ${hiddenRefs.has(f.id) ? "off" : ""}" title="${hiddenRefs.has(f.id) ? "Show" : "Hide"} this reference body">${ICON[hiddenRefs.has(f.id) ? "eyeoff" : "eye"]}</button>` : "")
+      + `</span>`
       + (f.status === "error" ? `<span class="err-msg">${esc(f.message)}</span>` : "")
       + (f.warnings || []).map((w) => `<span class="warn-msg">${esc(w)}</span>`).join("");
     if (before && before.get(f.id) !== f.status + (f.warnings || []).join()) li.classList.add("flash");
@@ -183,8 +193,15 @@ function renderTree(before) {
     li.onclick = (ev) => { if (ev.detail > 1) return; select(f.id === selected ? null : f.id); };
     if (f.type === "fillet" || f.type === "chamfer") {  // double-click: change which edges it rounds
       li.title = "Double-click to change which edges it acts on";
-      li.ondblclick = () => { if (!selected || selected !== f.id) select(f.id); if (i < rollIndex() || S.rollback == null) startEdgeEdit(f.id); };
     }
+    const eye = li.querySelector(".eye");
+    if (eye) eye.onclick = (ev) => {
+      ev.stopPropagation();
+      hiddenRefs.has(f.id) ? hiddenRefs.delete(f.id) : hiddenRefs.add(f.id);
+      for (const m of refMeshes) if (m.userData.ref === f.id) m.visible = !hiddenRefs.has(f.id);
+      for (const o of fitGroup.children) if (o.userData.ref === f.id) o.visible = !hiddenRefs.has(f.id);
+      renderTree(null);
+    };
     const caret = li.querySelector(".caret");
     if (rows.length) caret.onclick = (ev) => {
       ev.stopPropagation();
@@ -204,8 +221,40 @@ function renderTree(before) {
     }
   });
   if (rb >= n) ol.appendChild(rollbar());
+  ol.querySelector("li.feat.selected")?.scrollIntoView({ block: "nearest" });  // picked in the view: show it in the tree
 }
 
+// the splitter between the tree and the parameters / details: drag to resize, remembered per browser
+(function splitter() {
+  const sp = $("#splitter"), left = $("#left");
+  try { const h = localStorage.getItem("vibecad.treeH"); if (h) left.style.setProperty("--tree-h", h); } catch {}
+  sp.onpointerdown = (ev) => {
+    ev.preventDefault();
+    sp.setPointerCapture(ev.pointerId);
+    sp.classList.add("dragging");
+    const top = $("#treePane").getBoundingClientRect().top, total = left.getBoundingClientRect().bottom - top;
+    sp.onpointermove = (mv) => left.style.setProperty("--tree-h", `${Math.max(12, Math.min(85, ((mv.clientY - top) / total) * 100)).toFixed(1)}%`);
+    sp.onpointerup = () => {
+      sp.onpointermove = sp.onpointerup = null;
+      sp.classList.remove("dragging");
+      try { localStorage.setItem("vibecad.treeH", left.style.getPropertyValue("--tree-h")); } catch {}
+    };
+  };
+})();
+
+// double-click a feature to edit its settings (on the list: the first click re-renders the row). Fillets and
+// chamfers have their own double-click: picking their edges
+$("#tree").addEventListener("dblclick", (ev) => {
+  const li = ev.target.closest("li.feat"), f = li && S?.features.find((x) => x.id === li.dataset.id);
+  if (!f || !EDITABLE.includes(f.type)) return;
+  ev.preventDefault();
+  if (selected !== f.id) select(f.id);
+  if (f.type === "fillet" || f.type === "chamfer") {  // double-click: change which edges it acts on
+    if (S.features.indexOf(f) < rollIndex() || S.rollback == null) startEdgeEdit(f.id);
+    return;
+  }
+  editFeature(f.id, $(`#tree li.feat[data-id="${f.id}"]`) || li);
+});
 function rollbar() {
   const bar = document.createElement("li");
   bar.className = "rollbar";
@@ -283,13 +332,16 @@ async function renderDetails() {
       <button data-a="up" title="Move up the tree" ${i === 0 ? "disabled" : ""}>↑</button>
       <button data-a="down" title="Move down the tree" ${i === S.features.length - 1 ? "disabled" : ""}>↓</button>
       <span class="grow"></span><button data-a="delete" class="danger" title="Delete this feature (undo brings it back)">Delete</button></div>
+    ${EDITABLE.includes(f.type) ? `<button class="editbtn" data-a="edit" title="Change this ${f.type.replace("_", " ")}'s settings (or double-click it in the tree)">Edit ${esc(f.type.replace("_", " "))}…</button>` : ""}
+    ${f.type === "import" ? `<button class="editbtn" data-a="mate" title="Move this import by its faces: click a flat face of it, then the face it should sit against">Place by faces…</button>` : ""}
+    ${f.type === "import" && f.mode === "reference" && S.volume != null ? `<button class="editbtn" data-a="nest" title="Cut this body out of the part, grown by a clearance: a nest, cradle or case for it">Cut a nest for it…</button>` : ""}
     <div class="intent small" title="Click to edit: one line on why this feature exists">${esc(f.intent || "No intent written. Click to add one.")}</div>
     ${f.type === "fillet" || f.type === "chamfer" ? `<div class="edgelist"><div class="row"><b>Edges</b><span class="grow"></span>
       <button data-a="edges" title="Show the part just before this ${f.type} and click edges to add or remove them">Edit edges…</button></div>
       ${(json.edges || []).map((r) => `<span class="e" title="${esc(JSON.stringify(r))}">${esc(refText(r))}</span>`).join("")}</div>` : ""}
-    <textarea spellcheck="false"></textarea>
-    <div class="row"><button id="applyFeat">Apply edit</button><span class="grow"></span>
-    <button id="askAbout" title="Ask the agent about this feature">Ask agent</button></div>`;
+    <details class="json"><summary>JSON</summary><textarea spellcheck="false"></textarea>
+    <div class="row"><button id="applyFeat">Apply edit</button></div></details>
+    <div class="row"><span class="grow"></span><button id="askAbout" title="Ask the agent about this feature">Ask agent</button></div>`;
   d.querySelector("textarea").value = JSON.stringify(json, null, 1);
   const act = {
     rename: async () => {
@@ -314,8 +366,11 @@ async function renderDetails() {
       if (await edit([{ op: "remove_feature", id: f.id }], `delete ${f.id}`)) select(null);
     },
     edges: () => startEdgeEdit(f.id),
+    edit: () => editFeature(f.id, d.querySelector(".editbtn")),
+    nest: () => combineForm(f.id, d.querySelector("[data-a=nest]")),
+    mate: () => startMate(f.id),
   };
-  d.querySelectorAll(".factions [data-a], .edgelist [data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
+  d.querySelectorAll(".factions [data-a], .edgelist [data-a], .editbtn[data-a]").forEach((b) => (b.onclick = act[b.dataset.a]));
   const intent = d.querySelector(".intent");
   intent.onclick = () => {
     const inp = Object.assign(document.createElement("input"), { value: f.intent || "", placeholder: "why this feature exists", className: "intent-edit" });
@@ -427,15 +482,17 @@ async function edit(ops, message) {  // true if the batch was applied
 async function loadParts() {
   const r = await api("/api/parts");
   $("#partSelect").innerHTML = `<option value="">— open a part —</option>` + r.parts.map((p) => `<option ${p === r.active ? "selected" : ""}>${esc(p)}</option>`).join("");
+  welcomeUpdate(r.parts);
 }
 
 // ── 3D view ───────────────────────────────────────────────────────
 const host = $("#viewer");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(devicePixelRatio);
+renderer.setClearColor(0x000000, 0);  // the viewport's CSS gradient shows through
+renderer.localClippingEnabled = true;  // section view
 host.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf6f7f9);
 const persp = new THREE.PerspectiveCamera(35, 1, 0.1, 100000);
 const ortho = new THREE.OrthographicCamera(-50, 50, 50, -50, -100000, 100000);
 let camera = ortho, viewRadius = 50;
@@ -447,17 +504,46 @@ function makeControls(cam, target) {
   if (target) c.target.copy(target);
   return c;
 }
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a93a5, 1.6));
-const key = new THREE.DirectionalLight(0xffffff, 1.6);
+// studio lighting: sky/ground fill, a key light that follows the camera, and a soft rim from behind
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7d8698, 1.35));
+const key = new THREE.DirectionalLight(0xffffff, 1.55);
 scene.add(key);
+const rim = new THREE.DirectionalLight(0xdfe8ff, 0.55);
+scene.add(rim);
 const partGroup = new THREE.Group();
 scene.add(partGroup);
-const axes = new THREE.AxesHelper(10);
+const refGroup = new THREE.Group();  // reference imports: ghosted, never part of the solid
+scene.add(refGroup);
+const axes = new THREE.AxesHelper(10);  // a short triad at the origin
+axes.material.transparent = true; axes.material.opacity = 0.7;
 scene.add(axes);
-const REFC = new THREE.Color(0xa7c48a), BASE = new THREE.Color(0x9fb0c8), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
+let grid = null, gridBox = null;  // ground grid under the part, resized to it on each fit
+const isDark = () => document.documentElement.dataset.theme === "dark";
+function setGrid(box) {
+  gridBox = box;
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  const size = box.getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.y, 10) * 2.2;
+  const step = 10 ** Math.floor(Math.log10(span / 8));
+  const n = Math.max(2, Math.ceil(span / step / 2) * 2);
+  grid = isDark() ? new THREE.GridHelper(n * step, n, 0x334052, 0x222b37) : new THREE.GridHelper(n * step, n, 0xcfd5de, 0xe2e6ec);
+  grid.rotation.x = Math.PI / 2;  // three's grid lies in XZ; ours is the XY plane (Z up)
+  const c = box.getCenter(new THREE.Vector3());
+  grid.position.set(Math.round(c.x / step) * step, Math.round(c.y / step) * step, Math.min(box.min.z, 0) - 1e-3 * span);
+  grid.material.transparent = true; grid.material.opacity = 0.8; grid.material.depthWrite = false;
+  grid.renderOrder = -1;
+  scene.add(grid);
+}
+const BASE = new THREE.Color(0xb7c2d1), HI = new THREE.Color(0xf08a24), HOVER = new THREE.Color(0x7aa2e8), PICKED = new THREE.Color(0xc2410c);
 let pickedFaces = [];  // faces clicked in the 3D view, shift-click adds: {mesh, labels, point}
 const lastPicked = () => pickedFaces.at(-1) || null;
-let faceMeshes = [], edgeObjs = [], meshRev = null, hovered = null, hoveredEdge = null;
+let faceMeshes = [], edgeObjs = [], refMeshes = [], meshRev = null, hovered = null, hoveredEdge = null;
+// reference bodies each get their own colour (in tree order), so several imports stay apart in the view and the tree
+const REF_PALETTE = [0x8b5cf6, 0x0ea5a4, 0xf59e0b, 0xec4899, 0x3b82f6, 0x84cc16].map((c) => new THREE.Color(c));
+const refIds = () => (S ? S.features.filter((f) => f.type === "import" && f.mode === "reference").map((f) => f.id) : []);
+const refColor = (id) => REF_PALETTE[Math.max(0, refIds().indexOf(id)) % REF_PALETTE.length];
+const hiddenRefs = new Set();
+const clipPlanes = [];  // the section view's plane, when on (shared by every part material)
 let pickedEdges = [];  // edges clicked in the 3D view: {i, ref, label, point}; fillet/chamfer act on them
 const EDGE = new THREE.Color(0x1b1f27), EDGE_HOVER = new THREE.Color(0x2f6fe0), EDGE_PICKED = new THREE.Color(0xea580c);
 const edgeMarks = new THREE.Group();  // thick tubes over hovered and picked edges (WebGL lines are 1px)
@@ -480,7 +566,9 @@ function loop() {
   requestAnimationFrame(loop);
   controls.update();
   key.position.copy(camera.position);
+  rim.position.copy(controls.target).sub(camera.position).add(controls.target).add(new THREE.Vector3(0, 0, viewRadius));
   renderer.render(scene, camera);
+  drawGizmo();
   SK.placeLabels();
 }
 
@@ -514,6 +602,7 @@ async function loadMesh(fit) {
   try { m = await req.p; } finally { if (meshReq === req) meshReq = null; }
   if (S && m.rev !== S.rev && meshReq) return;  // an older revision arrived while a newer one is loading
   meshRev = m.rev;
+  if (fitOn) setTimeout(runFit, 0);  // the part or a reference changed: check the fit again
   partGroup.clear();
   faceMeshes = [];
   for (const f of m.faces) {
@@ -521,38 +610,36 @@ async function loadMesh(fit) {
     g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
     g.setIndex(f.i);
     g.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color: BASE.clone(), metalness: 0.05, roughness: 0.65, side: THREE.DoubleSide,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    const mat = new THREE.MeshStandardMaterial({ color: BASE.clone(), metalness: 0.12, roughness: 0.52, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes: clipPlanes });
     const mesh = new THREE.Mesh(g, mat);
     mesh.userData = { features: f.features, labels: f.labels };
     partGroup.add(mesh);
     faceMeshes.push(mesh);
   }
-  for (const r of m.refs || []) {  // imported reference geometry: translucent green, faces pickable, never part of the solid
-    for (const f of r.faces) {
+  refGroup.clear();
+  refMeshes = [];
+  for (const rb of m.refs || []) {
+    for (const f of rb.faces) {
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
       g.setIndex(f.i);
       g.computeVertexNormals();
-      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: REFC.clone(), metalness: 0.05, roughness: 0.7, side: THREE.DoubleSide,
-        transparent: true, opacity: 0.55, depthWrite: false }));
-      mesh.userData = { features: f.features, labels: f.labels, ref: r.id };
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: refColor(rb.id).clone(), transparent: true, opacity: 0.32,
+        depthWrite: false, side: THREE.DoubleSide, roughness: 0.8, clippingPlanes: clipPlanes }));
+      mesh.userData = { features: f.features, labels: f.labels, ref: rb.id };
+      mesh.visible = !hiddenRefs.has(rb.id);
       mesh.renderOrder = 2;
-      partGroup.add(mesh);
-      faceMeshes.push(mesh);
+      refGroup.add(mesh);
+      refMeshes.push(mesh);
     }
-    const pts = [];
-    for (const e of r.edges) for (let i = 0; i + 5 < e.length; i += 3) pts.push(e[i], e[i + 1], e[i + 2], e[i + 3], e[i + 4], e[i + 5]);
-    const eg = new THREE.BufferGeometry();
-    eg.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-    partGroup.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x4d7c0f, transparent: true, opacity: 0.6 })));
   }
   edgeObjs = [];
   m.edges.forEach((e, i) => {  // one pickable line per edge; the index is the server's edge index
     if (m.edge_seam?.[i]) return;
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(e, 3));
-    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: EDGE.clone(), transparent: true }));
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: EDGE.clone(), transparent: true, opacity: 0.85, clippingPlanes: clipPlanes }));
     line.userData = { i };
     partGroup.add(line);
     edgeObjs.push(line);
@@ -561,13 +648,21 @@ async function loadMesh(fit) {
   pickedEdges = pickedEdges.filter((p) => { const o = edgeObjs.find((x) => x.userData.i === p.i); return o && nearLine(o, p.point); });
   hoveredEdge = null;
   pickedFaces = pickedFaces.map((p) => {  // the new mesh has new face objects: keep picks whose labelled face still exists
-    const same = faceMeshes.find((x) => x.userData.labels.join() === p.labels.join());
+    const same = [...faceMeshes, ...refMeshes].find((x) => x.userData.labels.join() === p.labels.join());
     return same && { ...p, mesh: same };
   }).filter(Boolean);
   pickUpdate();
   colorFaces();
-  if (inSketch()) ghostPart(true);
+  if (inSketch() || fitOn) ghostPart(true);
   if (fit) pendingFit = !fitView("iso");
+  if (section) applySection();
+  if (measuring) {  // the new mesh has new face objects: keep face picks whose label still exists (edge indices may change)
+    mPicks = mPicks.filter((p) => p.edge == null).map((p) => {
+      const same = [...faceMeshes, ...refMeshes].find((x) => x.userData.labels.includes(p.label));
+      return same && { ...p, mesh: same };
+    }).filter(Boolean);
+    runMeasure();
+  }
 }
 
 function nearLine(o, pt) {  // does the polyline pass through pt (the edge's midpoint from the server)?
@@ -598,7 +693,13 @@ function colorEdges() {
 function colorFaces() {
   colorEdges();
   for (const m of faceMeshes) m.material.color.copy(m === hovered ? HOVER : pickedFaces.some((p) => p.mesh === m) ? PICKED
-    : selected && m.userData.features.includes(selected) ? HI : m.userData.ref ? REFC : BASE);
+    : selected && m.userData.features.includes(selected) ? HI : BASE);
+  for (const m of refMeshes) {
+    const on = m === hovered || pickedFaces.some((p) => p.mesh === m) || (selected && m.userData.ref === selected);
+    const c = refColor(m.userData.ref);
+    m.material.color.copy(on ? c.clone().offsetHSL(0, 0, -0.14) : c);
+    m.material.opacity = on ? 0.5 : 0.32;
+  }
 }
 
 function frame(center, radius, dir, up) {
@@ -612,16 +713,58 @@ function frame(center, radius, dir, up) {
   controls.update();
 }
 function fitView(dir) {  // false if there is nothing to fit yet
-  const box = new THREE.Box3().setFromObject(partGroup);
+  const box = new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup));
   if (box.isEmpty()) return false;
   const c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 || 10;
-  axes.scale.setScalar(r * 0.35);
+  axes.scale.setScalar(r * 0.02);
+  setGrid(box);
   const d = { iso: [1, -1, 0.8], front: [0, -1, 0], top: [0, 0, 1], right: [1, 0, 0] }[dir] || [1, -1, 0.8];
   frame(c, r, new THREE.Vector3(...d), dir === "top" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1));
   return true;
 }
 document.querySelectorAll(".vtools [data-view]").forEach((b) => (b.onclick = () => { exitSketch(); fitView(b.dataset.view); }));
 $("#fitBtn").onclick = () => (inSketch() ? viewSketch() : fitView("iso"));
+
+// view gizmo (bottom left): the world axes as the camera sees them; click one to look along it
+const GZ = [["X", [1, 0, 0], "#e5484d"], ["Y", [0, 1, 0], "#30a46c"], ["Z", [0, 0, 1], "#3e63dd"]];
+const gzItems = [];  // built once; each frame only moves them (a node rebuilt every frame can't be clicked)
+(function buildGizmo() {
+  const svg = $("#gizmo"), NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+  el("circle", { class: "ring", r: 46 }, svg);
+  for (const [n, v, col] of GZ) for (const sgn of [1, -1]) {
+    const g = el("g", { class: `ax${sgn < 0 ? " neg" : ""}`, "data-ax": n, "data-sgn": sgn }, svg);
+    el("title", {}, g).textContent = `Look ${sgn > 0 ? "down" : "up"} the ${n} axis`;
+    const line = sgn > 0 ? el("line", { x1: 0, y1: 0, stroke: col, "stroke-width": 2.2 }, g) : null;
+    const dot = el("circle", { r: sgn > 0 ? 9 : 6.5, fill: col }, g);
+    const label = sgn > 0 ? el("text", {}, g) : null;
+    if (label) label.textContent = n;
+    gzItems.push({ v: new THREE.Vector3(...v).multiplyScalar(sgn), g, line, dot, label, z: 0 });
+  }
+})();
+let gzOrder = "";
+function drawGizmo() {
+  const q = camera.quaternion.clone().invert();
+  for (const it of gzItems) {
+    const p = it.v.clone().applyQuaternion(q), x = (p.x * 34).toFixed(1), y = (-p.y * 34).toFixed(1);
+    it.z = p.z;
+    it.dot.setAttribute("cx", x); it.dot.setAttribute("cy", y);
+    if (it.line) { it.line.setAttribute("x2", x); it.line.setAttribute("y2", y); }
+    if (it.label) { it.label.setAttribute("x", x); it.label.setAttribute("y", y); }
+  }
+  const order = [...gzItems].sort((a, b) => a.z - b.z);  // far axes first
+  const key = order.map((it) => gzItems.indexOf(it)).join();
+  if (key !== gzOrder) { gzOrder = key; for (const it of order) $("#gizmo").appendChild(it.g); }
+}
+$("#gizmo").addEventListener("click", (ev) => {
+  const g = ev.target.closest(".ax");
+  if (!g || inSketch()) return;
+  const v = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[g.dataset.ax].map((c) => c * +g.dataset.sgn);
+  const box = new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup));
+  if (box.isEmpty()) return;
+  const up = g.dataset.ax === "Z" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  frame(box.getCenter(new THREE.Vector3()), box.getSize(new THREE.Vector3()).length() / 2 || 10, new THREE.Vector3(...v), up);
+});
 
 // hover + pick
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
@@ -631,8 +774,9 @@ function pickHit(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  return ray.intersectObjects(faceMeshes)[0] || null;
+  return ray.intersectObjects([...faceMeshes, ...refMeshes.filter((m) => m.visible)]).find((h) => !clipped(h.point)) || null;
 }
+const clipped = (p) => clipPlanes.some((pl) => pl.distanceToPoint(p) < 0);
 function unitsPerPixel() {
   const h = renderer.domElement.clientHeight || 1;
   if (camera === ortho) return (ortho.top - ortho.bottom) / ortho.zoom / h;
@@ -664,6 +808,8 @@ renderer.domElement.addEventListener("pointerdown", (ev) => (downAt = [ev.client
 renderer.domElement.addEventListener("pointerup", (ev) => {
   if (inSketch() || !downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 4) return;
   if (refPick) return void refFromView(ev);
+  if (measuring) return void measurePick(ev);
+  if (MT) return void matePick(ev);
   if (EE) { const h = edgeHit(ev); if (h) eeToggle(h.object.userData.i); return; }
   const eh = edgeHit(ev);
   if (eh) return pickEdge(eh.object.userData.i, ev.shiftKey);
@@ -735,7 +881,7 @@ function viewSketch() {
     c = box.getCenter(new THREE.Vector3());
     r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 5) * 1.35;
   } else {  // a new, empty sketch: frame the part as seen on this plane
-    const pb = new THREE.Box3().setFromObject(partGroup);
+    const pb = new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup));
     const pc = pb.isEmpty() ? F.o.clone() : pb.getCenter(new THREE.Vector3());
     c = pc.clone().addScaledVector(F.n, -pc.clone().sub(F.o).dot(F.n));
     r = pb.isEmpty() ? 30 : Math.max(pb.getSize(new THREE.Vector3()).length() / 2, 10);
@@ -772,9 +918,10 @@ function exitSketch() {
 }
 $("#exitSketch").onclick = () => { selected = null; exitSketch(); renderTree(null); renderDetails(); colorFaces(); };
 function ghostPart(on) {
-  for (const m of faceMeshes) { if (m.userData.ref) { m.material.opacity = on ? 0.18 : 0.55; continue; } m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
-  for (const o of edgeObjs) o.material.opacity = on ? 0.45 : 1;
+  for (const m of faceMeshes) { m.material.transparent = on; m.material.opacity = on ? 0.28 : 1; m.material.depthWrite = !on; }
+  for (const o of edgeObjs) o.material.opacity = on ? 0.45 : 0.85;
   edgeMarks.visible = !on;
+  for (const m of refMeshes) m.material.opacity = on ? 0.12 : 0.32;
 }
 
 // sketch toolbar: drawing tools, constraints (enabled when the selection fits), edit actions
@@ -790,12 +937,17 @@ function ghostPart(on) {
   group(SKETCH_CONSTRAINTS.map((c) => btn(c.id, c.title, () => SK.constrain(c.id), { con: c.id })));
   group([btn("project", "Project the outline of this sketch's face as reference geometry to constrain to (it follows the part)", () => SK.projectOutline(), { act: "project" }),
          btn("construction", "Toggle construction geometry for the selected curves (G)", () => SK.toggleConstruction(), { act: "construction" }),
+         btn("roundcorner", "Round corner: select the point where two lines meet, then give the radius (F)", () => SK.roundCorner(), { act: "roundcorner" }),
+         btn("offset", "Offset: select a line, arc or circle; its whole outline is copied at a distance (− for inside). Follows the original (K)", () => SK.offsetSel(), { act: "offset" }),
+         btn("mirror", "Mirror: select curves (and a construction line as the axis, or choose X or Y next); the copies follow the originals (I)", () => SK.mirrorSel(), { act: "mirror" }),
          btn("rename", "Rename the selected entity or dimension; references are updated", () => SK.rename(), { act: "rename" }),
          btn("param", "Drive the selected dimension from a new part parameter", () => SK.toParam(), { act: "param" }),
          btn("clearmarks", "Remove your freehand marks", () => SK.clearMarks(), { act: "clearmarks" }),
          btn("delete", "Delete the selected entities and constraints (Del)", () => SK.del(), { act: "delete" }),
          btn("ask", "Ask the agent about, or to change, the selected sketch entities", askAboutSketch, { act: "ask" })]);
   for (const b of document.querySelectorAll("button.ico[data-icon]")) b.innerHTML = ICON[b.dataset.icon];
+  for (const b of document.querySelectorAll("button.rb[data-icon]")) b.innerHTML = `${ICON[b.dataset.icon]}<span>${b.dataset.label}</span>`;
+  for (const b of document.querySelectorAll("button.hb[data-icon]")) b.insertAdjacentHTML("afterbegin", ICON[b.dataset.icon]);
   for (const b of document.querySelectorAll("button.refbtn[data-icon]")) b.insertAdjacentHTML("afterbegin", ICON[b.dataset.icon]);
 })();
 function askAboutSketch() {
@@ -809,7 +961,9 @@ const HINTS = {
   rect: (n) => (n ? "Click the opposite corner" : "Click the first corner"),
   circle: (n) => (n ? "Click a point on the rim" : "Click the centre"),
   arc: (n) => ["Click the centre", "Click the start point", "Click the end point (counterclockwise)"][n] || "",
-  point: () => "Click to place a point (a hole centre, say); it snaps to points and curves · Esc to stop",
+  slot: (n) => ["Click the centre of one end", "Click the centre of the other end (snaps level / plumb)", "Click to set the width"][n] || "",
+  polygon: (n) => (n ? "Click a corner (you'll be asked how many sides)" : "Click the centre"),
+  point: () => "Click to place a point (snaps to points and curves) · a Hole on this sketch drills at every point",
   mark: () => `Draw on the sketch to show the agent what you mean (${SK.marks().length} mark(s)); they go with your next prompt and are never saved to the part`,
 };
 function sketchBarUpdate() {
@@ -832,6 +986,9 @@ function sketchBarUpdate() {
   $("#sketchTools [data-act=clearmarks]").disabled = !SK.marks().length;
   $("#sketchTools [data-act=project]").disabled = !d.on_face;
   $("#sketchTools [data-act=param]").disabled = !SK.canParam();
+  $("#sketchTools [data-act=roundcorner]").disabled = !SK.canRound();
+  $("#sketchTools [data-act=offset]").disabled = !SK.canOffset();
+  $("#sketchTools [data-act=mirror]").disabled = !SK.canMirror();
   const npts = d.entities.filter((e) => e.type === "point" && !e.external).length;
   $("#holeSkBtn").disabled = !npts;
   $("#holeSkBtn").title = npts ? `Holes at this sketch's ${npts} point${npts > 1 ? "s" : ""}` : "Holes: place points first (Point tool, P), one per hole centre";
@@ -867,9 +1024,9 @@ function faceRef(label, point) {
 }
 function popup(el, anchor) {
   const a = anchor.getBoundingClientRect(), h = $("#center").getBoundingClientRect();
-  el.style.left = Math.min(a.left - h.left, h.width - 260) + "px";
+  el.hidden = false;  // shown first, so its real width is known: keep it inside the view
+  el.style.left = Math.max(8, Math.min(a.left - h.left, h.width - el.offsetWidth - 8)) + "px";
   el.style.top = a.bottom - h.top + 6 + "px";
-  el.hidden = false;
   const close = (ev) => { if (!el.contains(ev.target) && ev.target !== anchor) { el.hidden = true; document.removeEventListener("pointerdown", close, true); } };
   document.addEventListener("pointerdown", close, true);
 }
@@ -901,6 +1058,53 @@ $("#newSketchBtn").onclick = () => {
   };
 };
 
+// extrude extent rows, shared by the new-extrude and edit forms: distance, through all, or up to a face
+// parallel to the sketch (listed by the server, nearest first), plus a draft angle
+function extentRows(p, j = {}) {
+  const ext = j.extent || "blind";
+  return `<div class="row"><label>extent</label><select id="${p}Ext">${[["blind", "distance"], ["through_all", "through all"], ["up_to_face", "up to face"]]
+      .map(([v, t]) => `<option value="${v}" ${v === ext ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+    <div class="row" id="${p}FaceRow" hidden><label>face</label><select id="${p}Face"></select></div>
+    <div class="row" id="${p}DistRow"><label id="${p}DistLbl">distance</label><input id="${p}Dist" value="${esc(String(j.distance ?? (ext === "up_to_face" ? 0 : 10)))}"></div>
+    <div class="row"><label>draft °</label><input id="${p}Draft" value="${esc(String(j.draft ?? 0))}" title="taper the walls: positive leans them inward along the extrusion"></div>`;
+}
+function wireExtent(p, sid, j = {}, before = null) {
+  let faces = null;
+  const sync = async () => {
+    const e = $(`#${p}Ext`).value;
+    $(`#${p}FaceRow`).hidden = e !== "up_to_face";
+    $(`#${p}DistRow`).hidden = e === "through_all";
+    $(`#${p}DistLbl`).textContent = e === "up_to_face" ? "past it by" : "distance";
+    const dir = $(`#${p === "ff" ? "ffDir" : "efDir"}`)?.closest(".row");
+    if (dir) dir.hidden = e === "up_to_face";  // it turns toward the face by itself
+    if (e === "up_to_face" && !faces) {
+      const sel = $(`#${p}Face`);
+      sel.innerHTML = `<option>loading…</option>`;
+      try { faces = await api(`/api/parallel_faces/${encodeURIComponent(sid)}${before ? `?before=${encodeURIComponent(before)}` : ""}`); } catch { faces = []; }
+      const cur = j.to_face ? JSON.stringify([j.to_face.feature, j.to_face.role, j.to_face.entity || null]) : null;
+      sel.innerHTML = faces.length ? faces.map((f, k) => `<option value="${k}" ${cur === JSON.stringify([f.ref.feature, f.ref.role, f.ref.entity || null]) ? "selected" : ""}>${esc(f.label)} · ${Math.abs(f.distance)} ${f.distance > 0 ? "above" : "below"}</option>`).join("")
+        : `<option value="">no parallel faces</option>`;
+      if (j.to_face && !faces.some((f) => cur === JSON.stringify([f.ref.feature, f.ref.role, f.ref.entity || null]))) {
+        sel.insertAdjacentHTML("afterbegin", `<option value="keep" selected>${esc(j.to_face.feature)}.${esc(j.to_face.role)}${j.to_face.entity ? `[${esc(j.to_face.entity)}]` : ""}</option>`);
+      }
+      if ($(`#${p}Dist`).value === "10" && !j.extent) $(`#${p}Dist`).value = "0";
+    }
+  };
+  $(`#${p}Ext`).onchange = sync;
+  sync();
+  return () => {  // the extent fields of the feature, or throws with a message
+    const e = $(`#${p}Ext`).value, out = { extent: e, draft: numOrExpr($(`#${p}Draft`).value || "0") };
+    if (e !== "through_all") out.distance = numOrExpr($(`#${p}Dist`).value || "0");
+    if (e === "up_to_face") {
+      const v = $(`#${p}Face`).value;
+      if (v === "keep") out.to_face = j.to_face;
+      else if (v === "" || !faces?.[+v]) throw new Error("pick a face parallel to the sketch");
+      else out.to_face = faces[+v].ref;
+    } else out.to_face = null;
+    return out;
+  };
+}
+
 function featureForm(kind) {
   const sid = SK.active(), d = SK.data();
   if (!sid || !d) return;
@@ -910,19 +1114,24 @@ function featureForm(kind) {
     `<option ${x === def ? "selected" : ""}>${x}</option>`).join("")}</select></div>`;
   m.innerHTML = kind === "extrude"
     ? `<div class="ttl">Extrude ${esc(sid)}</div>
-       <div class="row"><label>distance</label><input id="ffDist" value="10"></div>
+       ${extentRows("ff")}
        <div class="row"><label>direction</label><select id="ffDir"><option>normal</option><option>reverse</option><option>symmetric</option></select></div>
-       <div class="row"><label>through all</label><input id="ffThru" type="checkbox" style="flex:0"></div>
        ${mode(hasBody ? "add" : "new")}<button class="go" id="ffGo">Extrude</button><div class="err" id="ffErr"></div>`
     : `<div class="ttl">Revolve ${esc(sid)}</div>
        <div class="row"><label>axis</label><select id="ffAxis">${["x_axis", "y_axis", ...lines].map((a) => `<option>${esc(a)}</option>`).join("")}</select></div>
        <div class="row"><label>angle</label><input id="ffAngle" value="360"></div>
        ${mode(hasBody ? "add" : "new")}<button class="go" id="ffGo">Revolve</button><div class="err" id="ffErr"></div>`;
   popup(m, $(kind === "extrude" ? "#extrudeBtn" : "#revolveBtn"));
+  const readExtent = kind === "extrude" ? wireExtent("ff", sid) : null;
   $("#ffGo").onclick = async () => {
     const id = nextId(kind), f = { id, type: kind, profile: { sketch: sid }, mode: $("#ffMode").value };
     if (kind === "extrude") {
-      if ($("#ffThru").checked) f.extent = "through_all"; else f.distance = numOrExpr($("#ffDist").value);
+      let ex;
+      try { ex = readExtent(); } catch (e) { $("#ffErr").textContent = e.message; return; }
+      if (ex.extent !== "blind") f.extent = ex.extent;
+      if (ex.distance !== undefined) f.distance = ex.distance;
+      if (ex.to_face) f.to_face = ex.to_face;
+      if (ex.draft !== 0) f.draft = ex.draft;
       if ($("#ffDir").value !== "normal") f.direction = $("#ffDir").value;
     } else {
       f.axis = $("#ffAxis").value;
@@ -1053,6 +1262,60 @@ $("#edgeEditDone").onclick = () => endEdgeEdit(true);
 $("#edgeEditCancel").onclick = () => endEdgeEdit(false);
 document.addEventListener("keydown", (ev) => { if (EE && ev.key === "Escape") { ev.stopPropagation(); endEdgeEdit(false); } }, true);
 
+// ── place an import by faces: click a flat face of it, then the face it goes against; gap and centring after ──
+let MT = null;  // {id, face}
+function startMate(id) {
+  if (inSketch()) exitSketch();
+  if (measuring) setMeasuring(false);
+  hiddenRefs.delete(id);
+  for (const m of refMeshes) if (m.userData.ref === id) m.visible = true;
+  MT = { id, face: null };
+  pickedFaces = []; pickedEdges = []; pickUpdate(); colorFaces();
+  $("#mateBar").hidden = false;
+  mateUpdate();
+}
+function mateUpdate() {
+  $("#mateText").textContent = MT.face ? `Now click the face ${MT.id} should sit against · Esc cancels`
+    : `Place ${MT.id}: click the flat face of it that should touch · Esc cancels`;
+}
+function endMate() {
+  MT = null;
+  $("#mateBar").hidden = true;
+  $("#featMenu").hidden = true;
+  pickedFaces = []; pickUpdate(); colorFaces();
+}
+$("#mateCancel").onclick = endMate;
+document.addEventListener("keydown", (ev) => { if (MT && ev.key === "Escape") { ev.stopPropagation(); endMate(); } }, true);
+const onImport = (id, label) => label.startsWith(id + ".") || label.startsWith(id + "(");
+function matePick(ev) {
+  const hit = pickHit(ev), m = hit?.object;
+  if (!m) return;
+  const lab = m.userData.labels.find((l) => (MT.face ? !onImport(MT.id, l) : onImport(MT.id, l)));
+  if (!lab) return note(MT.face ? `Pick a face that isn't on ${MT.id}` : `Pick a face of ${MT.id} (it is ghosted in its colour)`, "err");
+  const pk = { label: lab, point: hit.point.toArray().map((v) => +v.toFixed(4)), mesh: m, labels: m.userData.labels };
+  if (!MT.face) { MT.face = pk; pickedFaces = [pk]; pickUpdate(); colorFaces(); return mateUpdate(); }
+  pickedFaces = [MT.face, pk]; pickUpdate(); colorFaces();
+  const target = pk, mm = $("#featMenu");
+  mm.innerHTML = `<div class="ttl">Place ${esc(MT.id)}</div><div class="muted">${esc(MT.face.label)} against ${esc(target.label)}</div>
+    <div class="row"><label>gap</label><input id="maGap" value="0" title="distance between the two faces, mm"></div>
+    <div class="row"><label>position</label><select id="maAlign"><option value="center">centred on the face</option><option value="touch">slide straight in, keep it across</option></select></div>
+    <button class="go" id="maGo">Place</button><div class="err" id="maErr"></div>`;
+  popup(mm, $("#mateBar"));
+  $("#maGo").onclick = async () => {
+    const gap = parseFloat($("#maGap").value || "0");
+    if (!isFinite(gap)) { $("#maErr").textContent = "the gap is a number of mm"; return; }
+    try {
+      const r = await api("/api/mate", { import: MT.id, face: { label: MT.face.label, point: MT.face.point }, target: { label: target.label, point: target.point },
+        gap, align: $("#maAlign").value });
+      if (!r.ok) { $("#maErr").textContent = "the placement didn't build; see the tree"; return; }
+    } catch (e) { $("#maErr").textContent = e.message; return; }
+    const id = MT.id;
+    endMate();
+    note(`placed ${id}`, "ok");
+    select(id);
+  };
+}
+
 // ── holes: at a clicked point on a face, or at the points of the open sketch ──
 let FASTENERS = null;
 async function holeForm(anchor, where, make) {
@@ -1114,41 +1377,6 @@ $("#holeSkBtn").onclick = () => {
     }
   });
 };
-// ── import a STEP: upload into the part's imports/ folder, then place it ──
-$("#importBtn").onclick = () => { if (!S) return note("Open or create a part first.", "err"); $("#importInput").click(); };
-$("#importInput").onchange = async (ev) => {
-  const file = ev.target.files[0];
-  ev.target.value = "";
-  if (!file) return;
-  let up;
-  try {
-    up = await busyDo(`Uploading ${file.name}`, async () => {
-      const r = await fetch(`/api/import_file?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.detail || r.statusText);
-      return j;
-    });
-  } catch (e) { return note(`Import: ${e.message}`, "err"); }
-  const m = $("#featMenu"), v3 = (id, vals) => vals.map((v, k) => `<input id="${id}${k}" value="${v}" style="width:4.2em;flex:0 0 auto">`).join("");
-  m.innerHTML = `<div class="ttl">Import ${esc(up.name)}</div>
-    <div class="row"><label>as</label><select id="imMode"><option value="reference">reference (design around it)</option>
-      <option value="new">a separate solid</option><option value="add">added to the part</option><option value="cut">cut from the part</option></select></div>
-    <div class="row"><label>rotate °</label>${v3("imR", [0, 0, 0])}</div>
-    <div class="row"><label>move to</label>${v3("imT", [0, 0, 0])}</div>
-    <div class="muted small">Rotations about world X, then Y, then Z; then the move. Positions accept parameters.</div>
-    <button class="go" id="imGo">Import</button>`;
-  popup(m, $("#importBtn"));
-  $("#imGo").onclick = async () => {
-    const id = nextId(up.name.replace(/\.[^.]+$/, "").replace(/\W+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "import");
-    const f = { id, type: "import", file: up.file, mode: $("#imMode").value,
-                intent: $("#imMode").value === "reference" ? `${up.name}: reference geometry to design around` : `geometry from ${up.name}` };
-    const rot = [0, 1, 2].map((k) => numOrExpr($(`#imR${k}`).value || "0")), at = [0, 1, 2].map((k) => numOrExpr($(`#imT${k}`).value || "0"));
-    if (rot.some((x) => x !== 0)) f.rotate = rot;
-    if (at.some((x) => x !== 0)) f.at = at;
-    m.hidden = true;
-    if (await addFeature(f, `import ${up.name}`)) { select(id); pendingFit = true; lastMesh = loadMesh(true); }
-  };
-};
 
 // several ops that add features, placed at the rollback bar like addFeature (consecutive adds keep their order)
 async function addFeatures(ops, message) {
@@ -1171,10 +1399,33 @@ function profileSketch() {
   const upto = S ? S.features.slice(0, rollIndex()) : [];
   const sel = upto.find((f) => f.id === selected && f.type === "sketch");
   if (sel) return sel.id;
-  const used = new Set(upto.map((f) => f.sketch).filter(Boolean));
+  const used = new Set(upto.flatMap((f) => f.sketches || []));
   return [...upto].reverse().find((f) => f.type === "sketch" && !used.has(f.id) && f.status !== "error")?.id || null;
 }
 function modelToolsUpdate() {
+  const hasBody = !!S && S.volume != null, rep = S ? replayable() : [];
+  $("#holeBtn").disabled = $("#shellBtn").disabled = $("#textBtn").disabled = !hasBody;
+  $("#textBtn").title = hasBody ? "Text: click a flat face, then type the text to engrave or emboss there" : "Text: the part needs a solid first";
+  $("#holeBtn").title = hasBody ? "Hole: click a flat face where it goes (or use a sketch's points), then choose the screw size and type" : "Hole: the part needs a solid first";
+  $("#shellBtn").title = hasBody ? "Shell: hollow the part; click the faces to leave open first" : "Shell: the part needs a solid first";
+  $("#patternBtn").disabled = $("#mirrorBtn").disabled = !rep.length;
+  $("#patternBtn").title = rep.length ? "Pattern: repeat features in a row or around an axis" : "Pattern: make an extrude, revolve or hole to repeat first";
+  $("#mirrorBtn").title = rep.length ? "Mirror: copy features across a datum plane" : "Mirror: make an extrude, revolve or hole to mirror first";
+  $("#exportBtn").disabled = !hasBody;
+  const nref = refIds().length;
+  $("#clashBtn").disabled = !hasBody || !nref;
+  $("#combineBtn").disabled = !hasBody || !nref;
+  $("#combineBtn").title = !nref ? "Combine: import a part as a reference first" : !hasBody ? "Combine: the part needs a solid first"
+    : "Combine with a reference body: cut a nest for it with a clearance gap, add it, or keep the overlap";
+  $("#clashBtn").title = !nref ? "Clash: import a part as a reference first, then check how this part sits against it"
+    : !hasBody ? "Clash: the part needs a solid first" : "Clash and clearance: where the part runs into each reference body (red), and the smallest gap to it";
+  if (fitOn && $("#clashBtn").disabled) setFit(false);
+  const sks = sketchesOk();
+  $("#loftBtn").disabled = $("#sweepBtn").disabled = sks.length < 2;
+  $("#loftBtn").title = sks.length < 2 ? "Loft: needs two or more sketches (the sections), on different planes"
+    : "Loft: blend a solid through the profiles of two or more sketches (a square duct to a round one)";
+  $("#sweepBtn").title = sks.length < 2 ? "Sweep: needs two sketches, a profile and a path"
+    : "Sweep: move a profile along a path of lines and arcs (a bent tube, a handle, a frame)";
   const sid = profileSketch();
   for (const [b, kind] of [[$("#extrude3dBtn"), "Extrude"], [$("#revolve3dBtn"), "Revolve"]]) {
     b.disabled = !sid;
@@ -1192,6 +1443,714 @@ for (const [id, kind] of [["#extrude3dBtn", "extrude"], ["#revolve3dBtn", "revol
     featureForm(kind);
   };
 }
+// ── hole: at the point clicked on a face (a new face sketch holds it), or at the points of an existing sketch ──
+// ISO metric screws: clearance (medium fit), socket-head counterbore, flat-head (90°) countersink, tap drill
+const SCREWS = {
+  M2: { clear: 2.4, cbore: [4.4, 2.3], csk: 4.4, tap: 1.6, pitch: 0.4 },
+  "M2.5": { clear: 2.9, cbore: [5.5, 2.8], csk: 5.5, tap: 2.05, pitch: 0.45 },
+  M3: { clear: 3.4, cbore: [6.5, 3.3], csk: 6.5, tap: 2.5, pitch: 0.5 },
+  M4: { clear: 4.5, cbore: [8, 4.4], csk: 8.6, tap: 3.3, pitch: 0.7 },
+  M5: { clear: 5.5, cbore: [9.5, 5.4], csk: 10.4, tap: 4.2, pitch: 0.8 },
+  M6: { clear: 6.6, cbore: [11, 6.5], csk: 12.4, tap: 5.0, pitch: 1.0 },
+  M8: { clear: 9.0, cbore: [14.5, 8.6], csk: 16.4, tap: 6.8, pitch: 1.25 },
+  M10: { clear: 11.0, cbore: [17.5, 10.8], csk: 20.4, tap: 8.5, pitch: 1.5 },
+  M12: { clear: 13.5, cbore: [20, 13], csk: 24.4, tap: 10.2, pitch: 1.75 },
+};
+function holeSketches() {  // sketches above the rollback bar with points or circles to drill at
+  return S.features.slice(0, rollIndex()).filter((f) => f.type === "sketch" && f.status === "ok" && f.n_entities > 0).map((f) => f.id);
+}
+$("#holeBtn").onclick = () => {
+  if (!S || S.volume == null) return note("Hole: the part needs a solid first", "err");
+  const pf = lastPicked(), onFace = pf && !pf.mesh?.userData?.ref;
+  const sks = holeSketches();
+  const m = $("#featMenu");
+  const where = [...(onFace ? [["face", `where I clicked on ${pf.labels[0]}`]] : []),
+    ...sks.map((id) => [`sk:${id}`, `at every point of ${id}`])];
+  if (!where.length) return note("Hole: click a flat face where the hole goes, or draw a sketch with points (Point tool) first", "err");
+  m.innerHTML = `<div class="ttl">Hole</div>
+    <div class="row"><label>where</label><select id="hoWhere">${where.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("")}</select></div>
+    <div class="row"><label>type</label><select id="hoKind"><option value="simple">Simple</option><option value="counterbore">Counterbore</option>
+      <option value="countersink">Countersink</option><option value="tapped">Tapped</option></select></div>
+    <div class="row"><label>screw</label><select id="hoScrew"><option value="">custom size</option>${Object.keys(SCREWS).map((k) => `<option ${k === "M4" ? "selected" : ""}>${k}</option>`).join("")}</select></div>
+    <div class="row"><label>diameter</label><input id="hoD"></div>
+    <div class="row" data-k="counterbore"><label>counterbore</label><input id="hoCbD" title="counterbore diameter" placeholder="⌀"><input id="hoCbH" title="counterbore depth" placeholder="depth"></div>
+    <div class="row" data-k="countersink"><label>countersink</label><input id="hoCsD" title="countersink diameter" placeholder="⌀"><input id="hoCsA" value="90" title="countersink angle (degrees)" placeholder="angle"></div>
+    <div class="row"><label>depth</label><select id="hoExt"><option value="through_all">through all</option><option value="blind">blind</option></select><input id="hoDepth" value="10" hidden></div>
+    <div class="muted" id="hoNote"></div>
+    <button class="go" id="hoGo">Add hole</button>`;
+  popup(m, $("#holeBtn"));
+  const fill = () => {
+    const k = $("#hoKind").value, sc = SCREWS[$("#hoScrew").value];
+    m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== k));
+    $("#hoDepth").hidden = $("#hoExt").value !== "blind";
+    if (k === "tapped" && $("#hoExt").value === "through_all" && !fill.touched) { $("#hoExt").value = "blind"; $("#hoDepth").hidden = false; }
+    if (!sc) { $("#hoNote").textContent = ""; return; }
+    $("#hoD").value = k === "tapped" ? sc.tap : sc.clear;
+    $("#hoCbD").value = sc.cbore[0]; $("#hoCbH").value = sc.cbore[1]; $("#hoCsD").value = sc.csk;
+    $("#hoNote").textContent = k === "tapped" ? `${$("#hoScrew").value}x${sc.pitch} thread: ${sc.tap} mm tap drill` : `${$("#hoScrew").value} clearance (ISO medium fit)`;
+  };
+  $("#hoKind").onchange = $("#hoScrew").onchange = () => fill();
+  $("#hoExt").onchange = () => { fill.touched = true; fill(); };
+  for (const q of ["#hoD", "#hoCbD", "#hoCbH", "#hoCsD"]) $(q).oninput = () => { $("#hoScrew").value = ""; $("#hoNote").textContent = ""; };
+  fill();
+  $("#hoGo").onclick = async () => {
+    const kind = $("#hoKind").value, where = $("#hoWhere").value, screw = $("#hoScrew").value;
+    const id = nextId("hole"), f = { id, type: "hole", kind: kind === "tapped" ? "simple" : kind, diameter: numOrExpr($("#hoD").value) };
+    if (kind === "counterbore") Object.assign(f, { cbore_diameter: numOrExpr($("#hoCbD").value), cbore_depth: numOrExpr($("#hoCbH").value) });
+    if (kind === "countersink") Object.assign(f, { csk_diameter: numOrExpr($("#hoCsD").value), csk_angle: numOrExpr($("#hoCsA").value) });
+    if ($("#hoExt").value === "blind") Object.assign(f, { extent: "blind", depth: numOrExpr($("#hoDepth").value) });
+    if (kind === "tapped" && screw) f.thread = `${screw}x${SCREWS[screw].pitch}`;
+    f.intent = `${screw ? screw + " " : ""}${kind === "simple" ? "clearance hole" : kind === "tapped" ? "tapped hole" : kind + " hole"}${f.extent === "blind" ? `, ${f.depth} deep` : ", through"}`;
+    m.hidden = true;
+    if (where.startsWith("sk:")) {
+      f.sketch = where.slice(3);
+      if (await addFeature(f, `hole at the points of ${f.sketch}`)) select(id);
+      return;
+    }
+    const ref = faceRef(pf.labels[0], pf.point);
+    let at;
+    try { at = await api("/api/face_point", { ref, point: pf.point }); } catch { return; }
+    const sid = `${id}_at`, [u, v] = at.uv.map((c) => +c.toFixed(2));
+    f.sketch = sid;
+    const rb = S.rollback, anchor = rb != null && rb > 0 ? { after: S.features[rb - 1].id } : {};
+    const ok = await edit([
+      { op: "add_feature", ...anchor, feature: { id: sid, type: "sketch", plane: { face: ref }, intent: `position of ${id}`,
+        entities: [{ id: "p1", type: "point", at: [u, v] }],
+        constraints: [{ type: "distance_x", on: ["origin", "p1"], value: u, name: `${id}_x` }, { type: "distance_y", on: ["origin", "p1"], value: v, name: `${id}_y` }] } },
+      { op: "add_feature", after: sid, feature: f },
+    ], `hole on ${pf.labels[0]}`);
+    if (ok) {
+      if (rb != null) setState((await api("/api/rollback", { index: rb + 2 })).state);
+      pickedFaces = []; pickUpdate(); select(id);
+    }
+  };
+};
+
+// ── shell, pattern, mirror ──
+$("#shellBtn").onclick = () => {
+  if (!S || S.volume == null) return note("Shell: the part needs a solid first", "err");
+  const faces = pickedFaces.filter((p) => !p.mesh?.userData?.ref);
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Shell</div>
+    <div class="muted">${faces.length ? `Opens ${faces.map((p) => esc(p.labels[0])).join(", ")}` : "Hollows the part closed. Click a face first (shift-click more) to leave it open."}</div>
+    <div class="row"><label>wall</label><input id="shT" value="2"></div>
+    <div class="row"><label>grows</label><select id="shDir"><option value="in">inward (hollow the part)</option><option value="out">outward (a skin around it)</option></select></div>
+    <button class="go" id="shGo">Shell</button>`;
+  popup(m, $("#shellBtn"));
+  $("#shGo").onclick = async () => {
+    const id = nextId("shell"), refs = faces.map((p) => faceRef(p.labels[0], p.point));
+    m.hidden = true;
+    const out = $("#shDir").value === "out";
+    if (await addFeature({ id, type: "shell", remove_faces: refs, thickness: numOrExpr($("#shT").value), ...(out ? { outward: true } : {}),
+      intent: `${out ? "A skin" : "Hollow to a"} ${$("#shT").value} mm wall${out ? " around it" : ""}${faces.length ? `, open at ${faces.map((p) => p.labels[0]).join(", ")}` : ""}` }, `shell ${id}`)) {
+      pickedFaces = []; pickUpdate(); select(id);
+    }
+  };
+};
+// sketches above the rollback bar that built
+function sketchesOk() {
+  return S ? S.features.slice(0, rollIndex()).filter((f) => f.type === "sketch" && f.status !== "error").map((f) => f.id) : [];
+}
+const sketchOpts = (ids, cur) => ids.map((id) => `<option ${id === cur ? "selected" : ""}>${esc(id)}</option>`).join("");
+const modeRow = (idp, cur) => `<div class="row"><label>mode</label><select id="${idp}">${["add", "cut", "new", "intersect"].map((x) =>
+  `<option ${x === cur ? "selected" : ""}>${x}</option>`).join("")}</select></div>`;
+// loft: the ticked sketches, in tree order; unused sketches are ticked to start with
+$("#loftBtn").onclick = () => {
+  const ids = sketchesOk();
+  if (ids.length < 2) return note("Loft: needs two or more sketches", "err");
+  const used = new Set(S.features.flatMap((f) => f.sketches || []));
+  let pre = ids.filter((id) => !used.has(id));
+  if (pre.length < 2) pre = ids.slice(-2);
+  const m = $("#featMenu"), hasBody = S.volume != null;
+  m.innerHTML = `<div class="ttl">Loft</div><div class="muted">Blend through these sections, first to last (tree order):</div>
+    <div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${pre.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>
+    <div class="row"><label>ruled</label><input id="loRuled" type="checkbox" style="flex:0" title="straight faces between sections instead of a smooth blend"></div>
+    ${modeRow("loMode", hasBody ? "add" : "new")}<button class="go" id="loGo">Loft</button><div class="err" id="loErr"></div>`;
+  popup(m, $("#loftBtn"));
+  $("#loGo").onclick = async () => {
+    const secs = pickedIds(m);
+    if (secs.length < 2) { $("#loErr").textContent = "tick two or more sketches"; return; }
+    const id = nextId("loft");
+    m.hidden = true;
+    if (await addFeature({ id, type: "loft", sections: secs, ...($("#loRuled").checked ? { ruled: true } : {}), mode: $("#loMode").value,
+      intent: `Loft through ${secs.join(", ")}` }, `loft ${id}`)) select(id);
+  };
+};
+// sweep: a profile sketch along a path sketch; guesses the newest unused sketch as the path, the one before as profile
+$("#sweepBtn").onclick = () => {
+  const ids = sketchesOk();
+  if (ids.length < 2) return note("Sweep: needs two sketches, a profile and a path", "err");
+  const used = new Set(S.features.flatMap((f) => f.sketches || []));
+  const free = ids.filter((id) => !used.has(id));
+  const path = free.at(-1) || ids.at(-1), prof = (free.length > 1 ? free.at(-2) : ids.filter((x) => x !== path).at(-1));
+  const m = $("#featMenu"), hasBody = S.volume != null;
+  m.innerHTML = `<div class="ttl">Sweep</div>
+    <div class="row"><label>profile</label><select id="swProf">${sketchOpts(ids, prof)}</select></div>
+    <div class="row"><label>path</label><select id="swPath">${sketchOpts(ids, path)}</select></div>
+    <div class="muted">The path is the other sketch's lines and arcs, end to end. Sharp corners are mitred; round them for a bend.</div>
+    ${modeRow("swMode", hasBody ? "add" : "new")}<button class="go" id="swGo">Sweep</button><div class="err" id="swErr"></div>`;
+  popup(m, $("#sweepBtn"));
+  $("#swGo").onclick = async () => {
+    const pr = $("#swProf").value, pa = $("#swPath").value;
+    if (pr === pa) { $("#swErr").textContent = "the profile and the path must be different sketches"; return; }
+    const id = nextId("sweep");
+    m.hidden = true;
+    if (await addFeature({ id, type: "sweep", profile: { sketch: pr }, path: pa, mode: $("#swMode").value, intent: `Sweep ${pr} along ${pa}` }, `sweep ${id}`)) select(id);
+  };
+};
+// combine the part with a reference body: cut a nest for it (with a clearance gap), add it, or keep the overlap
+function combineForm(pre, anchor) {
+  const refs = refIds();
+  if (!refs.length) return note("Combine: import a part as a reference first", "err");
+  if (S.volume == null) return note("Combine: the part needs a solid first", "err");
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Combine with a reference body</div>
+    <div class="row"><label>body</label><select id="coTool">${refs.map((id) => `<option ${id === pre ? "selected" : ""}>${esc(id)}</option>`).join("")}</select></div>
+    <div class="row"><label>mode</label><select id="coMode"><option value="cut">cut it out (a nest)</option><option value="add">add it</option><option value="intersect">keep the overlap</option></select></div>
+    <div class="row"><label>clearance</label><input id="coC" value="0.3" title="gap all round, in mm: the body is grown by this much first"></div>
+    <div class="muted">The nest follows the body: move or change the import and it updates.</div>
+    <button class="go" id="coGo">Combine</button>`;
+  popup(m, anchor || $("#combineBtn"));
+  $("#coGo").onclick = async () => {
+    const tool = $("#coTool").value, mode = $("#coMode").value, c = numOrExpr($("#coC").value || "0");
+    const id = nextId(mode === "cut" ? "nest" : "combine");
+    m.hidden = true;
+    if (await addFeature({ id, type: "boolean", tool, mode, ...(c !== 0 ? { clearance: c } : {}),
+      intent: mode === "cut" ? `A nest for ${tool}${c ? ` with ${c} mm clearance` : ""}` : `${mode === "add" ? "Add" : "Keep the overlap with"} ${tool}` }, `${mode} ${tool}`)) select(id);
+  };
+}
+$("#combineBtn").onclick = () => combineForm(selected && refIds().includes(selected) ? selected : refIds().at(-1));
+const REPLAYABLE = ["extrude", "revolve", "loft", "sweep", "boolean", "hole", "import"];
+function replayable() {
+  return S.features.slice(0, rollIndex()).filter((f) => REPLAYABLE.includes(f.type) && f.status === "ok").map((f) => f.id);
+}
+function featurePicker(ids) {
+  const sel = ids.includes(selected) ? selected : ids.at(-1);
+  return `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${id === sel ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>`;
+}
+const pickedIds = (m) => [...m.querySelectorAll(".checks input:checked")].map((x) => x.value);
+$("#patternBtn").onclick = () => {
+  const ids = S ? replayable() : [];
+  if (!ids.length) return note("Pattern: make an extrude, revolve or hole to repeat first", "err");
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Pattern</div><div class="muted">Repeat these features:</div>${featurePicker(ids)}
+    <div class="row"><label>kind</label><select id="paKind"><option value="linear">In a row</option><option value="circular">Around an axis</option></select></div>
+    <div class="row" data-k="linear"><label>direction</label><select id="paDir">${["X", "Y", "Z", "-X", "-Y", "-Z"].map((d) => `<option>${d}</option>`).join("")}</select></div>
+    <div class="row" data-k="linear"><label>spacing</label><input id="paSp" value="10"></div>
+    <div class="row" data-k="circular"><label>axis</label><select id="paAx"><option>Z</option><option>X</option><option>Y</option></select></div>
+    <div class="row" data-k="circular"><label>through</label><input id="paOx" value="0" title="x"><input id="paOy" value="0" title="y"><input id="paOz" value="0" title="z"></div>
+    <div class="row" data-k="circular"><label>angle</label><input id="paAng" value="360" title="360 spaces the copies evenly around"></div>
+    <div class="row"><label>count</label><input id="paN" value="4" title="including the original"></div>
+    <button class="go" id="paGo">Pattern</button>`;
+  popup(m, $("#patternBtn"));
+  const kind = () => { m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== $("#paKind").value)); };
+  $("#paKind").onchange = kind; kind();
+  $("#paGo").onclick = async () => {
+    const feats = pickedIds(m);
+    if (!feats.length) return note("Pattern: tick at least one feature", "err");
+    const id = nextId("pattern"), count = numOrExpr($("#paN").value);
+    let f;
+    if ($("#paKind").value === "linear") {
+      const d = $("#paDir").value, v = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }[d.replace("-", "")].map((c) => (d.startsWith("-") ? -c : c));
+      f = { id, type: "linear_pattern", features: feats, direction: d.startsWith("-") ? v : d, spacing: numOrExpr($("#paSp").value), count,
+        intent: `${count} × ${feats.join(", ")} along ${d}, ${$("#paSp").value} apart` };
+    } else {
+      f = { id, type: "circular_pattern", features: feats, axis: $("#paAx").value, origin: ["#paOx", "#paOy", "#paOz"].map((q) => numOrExpr($(q).value)),
+        count, angle: numOrExpr($("#paAng").value), intent: `${count} × ${feats.join(", ")} around ${$("#paAx").value}` };
+    }
+    m.hidden = true;
+    if (await addFeature(f, `pattern ${feats.join(", ")}`)) select(id);
+  };
+};
+$("#mirrorBtn").onclick = () => {
+  const ids = S ? replayable() : [];
+  if (!ids.length) return note("Mirror: make an extrude, revolve or hole to mirror first", "err");
+  const m = $("#featMenu");
+  m.innerHTML = `<div class="ttl">Mirror</div><div class="muted">Mirror these features:</div>${featurePicker(ids)}
+    <div class="row"><label>plane</label><select id="miPl"><option value="YZ">YZ (flip X)</option><option value="XZ">XZ (flip Y)</option><option value="XY">XY (flip Z)</option></select></div>
+    <div class="row"><label id="miAtL">at X =</label><input id="miOff" value="0" title="where the mirror plane is, in world coordinates"></div>
+    <button class="go" id="miGo">Mirror</button>`;
+  popup(m, $("#mirrorBtn"));
+  $("#miPl").onchange = () => { $("#miAtL").textContent = `at ${{ YZ: "X", XZ: "Y", XY: "Z" }[$("#miPl").value]} =`; };
+  $("#miGo").onclick = async () => {
+    const feats = pickedIds(m);
+    if (!feats.length) return note("Mirror: tick at least one feature", "err");
+    // a datum's offset runs along its normal, and XZ's normal is -Y: turn "at Y = 20" into offset -20
+    const id = nextId("mirror"), at = numOrExpr($("#miOff").value || "0"), plane = { datum: $("#miPl").value };
+    const off = plane.datum !== "XZ" ? at : typeof at === "number" ? -at : `-(${at})`;
+    if (off !== 0) plane.offset = off;
+    m.hidden = true;
+    if (await addFeature({ id, type: "mirror", features: feats, plane, intent: `Mirror of ${feats.join(", ")} across ${plane.datum}` }, `mirror ${feats.join(", ")}`)) select(id);
+  };
+};
+
+// ── fit: how the part sits against each reference body: clashes in red, the smallest gap as a line ──
+let fitOn = false, fitSeq = 0;
+const fitGroup = new THREE.Group();
+scene.add(fitGroup);
+const CLASH = new THREE.Color(0xef4444);
+function setFit(on) {
+  if (on && measuring) setMeasuring(false);  // they share the corner of the view
+  if (on && inSketch()) exitSketch();
+  fitOn = on;
+  $("#clashBtn").classList.toggle("on", on);
+  $("#clashPanel").hidden = !on;
+  fitGroup.clear();
+  ghostPart(on);
+  if (on) runFit();
+}
+$("#clashBtn").onclick = () => setFit(!fitOn);
+async function runFit() {
+  if (!fitOn) return;
+  const seq = ++fitSeq, panel = $("#clashPanel");
+  if (!panel.innerHTML) panel.innerHTML = `<h4>Clash</h4><div class="muted">checking…</div>`;
+  let r;
+  try { r = await api("/api/fit"); } catch { return; }
+  if (seq !== fitSeq || !fitOn) return;
+  fitGroup.clear();
+  const u = unitsPerPixel();
+  for (const row of r.refs) {
+    const vis = !hiddenRefs.has(row.id);
+    for (const f of row.clash || []) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(f.p, 3));
+      g.setIndex(f.i);
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: CLASH, emissive: 0x7f1d1d, roughness: 0.6, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, clippingPlanes: clipPlanes }));
+      m.renderOrder = 4; m.userData.ref = row.id; m.visible = vis;
+      fitGroup.add(m);
+    }
+    if (row.points && row.gap > 1e-4) {
+      const [a, b] = row.points.map((p) => new THREE.Vector3(...p));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: 0x0f766e, depthTest: false }));
+      line.renderOrder = 6; line.userData.ref = row.id; line.visible = vis;
+      fitGroup.add(line);
+      for (const p of [a, b]) {
+        const s = new THREE.Mesh(new THREE.SphereGeometry(u * 3.5, 12, 8), new THREE.MeshBasicMaterial({ color: 0x0f766e, depthTest: false }));
+        s.position.copy(p); s.renderOrder = 6; s.userData.ref = row.id; s.visible = vis;
+        fitGroup.add(s);
+      }
+    }
+  }
+  const fmt = (v) => (+v).toFixed(v < 10 ? 3 : 1).replace(/\.?0+$/, "");
+  panel.innerHTML = `<h4>Clash <span class="muted">against the reference bodies</span></h4>` + (r.refs.length ? r.refs.map((row) => {
+    const [cls, txt] = row.overlap > 1e-6 ? ["bad", `overlaps ${fmt(row.overlap)} mm³`] : row.touching ? ["good", "touching"]
+      : row.gap != null ? ["", `clear, ${fmt(row.gap)} mm gap`] : ["", "—"];
+    return `<div class="fitrow" data-ref="${esc(row.id)}"><span class="refsw" style="background:#${refColor(row.id).getHexString()}"></span>`
+      + `<b>${esc(row.id)}</b><span class="fitst ${cls}">${txt}</span>${row.note ? `<div class="muted">${esc(row.note)}</div>` : ""}</div>`;
+  }).join("") + `<div class="muted">Red: where the part runs into a reference. The green line is the smallest gap.</div>`
+    : `<div class="muted">No reference bodies. Import a part as a reference to design around it.</div>`);
+}
+
+// ── measure: click faces or edges (two for a distance and angle); the panel also shows the part's mass ──
+let measuring = false, mPicks = [];  // [{label, point, mesh} | {edge: i}]
+const measureGroup = new THREE.Group();
+scene.add(measureGroup);
+function setMeasuring(on) {
+  if (on && inSketch()) exitSketch();
+  if (on && fitOn) setFit(false);
+  if (on && sectionOn()) {}  // both can be on
+  measuring = on;
+  mPicks = [];
+  $("#measureBtn").classList.toggle("on", on);
+  $("#measurePanel").hidden = !on;
+  measureGroup.clear();
+  if (on) { pickedFaces = []; pickedEdges = []; pickUpdate(); colorFaces(); runMeasure(); }
+  else colorFaces();
+}
+$("#measureBtn").onclick = () => setMeasuring(!measuring);
+function mSphere(p, col) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(unitsPerPixel() * 4, 12, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false }));
+  s.position.set(...p); s.renderOrder = 6;
+  return s;
+}
+async function measurePick(ev) {
+  const eh = edgeHit(ev);
+  let pk = null;
+  if (eh) pk = { edge: eh.object.userData.i, obj: eh.object };
+  else {
+    const h = pickHit(ev);
+    if (h) pk = { label: h.object.userData.labels[0], point: h.point.toArray().map((v) => +v.toFixed(4)), mesh: h.object };
+  }
+  if (!pk) { mPicks = []; return runMeasure(); }
+  mPicks = ev.shiftKey || mPicks.length === 1 ? [...mPicks, pk].slice(-2) : [pk];
+  runMeasure();
+}
+const mm = (v, d = 3) => `${fmt(v, d)} mm`;
+async function runMeasure() {
+  if (!measuring || !S) return;
+  measureGroup.clear();
+  colorFaces();
+  for (const p of mPicks) if (p.mesh) p.mesh.material.color.copy(PICKED);
+  let r;
+  try { r = await api("/api/measure", { picks: mPicks.map(({ label, point, edge }) => (edge != null ? { edge } : { label, point })) }); } catch { return; }
+  if (!measuring) return;
+  const desc = (d) => d.kind === "face"
+    ? `<b>${esc(d.surface)} face</b>${d.diameter != null ? ` · ⌀ ${mm(d.diameter)}` : ""}${d.radius != null && d.diameter == null ? ` · R ${mm(d.radius)}` : ""}<br><span class="muted">area ${fmt(d.area, 2)} mm²</span>`
+    : `<b>${esc(d.curve)} edge</b> · ${mm(d.length)}${d.diameter != null ? ` · ⌀ ${mm(d.diameter)}` : ""}`;
+  let html = `<h4>Measure<span class="grow"></span><button id="mClose" title="Close (Esc)">✕</button></h4>`;
+  if (!mPicks.length) html += `<div class="hint">Click a face or edge. Click a second one for the distance and angle between them (shift-click to start over with two).</div>`;
+  r.picks.forEach((d, i) => { html += `<div class="mp"><span class="tag">${i + 1}</span><div>${desc(d)}</div></div>`; });
+  if (r.between) {
+    const b = r.between;
+    html += `<div class="big">${b.distance != null ? mm(b.distance) : ""}</div><table>`;
+    if (b.plane_distance != null) html += `<tr><td>between the planes</td><td>${mm(b.plane_distance)}</td></tr>`;
+    if (b.axis_distance != null) html += `<tr><td>between the axes</td><td>${mm(b.axis_distance)}</td></tr>`;
+    if (b.distance != null) html += `<tr><td>Δx Δy Δz</td><td>${fmt(b.dx, 3)}, ${fmt(b.dy, 3)}, ${fmt(b.dz, 3)}</td></tr>`;
+    if (b.angle != null) html += `<tr><td>angle</td><td>${fmt(b.angle, 3)}°${b.parallel ? " (parallel)" : ""}</td></tr>`;
+    html += `</table>`;
+    if (b.p && b.distance > 1e-9) {
+      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...b.p), new THREE.Vector3(...b.q)]);
+      const line = new THREE.Line(g, new THREE.LineDashedMaterial({ color: 0x1d4ed8, dashSize: unitsPerPixel() * 6, gapSize: unitsPerPixel() * 4, depthTest: false }));
+      line.computeLineDistances(); line.renderOrder = 6;
+      measureGroup.add(line, mSphere(b.p, 0x1d4ed8), mSphere(b.q, 0x1d4ed8));
+    }
+  }
+  for (const p of mPicks) if (p.point) measureGroup.add(mSphere(p.point, 0xea580c));
+  if (r.part) {
+    const P = r.part;
+    html += `<div class="sub">Part</div><table>
+      <tr><td>volume</td><td>${fmt(P.volume, 1)} mm³</td></tr>
+      <tr><td>surface area</td><td>${fmt(P.area, 1)} mm²</td></tr>
+      <tr><td>mass</td><td>${P.mass_g != null ? `${fmt(P.mass_g, 1)} g` : "—"}</td></tr>
+      <tr><td>size</td><td>${P.bbox.map((v) => fmt(v, 2)).join(" × ")}</td></tr>
+      <tr><td>centre of mass</td><td>${P.center_of_mass.map((v) => fmt(v, 2)).join(", ")}</td></tr></table>
+      <div class="muted small">${P.mass_g != null ? `${esc(P.material)}: ${P.density} g/cm³` : P.material ? `No density known for “${esc(P.material)}”` : "Set a material (Part, in the header) for the mass"}</div>`;
+  }
+  $("#measurePanel").innerHTML = html;
+  $("#mClose").onclick = () => setMeasuring(false);
+}
+
+// ── section view: clip the model with a plane; the cut shows the inside in a contrasting colour ──
+let section = null;  // {axis: "X"|"Y"|"Z", t: 0..1, flip}
+const sectionOn = () => !!section;
+const capMat = new THREE.MeshBasicMaterial({ color: 0xe07b39, side: THREE.BackSide, clippingPlanes: clipPlanes });
+let caps = [];
+function partBox() { return new THREE.Box3().setFromObject(partGroup).union(new THREE.Box3().setFromObject(refGroup)); }
+function applySection() {
+  const had = clipPlanes.length;
+  clipPlanes.length = 0;
+  for (const c of caps) c.removeFromParent();
+  caps = [];
+  if (section) {
+    const box = partBox();
+    if (!box.isEmpty()) {
+      // keep the half away from the camera, so the cut faces you (flip keeps the other half)
+      const i = "XYZ".indexOf(section.axis), cam = camera.position.getComponent(i) - controls.target.getComponent(i);
+      const sg = (cam > 0 ? -1 : 1) * (section.flip ? -1 : 1), n = new THREE.Vector3().setComponent(i, sg);
+      const lo = box.min.getComponent(i), hi = box.max.getComponent(i), at = lo + (hi - lo) * section.t;
+      clipPlanes.push(new THREE.Plane(n, -sg * at));
+      $("#secAt") && ($("#secAt").textContent = `${section.axis} = ${fmt(at, 2)} mm`);
+      for (const m of faceMeshes) {  // the part's inside, seen through the cut: its faces from behind
+        const c = new THREE.Mesh(m.geometry, capMat);
+        c.renderOrder = 1;
+        partGroup.add(c);
+        caps.push(c);
+      }
+    }
+  }
+  if (had !== clipPlanes.length) {  // three compiles the plane count into each shader
+    const mats = [...faceMeshes, ...refMeshes, ...edgeObjs].map((o) => o.material).concat([capMat]);
+    for (const m of mats) m.needsUpdate = true;
+  }
+  for (const m of faceMeshes) m.material.side = section ? THREE.FrontSide : THREE.DoubleSide;
+}
+$("#sectionBtn").onclick = () => {
+  section = section ? null : { axis: "Y", t: 0.5, flip: false };
+  $("#sectionBtn").classList.toggle("on", !!section);
+  $("#sectionPanel").hidden = !section;
+  if (section) {
+    $("#sectionPanel").innerHTML = `<h4>Section<span class="grow"></span><button id="secClose" title="Close">✕</button></h4>
+      <div class="row"><label>plane</label><span class="seg">${["X", "Y", "Z"].map((a) => `<button data-ax="${a}" class="${a === section.axis ? "on" : ""}">${a}</button>`).join("")}</span>
+        <label style="width:auto"><input type="checkbox" id="secFlip"> flip</label></div>
+      <div class="row"><label>position</label><input type="range" id="secT" min="0" max="1" step="0.001" value="${section.t}"></div>
+      <div class="muted" id="secAt"></div>`;
+    $("#sectionPanel").querySelectorAll("[data-ax]").forEach((b) => (b.onclick = () => {
+      section.axis = b.dataset.ax;
+      $("#sectionPanel").querySelectorAll("[data-ax]").forEach((x) => x.classList.toggle("on", x === b));
+      applySection();
+    }));
+    $("#secT").oninput = () => { section.t = +$("#secT").value; applySection(); };
+    $("#secFlip").onchange = () => { section.flip = $("#secFlip").checked; applySection(); };
+    $("#secClose").onclick = () => $("#sectionBtn").click();
+  }
+  applySection();
+};
+
+// ── editing a feature's settings in the form that made it ──
+const EDITABLE = ["extrude", "revolve", "loft", "sweep", "boolean", "hole", "text", "fillet", "chamfer", "shell", "linear_pattern", "circular_pattern", "mirror", "import"];
+const val = (v) => (v == null ? "" : esc(String(v)));
+async function editFeature(fid, anchor) {
+  let j;
+  try { j = await api(`/api/feature/${encodeURIComponent(fid)}`); } catch { return; }
+  const m = $("#featMenu"), opt = (list, cur) => list.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(t ?? v)}</option>`).join("");
+  const modes = (cur, extra = []) => `<div class="row"><label>mode</label><select id="efMode">${opt([["add"], ["cut"], ["new"], ["intersect"], ...extra], cur)}</select></div>`;
+  let body = "", read, after = null;
+  if (j.type === "extrude") {
+    body = `${extentRows("ex", j)}
+      <div class="row"><label>direction</label><select id="efDir">${opt([["normal"], ["reverse"], ["symmetric"]], j.direction || "normal")}</select></div>${modes(j.mode || "add")}`;
+    let readExtent;
+    after = () => { readExtent = wireExtent("ex", j.profile.sketch, j, fid); };
+    read = () => ({ ...readExtent(), direction: $("#efDir").value, mode: $("#efMode").value });
+  } else if (j.type === "boolean") {
+    body = `<div class="row"><label>body</label><select id="efTool">${refIds().map((id) => `<option ${id === j.tool ? "selected" : ""}>${esc(id)}</option>`).join("")}</select></div>
+      <div class="row"><label>mode</label><select id="efMode">${opt([["cut", "cut it out (a nest)"], ["add", "add it"], ["intersect", "keep the overlap"]], j.mode || "cut")}</select></div>
+      <div class="row"><label>clearance</label><input id="efClr" value="${val(j.clearance ?? 0)}"></div>`;
+    read = () => ({ tool: $("#efTool").value, mode: $("#efMode").value, clearance: numOrExpr($("#efClr").value || "0") });
+  } else if (j.type === "loft") {
+    const before = S.features.findIndex((f) => f.id === j.id), ids = sketchesOk().filter((id) => S.features.findIndex((f) => f.id === id) < before);
+    body = `<div class="muted">Sections, first to last (tree order):</div>
+      <div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.sections.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>
+      <div class="row"><label>ruled</label><input id="efRuled" type="checkbox" style="flex:0" ${j.ruled ? "checked" : ""}></div>${modes(j.mode || "add")}`;
+    read = () => {
+      const secs = pickedIds(m);
+      if (secs.length < 2) throw new Error("tick two or more sketches");
+      return { sections: secs, ruled: $("#efRuled").checked, mode: $("#efMode").value };
+    };
+  } else if (j.type === "sweep") {
+    const before = S.features.findIndex((f) => f.id === j.id), ids = sketchesOk().filter((id) => S.features.findIndex((f) => f.id === id) < before);
+    body = `<div class="row"><label>profile</label><select id="efProf">${sketchOpts(ids, j.profile.sketch)}</select></div>
+      <div class="row"><label>path</label><select id="efPath">${sketchOpts(ids, j.path)}</select></div>${modes(j.mode || "add")}`;
+    read = () => ({ profile: { ...j.profile, sketch: $("#efProf").value }, path: $("#efPath").value, mode: $("#efMode").value });
+  } else if (j.type === "revolve") {
+    body = `<div class="row"><label>axis</label><input id="efAxis" value="${val(j.axis)}"></div>
+      <div class="row"><label>angle</label><input id="efAng" value="${val(j.angle ?? 360)}"></div>${modes(j.mode || "add")}`;
+    read = () => ({ axis: $("#efAxis").value.trim(), angle: numOrExpr($("#efAng").value), mode: $("#efMode").value });
+  } else if (j.type === "hole") {
+    body = `<div class="row"><label>type</label><select id="efKind">${opt([["simple", "Simple"], ["counterbore", "Counterbore"], ["countersink", "Countersink"]], j.kind || "simple")}</select></div>
+      <div class="row"><label>diameter</label><input id="efD" value="${val(j.diameter)}"></div>
+      <div class="row" data-k="counterbore"><label>counterbore</label><input id="efCbD" placeholder="⌀" value="${val(j.cbore_diameter)}"><input id="efCbH" placeholder="depth" value="${val(j.cbore_depth)}"></div>
+      <div class="row" data-k="countersink"><label>countersink</label><input id="efCsD" placeholder="⌀" value="${val(j.csk_diameter)}"><input id="efCsA" placeholder="angle" value="${val(j.csk_angle ?? 90)}"></div>
+      <div class="row"><label>depth</label><select id="efExt">${opt([["through_all", "through all"], ["blind", "blind"]], j.extent || "through_all")}</select><input id="efDepth" value="${val(j.depth ?? 10)}"></div>
+      <div class="row"><label>thread</label><input id="efThread" value="${val(j.thread)}" placeholder="e.g. M4x0.7 (tapped)"></div>`;
+    read = () => {
+      const k = $("#efKind").value, out = { kind: k, diameter: numOrExpr($("#efD").value), extent: $("#efExt").value, thread: $("#efThread").value.trim() || null };
+      out.depth = out.extent === "blind" ? numOrExpr($("#efDepth").value) : null;
+      Object.assign(out, k === "counterbore" ? { cbore_diameter: numOrExpr($("#efCbD").value), cbore_depth: numOrExpr($("#efCbH").value) } : { cbore_diameter: null, cbore_depth: null });
+      Object.assign(out, k === "countersink" ? { csk_diameter: numOrExpr($("#efCsD").value), csk_angle: numOrExpr($("#efCsA").value) } : { csk_diameter: null });
+      return out;
+    };
+  } else if (j.type === "text") {
+    body = `<div class="row"><label>text</label><input id="efTx" value="${val(j.text)}"></div>
+      <div class="row"><label>height</label><input id="efS" value="${val(j.size ?? 5)}"></div>
+      <div class="row"><label>depth</label><input id="efD" value="${val(j.depth ?? 0.5)}"></div>
+      <div class="row"><label>style</label><select id="efM">${opt([["cut", "engraved"], ["add", "embossed"]], j.mode || "cut")}</select></div>
+      <div class="row"><label>angle °</label><input id="efA" value="${val(j.angle ?? 0)}"></div>`;
+    read = () => ({ text: $("#efTx").value, size: numOrExpr($("#efS").value), depth: numOrExpr($("#efD").value), mode: $("#efM").value, angle: numOrExpr($("#efA").value || "0") });
+  } else if (j.type === "fillet" || j.type === "chamfer") {
+    const key = j.type === "fillet" ? "radius" : "distance";
+    body = `<div class="row"><label>${key}</label><input id="efSize" value="${val(j[key])}"></div><div class="muted">${(j.edges || []).length} edge reference(s): change them with Edit edges…</div>`;
+    read = () => ({ [key]: numOrExpr($("#efSize").value) });
+  } else if (j.type === "shell") {
+    body = `<div class="row"><label>wall</label><input id="efT" value="${val(j.thickness)}"></div>
+      <div class="row"><label>grows</label><select id="efOut">${opt([["false", "inward"], ["true", "outward"]], String(!!j.outward))}</select></div>
+      <div class="muted">Open faces: ${(j.remove_faces || []).map((r) => esc(faceTxt(r))).join(", ") || "none"}</div>`;
+    read = () => ({ thickness: numOrExpr($("#efT").value), outward: $("#efOut").value === "true" });
+  } else if (j.type === "linear_pattern" || j.type === "circular_pattern") {
+    const ids = [...new Set([...replayable(), ...j.features])];
+    const checks = `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.features.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>`;
+    if (j.type === "linear_pattern") {
+      const dir = Array.isArray(j.direction) ? j.direction.join(", ") : j.direction;
+      body = `${checks}<div class="row"><label>direction</label><input id="efDir" value="${esc(dir)}" title="X, Y, Z, or x, y, z"></div>
+        <div class="row"><label>spacing</label><input id="efSp" value="${val(j.spacing)}"></div><div class="row"><label>count</label><input id="efN" value="${val(j.count)}"></div>`;
+      read = () => {
+        const d = $("#efDir").value.trim(), v = d.includes(",") ? d.split(",").map((x) => numOrExpr(x)) : d;
+        return { features: pickedIds(m), direction: v, spacing: numOrExpr($("#efSp").value), count: numOrExpr($("#efN").value) };
+      };
+    } else {
+      body = `${checks}<div class="row"><label>axis</label><input id="efAx" value="${esc(Array.isArray(j.axis) ? j.axis.join(", ") : j.axis ?? "Z")}"></div>
+        <div class="row"><label>through</label>${(j.origin || [0, 0, 0]).map((v, k) => `<input id="efO${k}" value="${val(v)}">`).join("")}</div>
+        <div class="row"><label>count</label><input id="efN" value="${val(j.count)}"></div><div class="row"><label>angle</label><input id="efAng" value="${val(j.angle ?? 360)}"></div>`;
+      read = () => {
+        const a = $("#efAx").value.trim();
+        return { features: pickedIds(m), axis: a.includes(",") ? a.split(",").map((x) => numOrExpr(x)) : a, origin: [0, 1, 2].map((k) => numOrExpr($(`#efO${k}`).value)),
+          count: numOrExpr($("#efN").value), angle: numOrExpr($("#efAng").value) };
+      };
+    }
+  } else if (j.type === "mirror") {
+    const ids = [...new Set([...replayable(), ...j.features])], dat = j.plane.datum, off = j.plane.offset ?? 0;
+    const at = dat !== "XZ" ? off : typeof off === "number" ? -off : `-(${off})`;
+    body = `<div class="checks">${ids.map((id) => `<label><input type="checkbox" value="${esc(id)}" ${j.features.includes(id) ? "checked" : ""}> ${esc(id)}</label>`).join("")}</div>
+      <div class="row"><label>plane</label><select id="efPl">${opt([["YZ", "YZ (flip X)"], ["XZ", "XZ (flip Y)"], ["XY", "XY (flip Z)"]], dat)}</select></div>
+      <div class="row"><label>at</label><input id="efAt" value="${val(at)}" title="the plane's position along its axis, in world coordinates"></div>`;
+    read = () => {
+      const d = $("#efPl").value, a = numOrExpr($("#efAt").value || "0"), o = d !== "XZ" ? a : typeof a === "number" ? -a : `-(${a})`;
+      return { features: pickedIds(m), plane: o === 0 ? { datum: d } : { datum: d, offset: o } };
+    };
+  } else if (j.type === "import") {
+    const sc = j.scale ?? 1, unit = Object.entries(UNITS).find(([, k]) => k === sc)?.[0];
+    body = `<div class="muted">${esc(j.file)}</div>${modes(j.mode || "new", [["reference", "reference"]])}
+      <div class="row"><label>scale</label><input id="efSc" value="${val(sc)}" title="${unit ? `file in ${unit}` : ""}"></div>
+      <div class="row"><label>rotate °</label>${(j.rotate || [0, 0, 0]).map((v, k) => `<input id="efR${k}" value="${val(v)}">`).join("")}</div>
+      <div class="row"><label>move</label>${(j.translate || [0, 0, 0]).map((v, k) => `<input id="efT${k}" value="${val(v)}">`).join("")}</div>`;
+    read = () => ({ mode: $("#efMode").value, scale: numOrExpr($("#efSc").value), rotate: [0, 1, 2].map((k) => numOrExpr($(`#efR${k}`).value)),
+      translate: [0, 1, 2].map((k) => numOrExpr($(`#efT${k}`).value)) });
+  } else return;
+  m.innerHTML = `<div class="ttl">Edit ${esc(j.id)} <span class="muted">(${esc(j.type.replace("_", " "))})</span></div>${body}<button class="go" id="efGo">Apply</button><div class="err" id="efErr"></div>`;
+  m.classList.add("wide");
+  popup(m, anchor || $("#center"));
+  if (after) after();
+  const kind = () => m.querySelectorAll("[data-k]").forEach((r) => (r.hidden = r.dataset.k !== $("#efKind")?.value));
+  if ($("#efKind")) { $("#efKind").onchange = kind; kind(); }
+  if ($("#efExt")) { const t = () => ($("#efDepth").hidden = $("#efExt").value !== "blind"); $("#efExt").onchange = t; t(); }
+  $("#efGo").onclick = async () => {
+    let want;
+    try { want = read(); } catch (e) { $("#efErr").textContent = e.message; return; }
+    const set = {}, dflt = { draft: 0, distance: 0, extent: "blind", direction: "normal", ruled: false, clearance: 0 };
+    for (const [k, v] of Object.entries(want)) if (JSON.stringify(v ?? null) !== JSON.stringify(j[k] ?? dflt[k] ?? null)) set[k] = v;
+    m.hidden = true;
+    if (Object.keys(set).length) await edit([{ op: "update_feature", id: j.id, set }], `edit ${j.id}`);
+  };
+}
+
+// ── text: engraved into (or raised from) the face you clicked, centred where you clicked ──
+$("#textBtn").onclick = () => {
+  if (!S || S.volume == null) return note("Text: the part needs a solid first", "err");
+  const pf = lastPicked();
+  if (!pf || pf.mesh?.userData?.ref) return note("Text: click the flat face the text goes on first", "err");
+  const m = $("#featMenu");
+  m.classList.remove("wide");
+  m.innerHTML = `<div class="ttl">Text on ${esc(pf.labels[0])}</div>
+    <div class="row"><label>text</label><input id="txT" value="" placeholder="e.g. REV A"></div>
+    <div class="row"><label>height</label><input id="txS" value="5"></div>
+    <div class="row"><label>depth</label><input id="txD" value="0.5"></div>
+    <div class="row"><label>style</label><select id="txM"><option value="cut">engraved (cut in)</option><option value="add">embossed (raised)</option></select></div>
+    <div class="row"><label>angle °</label><input id="txA" value="0"></div>
+    <button class="go" id="txGo">Add text</button>`;
+  popup(m, $("#textBtn"));
+  $("#txT").focus();
+  $("#txGo").onclick = async () => {
+    const text = $("#txT").value;
+    if (!text.trim()) return note("Text: type something", "err");
+    m.hidden = true;
+    const ref = faceRef(pf.labels[0], pf.point);
+    let at;
+    try { at = await api("/api/face_point", { ref, point: pf.point }); } catch { return; }
+    const id = nextId("text"), sid = `${id}_at`, [u, v] = at.uv.map((c) => +c.toFixed(2));
+    const ang = numOrExpr($("#txA").value || "0");
+    const f = { id, type: "text", sketch: sid, at: "p1", text, size: numOrExpr($("#txS").value), depth: numOrExpr($("#txD").value),
+      mode: $("#txM").value, intent: `“${text}” ${$("#txM").value === "cut" ? "engraved" : "embossed"} on ${pf.labels[0]}`, ...(ang ? { angle: ang } : {}) };
+    const rb = S.rollback, anchor = rb != null && rb > 0 ? { after: S.features[rb - 1].id } : {};
+    const ok = await edit([
+      { op: "add_feature", ...anchor, feature: { id: sid, type: "sketch", plane: { face: ref }, intent: `position of ${id}`,
+        entities: [{ id: "p1", type: "point", at: [u, v] }],
+        constraints: [{ type: "distance_x", on: ["origin", "p1"], value: u, name: `${id}_x` }, { type: "distance_y", on: ["origin", "p1"], value: v, name: `${id}_y` }] } },
+      { op: "add_feature", after: sid, feature: f },
+    ], `text “${text}” on ${pf.labels[0]}`);
+    if (ok) {
+      if (rb != null) setState((await api("/api/rollback", { index: rb + 2 })).state);
+      pickedFaces = []; pickUpdate(); select(id);
+    }
+  };
+};
+
+// ── import a CAD file: upload it next to the part, then choose how it joins the model ──
+const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, "µm": 0.001 };
+$("#importBtn").onclick = async () => {
+  if (!S) return note("Open or create a part first.", "err");
+  const others = (await api("/api/parts")).parts.filter((p) => p !== S.rel);
+  const m = $("#featMenu");
+  m.classList.remove("wide");
+  m.innerHTML = `<div class="ttl">Import</div>
+    <a class="menuitem" id="imFromFile"><b>A CAD file…</b><span>STEP, IGES, BREP or STL</span></a>
+    ${others.length ? `<div class="muted" style="margin-top:4px">Another part of this folder (it stays live):</div>
+      <div class="checks partlist">${others.map((p) => `<a class="menuitem" data-part="${esc(p)}"><b>${esc(p)}</b></a>`).join("")}</div>` : ""}`;
+  popup(m, $("#importBtn"));
+  $("#imFromFile").onclick = () => { m.hidden = true; $("#importFile").value = ""; $("#importFile").click(); };
+  m.querySelectorAll("[data-part]").forEach((a) => (a.onclick = async () => {
+    m.hidden = true;
+    let info;
+    try { info = await busyDo(`Reading ${a.dataset.part}`, () => api("/api/import_part", { path: a.dataset.part })); } catch { return; }
+    importForm(info);
+  }));
+};
+// several files (chosen together, or dropped together) import one after another: the next form opens when one is done
+let importQueue = [];
+function importNext() {
+  const f = importQueue.shift();
+  if (f) importFlow(f);
+}
+$("#importFile").onchange = async () => {
+  importQueue = [...$("#importFile").files];
+  $("#importFile").value = "";  // choosing the same file again must still import it
+  importNext();
+};
+async function importFlow(file) {
+  let info;
+  rebuildStart(`Reading ${file.name}`);
+  try {
+    const r = await fetch(`/api/import?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
+    info = await r.json().catch(() => ({}));
+    if (!r.ok) return note(`Import: ${info.detail || r.statusText}`, "err");
+  } finally { rebuildEnd(); }
+  importForm(info);
+  return info;
+}
+function importForm(info) {
+  const m = $("#featMenu"), hasBody = S.volume != null, solid = info.solids > 0;
+  const modes = [["reference", "Reference: design around it (not part of the solid)"], ["new", hasBody ? "New body" : "Base solid of this part"],
+    ["add", "Add to the part"], ["cut", "Cut from the part"], ["intersect", "Keep only the overlap"]];
+  const def = !solid || info.part ? "reference" : hasBody ? "reference" : "new";
+  const sz = info.bbox_size.map((v) => fmt(v, 2)).join(" × ");
+  const stem = (info.name.replace(/\.vcad\.json$/, "").replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1").toLowerCase() || "imported").slice(0, 28);
+  m.innerHTML = `<div class="ttl">Import ${esc(info.name)}</div>
+    <div class="muted">${info.part ? "VibeCAD part, kept live: its changes show here · " : ""}${esc(info.format.toUpperCase())} · ${info.mesh ? `mesh, ${info.triangles} triangles` : `${info.faces} faces`} · ${info.solids ? `${info.solids} solid${info.solids === 1 ? "" : "s"}${info.sewn ? " (sewn from its surfaces)" : ""}` : "surfaces only: import it as a reference"} · ${sz} (file units)</div>
+    <div class="row"><label>name</label><input id="imId" value="${esc(nextId(stem))}"></div>
+    <div class="row"><label>as</label><select id="imMode">${modes.map(([v, t]) => `<option value="${v}" ${v === def ? "selected" : ""} ${!solid && v !== "reference" ? "disabled" : ""}>${esc(t)}</option>`).join("")}</select></div>
+    <div class="row"><label>units</label><select id="imUnits">${Object.keys(UNITS).map((u) => `<option ${u === info.units_hint ? "selected" : ""}>${u}</option>`).join("")}</select>
+      <input id="imScale" title="scale factor to mm (type your own)" value="${UNITS[info.units_hint] ?? 1}"></div>
+    <div class="row"><label>place</label><select id="imPlace"><option value="keep">where the file puts it</option><option value="origin">centred on the origin, on XY</option></select></div>
+    <div class="row"><label>rotate °</label><input id="imRx" value="0" title="about X"><input id="imRy" value="0" title="about Y"><input id="imRz" value="0" title="about Z"></div>
+    <div class="muted" id="imSize"></div>
+    <button class="go" id="imGo">Import</button>`;
+  popup(m, $("#importBtn"));
+  const scale = () => { const k = parseFloat($("#imScale").value); return k > 0 ? k : 1; };
+  const upd = () => { $("#imSize").textContent = `Size in the part: ${info.bbox_size.map((v) => fmt(v * scale(), 2)).join(" × ")} mm`; };
+  $("#imUnits").onchange = () => { $("#imScale").value = UNITS[$("#imUnits").value]; upd(); };
+  $("#imScale").oninput = upd;
+  upd();
+  $("#imGo").onclick = async () => {
+    const id = $("#imId").value.trim(), mode = $("#imMode").value, k = scale();
+    if (!/^[A-Za-z_]\w*$/.test(id)) return note("Import: the name must be letters, digits and underscores", "err");
+    const f = { id, type: "import", file: info.file, mode, intent: `${info.name}, imported ${{ reference: "as a reference body (not part of the solid)", new: hasBody ? "as a new body" : "as the base solid", add: "and added", cut: "and cut away", intersect: "and intersected" }[mode]}` };
+    if (k !== 1) f.scale = k;
+    const rot = ["#imRx", "#imRy", "#imRz"].map((q) => numOrExpr($(q).value || "0"));
+    if (rot.some((v) => v !== 0)) f.rotate = rot;
+    if ($("#imPlace").value === "origin") {  // centre in X and Y, sit on XY (only exact for no rotation)
+      const c = info.bbox_min.map((v, i) => (v + info.bbox_size[i] / (i < 2 ? 2 : 1e9)) * k);
+      f.translate = [-c[0], -c[1], -info.bbox_min[2] * k].map((v) => +v.toFixed(4));
+    }
+    m.hidden = true;
+    if (await addFeature(f, `import ${info.name}`)) { select(id); fitView("iso"); }
+    importNext();
+  };
+  if (importQueue.length) $("#imGo").textContent = `Import, then the next (${importQueue.length} more)`;
+}
+// drop a CAD file anywhere on the 3D view to import it
+$("#center").addEventListener("dragover", (ev) => { if ([...ev.dataTransfer.items].some((i) => i.kind === "file")) ev.preventDefault(); });
+$("#center").addEventListener("drop", (ev) => {
+  const fs = [...ev.dataTransfer.files].filter((x) => /\.(step|stp|iges|igs|brep|brp|stl)$/i.test(x.name));
+  if (!fs.length) return;
+  ev.preventDefault();
+  if (!S) return note("Open or create a part first.", "err");
+  importQueue = fs;
+  importNext();
+});
+
+// ── export: download the shown part ──
+$("#exportBtn").onclick = () => {
+  if (!S) return;
+  const m = $("#featMenu");
+  const opts = [["step", "STEP", "exact solid for other CAD tools"], ["stl", "STL", "mesh for 3D printing"], ["3mf", "3MF", "mesh with units, for slicers"],
+    ["brep", "BREP", "OpenCascade's own format"], ["glb", "glTF (GLB)", "for viewers and the web"],
+    ["svg", "Drawing (SVG)", "dimensioned 2D views with hole callouts"]];
+  m.innerHTML = `<div class="ttl">Export ${esc(S.name)}${S.rollback != null ? " (as rolled back)" : ""}</div>` +
+    opts.map(([f, n, d]) => `<a class="menuitem" data-fmt="${f}" href="/api/export?fmt=${f}" download><b>${n}</b><span>${d}</span></a>`).join("");
+  popup(m, $("#exportBtn"));
+  m.querySelectorAll("a").forEach((a) => (a.onclick = () => { m.hidden = true; }));
+};
+
 window.vibecadView = {  // for browser tests and the devtools console
   toScreen: (x, y, z) => {
     const p = new THREE.Vector3(x, y, z).project(camera), r = renderer.domElement.getBoundingClientRect();
@@ -1210,6 +2169,14 @@ window.vibecadView = {  // for browser tests and the devtools console
     return [r.left + ((q.x + 1) / 2) * r.width, r.top + ((1 - q.y) / 2) * r.height];
   },
   edgeIds: () => edgeObjs.map((o) => o.userData.i),
+  refs: () => [...new Set(refMeshes.map((m) => m.userData.ref))],
+  refVisible: (id) => refMeshes.filter((m) => m.userData.ref === id).every((m) => m.visible),
+  refColorOf: (id) => "#" + refColor(id).getHexString(),
+  fitObjects: () => fitGroup.children.map((o) => ({ ref: o.userData.ref, type: o.type, visible: o.visible })),
+  clip: () => clipPlanes.map((p) => ({ normal: p.normal.toArray(), constant: p.constant })),
+  viewDir: () => controls.target.clone().sub(camera.position).normalize().toArray().map((v) => +v.toFixed(4)),
+  measuring: () => measuring,
+  measurePicks: () => mPicks.map((p) => p.label || `edge ${p.edge}`),
 };
 
 // ── dialogs ───────────────────────────────────────────────────────
@@ -1218,6 +2185,54 @@ $("#rendersBtn").onclick = () => {
   $("#rendersImg").src = `/api/render.png?views=iso,iso_back,iso_below,top&highlight=${encodeURIComponent(selected || "")}&v=${encodeURIComponent(S.rev)}`;
   $("#rendersDlg").showModal();
 };
+// part properties: name, material (the Measure panel's mass), process, notes
+const DENSITY_HINTS = [[/titanium|ti-?6al/i, 4.43], [/stainless|304|316/i, 8.0], [/steel/i, 7.85], [/alumin/i, 2.70], [/brass/i, 8.5], [/bronze/i, 8.8],
+  [/copper/i, 8.96], [/\bpla\b/i, 1.24], [/petg|\bpet\b/i, 1.27], [/\babs\b/i, 1.04], [/\basa\b/i, 1.07], [/nylon|\bpa\d*\b|polyamide/i, 1.14],
+  [/\btpu\b/i, 1.21], [/polycarbonate|\bpc\b/i, 1.20], [/acetal|delrin|\bpom\b/i, 1.41], [/resin/i, 1.15], [/plywood|wood|mdf/i, 0.65]];
+$("#propsBtn").onclick = () => {
+  if (!S) return note("Open or create a part first.", "err");
+  $("#ppName").value = S.name || ""; $("#ppMat").value = S.material || ""; $("#ppProc").value = S.process || ""; $("#ppNotes").value = S.design_notes || "";
+  const dens = () => {
+    const hit = DENSITY_HINTS.find(([re]) => re.test($("#ppMat").value));
+    $("#ppDensity").textContent = hit ? `Density ${hit[1]} g/cm³: Measure shows the mass` : $("#ppMat").value ? "Unknown density: Measure can't show a mass for this material" : "";
+  };
+  $("#ppMat").oninput = dens; dens();
+  $("#propsDlg").showModal();
+};
+$("#propsDlg").onclose = async () => {
+  if ($("#propsDlg").returnValue !== "save" || !S) return;
+  const set = {}, now = { name: $("#ppName").value.trim(), material: $("#ppMat").value.trim() || null, process: $("#ppProc").value.trim() || null,
+    design_notes: $("#ppNotes").value.trim() || null };
+  for (const [k, v] of Object.entries(now)) if ((v || null) !== (S[k] || null) && !(k === "name" && !v)) set[k] = v;
+  if (Object.keys(set).length) await edit([{ op: "set_meta", set }], "part properties");
+};
+
+// light / dark theme (the page sets it from localStorage or the system before it paints)
+function themeUpdate() {
+  const dark = isDark();
+  $("#themeBtn").innerHTML = ICON[dark ? "sun" : "moon"];
+  $("#themeBtn").title = dark ? "Light theme" : "Dark theme";
+  setSketchTheme(dark);
+  if (gridBox) setGrid(gridBox);
+  if (inSketch()) SK.refresh();
+}
+$("#themeBtn").onclick = () => {
+  document.documentElement.dataset.theme = isDark() ? "light" : "dark";
+  try { localStorage.setItem("vibecad.theme", document.documentElement.dataset.theme); } catch {}
+  themeUpdate();
+};
+themeUpdate();
+
+// keyboard shortcuts: ? shows them
+const KEYS = [["Model", ""], ["M", "Measure"], ["F", "Fit the part in view"], ["Ctrl/⌘ Z", "Undo"], ["Ctrl/⌘ Shift Z", "Redo"], ["Double-click a feature", "Edit it"],
+  ["Shift-click", "Pick more faces or edges"], ["Esc", "Leave measure / reference picking"], ["Sketch", ""], ["S L R C A", "Select, Line, Rectangle, Circle, Arc"], ["O N P", "Slot, Polygon, Point"],
+  ["M", "Mark (freehand, for the agent)"], ["F", "Round the selected corner"], ["K", "Offset the selected outline"], ["H V E T D", "Horizontal, Vertical, Equal, Tangent, Dimension"], ["G", "Construction on/off"], ["Delete", "Delete the selection"],
+  ["Esc", "Cancel the tool, clear the selection, then leave the sketch"], ["", ""], ["?", "This list"]];
+function showKeys() {
+  $("#keysList").innerHTML = KEYS.map(([k, d]) => (!d ? (k ? `<div class="h">${k}</div>` : "") : `<div>${k.split(" / ").map((x) => `<kbd>${esc(x)}</kbd>`).join(" / ")}</div><div>${esc(d)}</div>`)).join("");
+  $("#keysDlg").showModal();
+}
+
 $("#historyBtn").onclick = async () => {
   if (!S) return;
   const r = await api("/api/history");
@@ -1507,21 +2522,50 @@ $("#partSelect").onchange = async (ev) => {
   if (!r) return loadParts();
   setState(r.state, { fit: true });
 };
-$("#newBtn").onclick = async () => {
+$("#newBtn").onclick = () => {
   if (busy) return note("The agent is working on this part: stop it (or wait) before starting another.", "err");
-  const name = prompt("New part name (letters, digits, underscores):", "new_part");
-  if (!name) return;
+  $("#npName").value = ""; $("#npMat").value = "";
+  $("#newForm").querySelector("input[value=empty]").checked = true;
+  $("#npWhere").textContent = "Saved as parts/<name>.vcad.json";
+  $("#npName").oninput = () => { $("#npWhere").textContent = `Saved as parts/${$("#npName").value.trim() || "<name>"}.vcad.json`; };
+  $("#newDlg").showModal();
+  $("#npName").focus();
+};
+$("#newDlg").onclose = async () => {
+  if ($("#newDlg").returnValue !== "create") return;
+  const name = $("#npName").value.trim(), mat = $("#npMat").value.trim();
+  const start = $("#newForm").querySelector("input[name=npStart]:checked").value;
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) return note("New part: use letters, digits, - and _ in the name", "err");
   if (EE) await endEdgeEdit(false);
   exitSketch(); selected = null;
   await api("/api/rollback", { index: null }).catch(() => {});
   const r = await api("/api/new", { path: `parts/${name}.vcad.json`, name });
   setState(r.state, { fit: true });
   loadParts();
+  if (mat) await edit([{ op: "set_meta", set: { material: mat } }], "material");
+  if (start === "import") $("#importBtn").click();
 };
+function welcomeUpdate(parts) {  // no part open: a start card instead of an empty view, and nothing to act on
+  $("#welcome").hidden = !!S;
+  for (const b of document.querySelectorAll("#modelTools button.rb, #propsBtn, #historyBtn, #rendersBtn")) b.disabled = !S;
+  if (!S) { $("#undoBtn").disabled = $("#redoBtn").disabled = true; }
+  else { modelToolsUpdate(); pickUpdate(); }
+  if (S || !parts) return;
+  $("#wParts").innerHTML = parts.length ? parts.map((p) => `<button data-p="${esc(p)}">${esc(p)}</button>`).join("") : `<span class="muted small">none yet</span>`;
+  $("#wParts").querySelectorAll("button").forEach((b) => (b.onclick = () => { $("#partSelect").value = b.dataset.p; $("#partSelect").dispatchEvent(new Event("change")); }));
+}
+$("#wNew").onclick = () => $("#newBtn").click();
+$("#wImport").onclick = () => { $("#newBtn").click(); $("#newForm").querySelector("input[value=import]").checked = true; };
 document.addEventListener("keydown", (ev) => {
   if (ev.target.matches("input, textarea, [contenteditable=true]")) return;
   if (inSketch() && SK.key(ev)) { ev.preventDefault(); return; }
   if (ev.key === "Escape" && inSketch()) { $("#exitSketch").click(); return; }
+  if (ev.key === "Escape" && measuring) { setMeasuring(false); return; }
+  if (ev.key === "?") { showKeys(); return; }
+  if (!inSketch() && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+    if (ev.key === "m") { setMeasuring(!measuring); return; }
+    if (ev.key === "f") { fitView("iso"); return; }
+  }
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") { ev.preventDefault(); undoRedo(ev.shiftKey ? "redo" : "undo"); }
 });
 

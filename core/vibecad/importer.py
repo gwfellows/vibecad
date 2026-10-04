@@ -1,0 +1,186 @@
+"""Reading STEP / IGES / BREP / STL files into OCCT shapes for the `import` feature.
+
+Loaded shapes are cached by (path, mtime, size), so regenerating a part doesn't re-read a big STEP file, and
+editing the file on disk is picked up on the next build.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from OCP.BRep import BRep_Builder, BRep_Tool
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid, BRepBuilderAPI_Sewing
+from OCP.ShapeUpgrade import ShapeUpgrade_UnifySameDomain
+from OCP.TopAbs import TopAbs_SHELL
+from OCP.TopoDS import TopoDS, TopoDS_Face, TopoDS_Shape
+
+from .topo import explore, list_faces
+
+SUFFIXES = {".step": "step", ".stp": "step", ".iges": "iges", ".igs": "iges", ".brep": "brep", ".brp": "brep", ".stl": "stl"}
+MAX_STL_SOLID_TRIANGLES = 20000  # sewing a mesh into a solid is slow past this; import it as a reference instead
+
+_cache: dict[tuple, tuple[TopoDS_Shape, dict]] = {}
+
+
+class ImportError_(ValueError):
+    pass
+
+
+_loading: set[str] = set()  # parts being regenerated for an import: a part can't import itself, even indirectly
+
+
+def is_part(path: Path) -> bool:
+    return path.name.endswith(".vcad.json")
+
+
+def _nearby(path: Path) -> str:
+    """The CAD files next to where it looked: the agent often guesses a folder that isn't there."""
+    for d in (path.parent, path.parent.parent):
+        if d.is_dir():
+            files = sorted(p.name for p in d.iterdir() if p.suffix.lower() in (".step", ".stp", ".iges", ".igs", ".brep", ".brp", ".stl")
+                           or p.name.endswith(".vcad.json"))
+            if files:
+                return f"; files in {d.name or d}: {', '.join(files[:12])} (paths are relative to the part's folder)"
+    return ""
+
+
+def part_label(label) -> str:
+    """Another part's face label as an import entity: brackets and @ would clash with our own label syntax."""
+    return str(label).replace("[", "(").replace("]", ")").replace("@", "~")
+
+
+def load_part(path: Path) -> tuple[TopoDS_Shape, list, dict]:
+    """Another VibeCAD part, regenerated: its solid and its face labels, so references to it read like
+    `{"feature": "enclosure", "role": "face", "entity": "box.end"}` and survive edits to that part."""
+    from .regen import Regenerator, load as load_doc
+    if not path.exists():
+        raise ImportError_(f"import file {path} not found{_nearby(path)}")
+    key = str(path.resolve())
+    if key in _loading:
+        raise ImportError_(f"{path.name} imports itself (directly or through other parts)")
+    _loading.add(key)
+    try:
+        res = Regenerator(path.parent).run(load_doc(path))
+    finally:
+        _loading.discard(key)
+    if res.body.shape is None:
+        first = next((f for f in res.features if f.status == "error"), None)
+        raise ImportError_(f"part {path.name} has no solid" + (f"; its {first.id}: {first.message}" if first else ""))
+    return res.body.shape, res.body.labels, {"format": "part", "mesh": False, "part_ok": res.ok}
+
+
+def file_stamp(path: Path) -> str:
+    try:
+        st = path.stat()
+    except OSError:
+        return "missing"
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def load(path: Path, as_solid: bool) -> tuple[TopoDS_Shape, dict]:
+    """The file's shape and facts about it ({"format", "triangles"?, "mesh": bool}). `as_solid`: an STL is sewn
+    into a solid (needed for booleans); otherwise it stays one triangulated face (fast; display and fit only)."""
+    if not path.exists():
+        raise ImportError_(f"import file {path} not found{_nearby(path)}")
+    kind = SUFFIXES.get(path.suffix.lower())
+    if kind is None:
+        raise ImportError_(f"can't import {path.suffix!r} files; use STEP (.step/.stp), IGES, BREP or STL")
+    key = (str(path.resolve()), file_stamp(path), as_solid)  # a solid may be sewn from the surfaces: cached apart
+    if key in _cache:
+        return _cache[key]
+    info: dict = {"format": kind, "mesh": False}
+    if kind == "step":
+        import build123d as bd
+        shape = bd.import_step(str(path)).wrapped
+    elif kind == "iges":
+        from OCP.IGESControl import IGESControl_Reader
+        from OCP.IFSelect import IFSelect_RetDone
+        r = IGESControl_Reader()
+        if r.ReadFile(str(path)) != IFSelect_RetDone:
+            raise ImportError_(f"could not read IGES file {path.name}")
+        r.TransferRoots()
+        shape = r.OneShape()
+    elif kind == "brep":
+        from OCP.BRepTools import BRepTools
+        shape = TopoDS_Shape()
+        if not BRepTools.Read_s(shape, str(path), BRep_Builder()):
+            raise ImportError_(f"could not read BREP file {path.name}")
+    else:
+        shape, info = _load_stl(path, as_solid)
+    if shape is None or shape.IsNull() or not list_faces(shape):
+        raise ImportError_(f"{path.name} contains no surfaces")
+    if as_solid and kind != "stl":
+        shape, info = _solidify(shape, info)
+    _cache[key] = (shape, info)
+    return shape, info
+
+
+def _solidify(shape: TopoDS_Shape, info: dict) -> tuple[TopoDS_Shape, dict]:
+    """Surfaces with no solid (IGES files usually, some STEP exports) sewn into solids, where they close. A shape
+    that already has solids is left as it is."""
+    import build123d as bd
+
+    sh = bd.Shape.cast(shape)
+    if sh.solids():
+        return shape, info
+    diag = sh.bounding_box().diagonal or 1.0
+    for tol in (1e-6 * diag, 1e-4 * diag, 1e-3 * diag):  # tightest first: a loose tolerance can merge real detail
+        sew = BRepBuilderAPI_Sewing(tol)
+        sew.Add(shape)
+        sew.Perform()
+        closed = [x for x in explore(sew.SewedShape(), TopAbs_SHELL) if BRep_Tool.IsClosed_s(x)]
+        if not closed:
+            continue
+        from OCP.BRepLib import BRepLib
+        solids = []
+        for x in closed:
+            mk = BRepBuilderAPI_MakeSolid(TopoDS.Shell(x))
+            so = mk.Solid()
+            BRepLib.OrientClosedSolid_s(so)
+            solids.append(so)
+        from OCP.TopoDS import TopoDS_Compound
+        comp = TopoDS_Compound()
+        b = BRep_Builder()
+        b.MakeCompound(comp)
+        for so in solids:
+            b.Add(comp, so)
+        return (solids[0] if len(solids) == 1 else comp), {**info, "sewn": True, "sew_tolerance": tol}
+    return shape, info
+
+
+def _load_stl(path: Path, as_solid: bool) -> tuple[TopoDS_Shape, dict]:
+    from OCP.RWStl import RWStl
+
+    tri = RWStl.ReadFile_s(str(path))
+    if tri is None:
+        raise ImportError_(f"could not read STL file {path.name}")
+    n = tri.NbTriangles()
+    info = {"format": "stl", "triangles": n, "mesh": True}
+    if not as_solid:
+        face = TopoDS_Face()
+        BRep_Builder().MakeFace(face, tri)
+        return face, info
+    if n > MAX_STL_SOLID_TRIANGLES:
+        raise ImportError_(f"{path.name} has {n} triangles; a mesh this big can only be imported with mode "
+                           f"'reference' (booleans need a solid, and sewing more than {MAX_STL_SOLID_TRIANGLES} "
+                           "triangles is too slow). Use a STEP file for a solid.")
+    from OCP.StlAPI import StlAPI_Reader
+
+    raw = TopoDS_Shape()
+    if not StlAPI_Reader().Read(raw, str(path)):
+        raise ImportError_(f"could not read STL file {path.name}")
+    sew = BRepBuilderAPI_Sewing(1e-4)
+    sew.Add(raw)
+    sew.Perform()
+    shells = explore(sew.SewedShape(), TopAbs_SHELL)
+    if not shells:
+        raise ImportError_(f"{path.name}: the mesh doesn't form a closed surface, so it can't become a solid; import it as a reference")
+    mk = BRepBuilderAPI_MakeSolid()
+    for sh in shells:
+        mk.Add(TopoDS.Shell(sh))
+    solid = mk.Solid()
+    from OCP.BRepLib import BRepLib
+    BRepLib.OrientClosedSolid_s(solid)  # sewn shells can come out inside-out: negative volume
+    u = ShapeUpgrade_UnifySameDomain(solid, True, True, False)  # a box's 12 triangles become its 6 faces
+    u.Build()
+    info["mesh"] = False
+    return u.Shape(), info

@@ -1,0 +1,769 @@
+// Browser test: working on real parts — importing CAD files (STEP / STL, reference or solid, units, placement),
+// holes (clicked on a face, or at sketch points), pattern / mirror / shell, measure, section, export, the view gizmo.
+// Also opens every part in USERPARTS (a folder of .vcad.json, optional) and edits one parameter of each.
+// Usage: node realparts.js <base_url> <screenshot_dir> <fixtures_dir> [three_pkg_dir]
+const { chromium } = require("playwright");
+const path = require("path");
+
+const [BASE, OUT, FIX, THREE] = process.argv.slice(2);
+const results = [];
+const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " — " + detail : ""}`); };
+const near = (a, b, tol) => a != null && b != null && Math.abs(a - b) <= tol;
+
+(async () => {
+  const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
+  const pageErrors = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
+  let partName = "";
+  page.on("dialog", (d) => d.accept(partName));
+  if (THREE) await page.route("https://cdn.jsdelivr.net/npm/three@0.170.0/**", (route) =>
+    route.fulfill({ path: path.join(THREE, route.request().url().split("three@0.170.0/")[1]), contentType: "application/javascript" }));
+  const shot = (n) => page.screenshot({ path: path.join(OUT, `real_${n}.png`) });
+  const state = () => page.evaluate(() => fetch("/api/state").then((r) => r.json()).then((s) => s.state));
+  const vol = async () => (await state())?.volume;
+  const idle = async () => {
+    await page.waitForFunction(() => document.querySelector("#rebuild").hidden, null, { timeout: 60000 });
+    await page.waitForTimeout(700);
+  };
+  const open = async (p) => {
+    await page.selectOption("#partSelect", p);
+    await page.waitForFunction((p) => document.querySelector("#partName").textContent.includes(p.split("/").pop()), p, { timeout: 30000 });
+    await idle();
+    await page.waitForTimeout(800);
+  };
+  const newPart = async (name) => {
+    await page.click("#newBtn");
+    await page.fill("#npName", name);
+    await page.click("#npCreate");
+    await page.waitForFunction((n) => document.querySelector("#partName").textContent.includes(n), name, { timeout: 15000 });
+    await page.waitForTimeout(500);
+  };
+  const click3d = async (x, y, z, opts = {}) => {
+    const [px, py] = await page.evaluate(([x, y, z]) => window.vibecadView.toScreen(x, y, z), [x, y, z]);
+    if (opts.shift) await page.keyboard.down("Shift");
+    await page.mouse.click(px, py);
+    if (opts.shift) await page.keyboard.up("Shift");
+    await page.waitForTimeout(400);
+  };
+  const importFile = async (file, { mode, units, place } = {}) => {
+    await page.setInputFiles("#importFile", path.join(FIX, file));
+    await page.waitForSelector("#imGo", { timeout: 30000 });
+    if (mode) await page.selectOption("#imMode", mode);
+    if (units) await page.selectOption("#imUnits", units);
+    if (place) await page.selectOption("#imPlace", place);
+    const size = await page.textContent("#imSize");
+    await page.click("#imGo");
+    await idle();
+    return size;
+  };
+  const treeIds = () => page.$$eval("#tree li.feat", (l) => l.map((x) => x.dataset.id));
+
+  await page.goto(BASE);
+  await page.waitForSelector("#conn.live", { timeout: 20000 });
+
+  // ── the ribbon: every tool has an icon and a label ──
+  const labels = await page.$$eval("#modelTools button.rb", (l) => l.map((b) => [b.querySelector("svg") ? 1 : 0, b.textContent.trim()]));
+  check("ribbon buttons have an icon and a label", labels.length >= 13 && labels.every(([i, t]) => i && t), JSON.stringify(labels.map((x) => x[1])));
+  const fits = await page.evaluate(() => { const r = document.querySelector("#modelTools"), c = document.querySelector("#center").getBoundingClientRect(),
+    last = [...r.querySelectorAll("button.rb")].at(-1).getBoundingClientRect();
+    return { scroll: r.scrollWidth - r.clientWidth, lastRight: last.right, centerRight: c.right, width: c.width }; });
+  check("the whole ribbon fits in the view (no button cut off)", fits.scroll <= 1 && fits.lastRight <= fits.centerRight, JSON.stringify(fits));
+  for (const [w, labelled] of [[1440, true], [1100, false]]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(300);
+    const f = await page.evaluate(() => { const r = document.querySelector("#modelTools"), c = document.querySelector("#center").getBoundingClientRect(),
+      b = [...r.querySelectorAll("button.rb")]; return { scroll: r.scrollWidth - r.clientWidth, lastRight: b.at(-1).getBoundingClientRect().right,
+      centerRight: c.right, labels: getComputedStyle(b[0].querySelector("span")).display !== "none" }; });
+    if (!labelled) await shot("ribbon_narrow");
+    if (!labelled) {
+      const ov = await page.evaluate(() => { const g = document.querySelector("#gizmo").getBoundingClientRect(), v = document.querySelector(".vtools.viewbar").getBoundingClientRect();
+        return { gizmoRight: g.right, viewbarLeft: v.left }; });
+      check(`at ${w} px the view bar clears the gizmo`, ov.viewbarLeft >= ov.gizmoRight, JSON.stringify(ov));
+    }
+    check(`at ${w} px the ribbon fits${labelled ? " with its labels" : ", icons only"}`, f.scroll <= 1 && f.lastRight <= f.centerRight && f.labels === labelled, JSON.stringify(f));
+  }
+  await page.setViewportSize({ width: 1500, height: 900 });
+
+  // ── import a phone as a reference body, then design a case plate on it ──
+  await newPart("case_test");
+  check("Hole, Shell, Export are off with no solid", await page.isDisabled("#holeBtn") && await page.isDisabled("#shellBtn") && await page.isDisabled("#exportBtn"));
+  const phoneSize = await importFile("phone.step", { mode: "reference", place: "origin" });
+  check("import form shows the size in the part", phoneSize.includes("71.5 × 146.7 × 9"), phoneSize);
+  let st = await state();
+  check("reference import adds a feature but no solid", st.features.some((f) => f.type === "import" && f.status === "ok") && st.volume == null,
+    JSON.stringify(st.features.map((f) => [f.id, f.status, f.message])));
+  check("the reference body is drawn", (await page.evaluate(() => window.vibecadView.refs())).length === 1);
+  const ref = (await page.evaluate(() => window.vibecadView.refs()))[0];
+  const imp = st.features.find((f) => f.type === "import");
+  const fj = await page.evaluate((id) => fetch(`/api/feature/${id}`).then((r) => r.json()), imp.id);
+  check("placed on the origin: centred in X/Y and on XY", JSON.stringify(fj.translate) === JSON.stringify([-200, -100, -30]), JSON.stringify(fj.translate));
+  await shot("1_reference");
+  // sketch on the reference's back face, extrude a plate under it
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(400);
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");  // look up from below
+  await page.waitForTimeout(500);
+  const dir = await page.evaluate(() => window.vibecadView.viewDir());
+  check("gizmo -Z looks up the Z axis", near(dir[2], 1, 1e-3), JSON.stringify(dir));
+  await click3d(0, 0, 0);
+  const picked = await page.evaluate(() => window.vibecadView.pickedFace());
+  check("a reference face can be picked", picked && picked.labels[0].startsWith(`${ref}.face[`), JSON.stringify(picked));
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-face]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.keyboard.press("r");
+  const sk = (fn, a) => page.evaluate(([src, a]) => new Function("sk", "a", `return (${src})(sk, a)`)(window.vibecadSketch, a), [fn.toString(), a]);
+  const scr = (u, v) => sk((s, a) => s.toScreen(a[0], a[1]), [u, v]);
+  for (const [u, v] of [[-30, -60], [30, 60]]) { const [x, y] = await scr(u, v); await page.mouse.click(x, y); await page.waitForTimeout(700); }
+  await page.waitForTimeout(500);
+  const nEnt = await sk((s) => s.data()?.entities.length);
+  if (nEnt !== 4) { await shot("debug_rect"); console.log("sketch", await page.textContent("#sketchInfo"), await page.textContent("#log")); }
+  check("a rectangle drawn on the reference face", nEnt === 4, String(nEnt));
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "2");
+  await page.selectOption("#ffMode", "new");
+  await page.click("#ffGo");
+  await idle();
+  check("plate extruded from the reference's face", near(await vol(), 60 * 120 * 2, 1), `${await vol()}`);
+  const bb = (await state()).bbox;
+  check("the plate sits against the phone's back (outside it, below z = 0)", bb && near(bb[2], 2, 1e-6), JSON.stringify(bb));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("2_case_plate");
+
+  // ── an STL (a mesh) sewn into a solid: a new body the size of the STEP version ──
+  await importFile("phone.stl", { mode: "new", place: "origin" });
+  st = await state();
+  const stl = st.features.at(-1);
+  check("STL imports as a solid body", stl.type === "import" && stl.status === "ok" && !stl.warnings?.length, JSON.stringify([stl.status, stl.message, stl.warnings]));
+  check("its volume matches the STEP's within the mesh tolerance", near((await vol()) - 14400, 82046.4, 82046.4 * 0.01), `${(await vol()) - 14400}`);
+
+  // ── a phone case in two steps: import the phone as a solid, shell it outward with the screen open ──
+  await newPart("phone_case");
+  await importFile("phone.step", { mode: "new", place: "origin" });
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(300);
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");  // look up at the screen (the flat side; the camera bump is on the back)
+  await page.waitForTimeout(400);
+  await click3d(-20, -40, 0);
+  await page.click("#shellBtn");
+  await page.selectOption("#shDir", "out");
+  await page.fill("#shT", "1.6");
+  await page.click("#shGo");
+  await idle();
+  st = await state();
+  check("outward shell builds the case skin", st.features.at(-1).status === "ok" && st.features.at(-1).type === "shell", JSON.stringify(st.features.at(-1).message));
+  // walls round the sides and over the back (the camera bump included); open where the screen was
+  check("the case is the phone plus a 1.6 mm wall", st.bbox && near(st.bbox[0], 71.5 + 3.2, 1e-3) && near(st.bbox[1], 146.7 + 3.2, 1e-3) && near(st.bbox[2], 9 + 1.6, 1e-3),
+    JSON.stringify(st.bbox));
+  check("and hollow: far less than the phone's volume", st.volume < 82046 * 0.4, `${st.volume}`);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("5_phone_case");
+
+  // ── another part of the folder as a live reference: a lid designed on the enclosure's top ──
+  await newPart("lid_test");
+  await page.click("#importBtn");
+  await page.click('#featMenu [data-part="enclosure_lid.vcad.json"]');
+  await page.waitForSelector("#imGo", { timeout: 30000 });
+  check("a part imports as a reference by default", (await page.inputValue("#imMode")) === "reference" && (await page.textContent("#featMenu")).includes("kept live"));
+  await page.click("#imGo");
+  await idle();
+  st = await state();
+  const encF = await page.evaluate(() => fetch(`/api/feature/enclosure_lid1`).then((r) => r.json()));
+  check("its file is relative to this part", encF.file === "../enclosure_lid.vcad.json", JSON.stringify(encF.file));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(400);
+  await click3d(-20, 0, 20);  // the enclosure's top, clear of the vent slots
+  const top = await page.evaluate(() => window.vibecadView.pickedFace());
+  check("its faces carry the part's own labels", top?.labels?.[0] === "enclosure_lid1.face[box.end]", JSON.stringify(top));
+
+  // ── the gasket for that lid, by hand: sketch on its rim, project the rim, offset both edges, extrude ──
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");  // look up at the open bottom
+  await page.waitForTimeout(400);
+  await click3d(-39, 0, 0);  // on the rim (the left wall is 2 mm thick: x from -40 to -38)
+  const rim = await page.evaluate(() => window.vibecadView.pickedFace());
+  check("the lid's rim picked", rim?.labels?.[0] === "enclosure_lid1.face[box.start]", JSON.stringify(rim));
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-face]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.click("#sketchTools [data-act=project]");
+  await idle();
+  const gsk = (fn, a) => page.evaluate(([src, a]) => new Function("sk", "a", `return (${src})(sk, a)`)(window.vibecadSketch, a), [fn.toString(), a]);
+  const nProj = await gsk((s) => s.data().entities.filter((e) => e.external).length);
+  check("all 16 rim edges projected", nProj === 16, String(nProj));
+  // an outer edge and an inner one: the projected lines along y = ±25 (outside) and ±23 (inside), in sketch coordinates
+  const pick = async (pred) => gsk((s, src) => { const f = new Function("e", `return (${src})(e)`); return s.data().entities.find((e) => e.external && e.type === "line" && f(e))?.id; }, pred.toString());
+  const outerId = await pick((e) => Math.abs(Math.abs(e.p1[1]) - 25) < 1e-6 && Math.abs(e.p1[1] - e.p2[1]) < 1e-6);
+  const innerId = await pick((e) => Math.abs(Math.abs(e.p1[1]) - 23) < 1e-6 && Math.abs(e.p1[1] - e.p2[1]) < 1e-6);
+  for (const [id, d] of [[outerId, "-0.5"], [innerId, "0.5"]]) {
+    await gsk((s, k) => s.select([k]), id);
+    await page.keyboard.press("k");
+    await page.waitForSelector("#dimEdit:not([hidden])");
+    await page.fill("#dimEdit input", d);
+    await page.press("#dimEdit input", "Enter");
+    await idle();
+  }
+  const offs = await gsk((s) => [...new Set(s.data().entities.filter((e) => e.offset).map((e) => e.offset))]);
+  check("two offsets of the rim", offs.length === 2, JSON.stringify(offs));
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "1.5");
+  await page.selectOption("#ffMode", "new");
+  await page.click("#ffGo");
+  await idle();
+  check("the gasket, made by clicking, matches the example part", near(await vol(), 367.699, 0.01), `${await vol()}`);
+
+  // ── units: an inch model comes in at the right size ──
+  await newPart("inch_test");
+  const inSize = await importFile("block_inches.step", { units: "in" });
+  check("the units guess says inches for a 2 in block", inSize.includes("50.8 × 38.1 × 12.7"), inSize);
+  check("scaled to mm", near(await vol(), 2 * 1.5 * 0.5 * 25.4 ** 3, 0.5), `${await vol()}`);
+
+  // ── holes: click a face, choose a screw; volumes as the formulas say ──
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(400);
+  const v0 = await vol();
+  await click3d(25.4, 19.05, 12.7);  // middle of the top face
+  await page.click("#holeBtn");
+  await page.selectOption("#hoKind", "counterbore");
+  await page.selectOption("#hoScrew", "M5");
+  check("screw preset fills the sizes", (await page.inputValue("#hoD")) === "5.5" && (await page.inputValue("#hoCbD")) === "9.5");
+  await page.click("#hoGo");
+  await idle();
+  const cb = Math.PI * 4.75 ** 2 * 5.4 + Math.PI * 2.75 ** 2 * (12.7 - 5.4);
+  check("M5 counterbore removes what it should", near(v0 - (await vol()), cb, 0.05), `${v0} -> ${await vol()} (expected -${cb.toFixed(2)})`);
+  const ids = await treeIds();
+  check("the hole's position sketch and feature are in the tree", ids.includes("hole1_at") && ids.includes("hole1"), ids.join());
+  const hj = await page.evaluate(() => fetch("/api/feature/hole1_at").then((r) => r.json()));
+  check("the position is dimensioned from the origin", hj.constraints.some((c) => c.name === "hole1_x"), JSON.stringify(hj.constraints));
+  // tapped blind hole
+  const v1 = await vol();
+  await click3d(10, 10, 12.7);
+  await page.click("#holeBtn");
+  await page.selectOption("#hoKind", "tapped");
+  await page.selectOption("#hoScrew", "M4");
+  check("tapped defaults to blind with the tap drill", (await page.inputValue("#hoD")) === "3.3" && (await page.inputValue("#hoExt")) === "blind");
+  await page.fill("#hoDepth", "8");
+  await page.click("#hoGo");
+  await idle();
+  const tr = 1.65, tap = Math.PI * tr * tr * 8 + Math.PI * tr * tr * (tr / Math.tan((59 * Math.PI) / 180)) / 3;
+  check("M4 tapped blind hole with drill point", near(v1 - (await vol()), tap, 0.05), `${v1} -> ${await vol()} (expected -${tap.toFixed(3)})`);
+  const tj = await page.evaluate(() => fetch("/api/feature/hole2").then((r) => r.json()));
+  check("thread recorded", tj.thread === "M4x0.7", JSON.stringify(tj));
+
+  // ── engrave text where the face was clicked, then change it in its form ──
+  const vt = await vol();
+  await click3d(38, 30, 12.7);
+  await page.click("#textBtn");
+  await page.fill("#txT", "R2");
+  await page.fill("#txS", "6");
+  await page.click("#txGo");
+  await idle();
+  const vt2 = await vol();
+  check("engraved text removes a little material", vt2 < vt && vt - vt2 < 20, `${vt} -> ${vt2}`);
+  await page.dblclick("#tree li.feat[data-id=text1] .fid");
+  await page.waitForSelector("#efGo");
+  await page.selectOption("#efM", "add");
+  await page.click("#efGo");
+  await idle();
+  check("switched to embossed: adds what it cut", near((await vol()) - vt, vt - vt2, 0.01), `${vt2} -> ${await vol()}`);
+  await page.keyboard.press("Control+z"); await idle();
+  await page.keyboard.press("Control+z"); await idle();
+  check("undone", near(await vol(), vt, 1e-3));
+
+  // ── pattern the tapped hole, then mirror it ──
+  const v2 = await vol();
+  await page.click("#tree li.feat[data-id=hole2] .fid");
+  await page.click("#patternBtn");
+  check("pattern form ticks the selected feature", await page.isChecked("#featMenu .checks input[value=hole2]"));
+  await page.selectOption("#paDir", "X");
+  await page.fill("#paSp", "8");
+  await page.fill("#paN", "3");
+  await page.click("#paGo");
+  await idle();
+  check("pattern: two more tapped holes", near(v2 - (await vol()), 2 * tap, 0.1), `${v2} -> ${await vol()}`);
+  const v3 = await vol();
+  await page.click("#mirrorBtn");
+  await page.selectOption("#miPl", "XZ");
+  check("mirror asks where the plane is in world terms", (await page.textContent("#miAtL")) === "at Y =");
+  await page.fill("#miOff", "19.05");
+  await page.click("#miGo");
+  await idle();
+  check("mirror across the block's middle: one more hole", near(v3 - (await vol()), tap, 0.1), `${v3} -> ${await vol()}`);
+
+  // ── edit a feature in its own form: double-click it in the tree ──
+  const v5 = await vol();
+  await page.dblclick("#tree li.feat[data-id=hole2] .fid");
+  await page.waitForSelector("#efGo", { timeout: 10000 });
+  check("double-click opens the hole's settings", (await page.textContent("#featMenu .ttl")).includes("hole2") && (await page.inputValue("#efDepth")) === "8");
+  await page.fill("#efDepth", "10");
+  await page.click("#efGo");
+  await idle();
+  // four tapped holes now (the original, two pattern copies, the mirror): each 2 mm deeper
+  check("deeper tapped holes, patterned and mirrored copies too", near(v5 - (await vol()), 4 * Math.PI * 1.65 ** 2 * 2, 0.05), `${v5} -> ${await vol()}`);
+  await page.click("#tree li.feat[data-id=pattern1] .fid");
+  await page.waitForSelector("#details .editbtn");
+  await page.click("#details .editbtn");
+  await page.waitForSelector("#efGo");
+  await page.fill("#efN", "2");
+  const v6 = await vol();
+  await page.click("#efGo");
+  await idle();
+  check("pattern count 3 → 2 via Edit", near((await vol()) - v6, Math.PI * 1.65 ** 2 * 10 + Math.PI * 1.65 ** 2 * (1.65 / Math.tan((59 * Math.PI) / 180)) / 3, 0.05), `${v6} -> ${await vol()}`);
+  await page.click("#tree li.feat[data-id=block_inches1] .fid");
+  const impEdit = await page.waitForFunction(() => document.querySelector("#details .editbtn")?.textContent.includes("Edit import"), null, { timeout: 10000 }).then(() => true, () => false);
+  check("an import's settings are editable too", impEdit);
+
+  // ── measure ──
+  await page.click("#measureBtn");
+  check("measure mode on", await page.evaluate(() => window.vibecadView.measuring()));
+  await page.click(".vtools [data-view=front]");
+  await page.waitForTimeout(400);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(400);
+  await click3d(40, 30, 12.7);  // top
+  await click3d(50.8, 20, 5);   // right side
+  await page.waitForTimeout(800);
+  let mt = await page.textContent("#measurePanel");
+  check("two faces: angle 90°", mt.includes("90°"), mt.slice(0, 300));
+  await page.click("#measureBtn"); await page.click("#measureBtn");  // start over
+  await click3d(4, 34, 12.7);  // top, back left: clear of the measure panel
+  await page.click(".vtools [data-view=iso]"); await page.waitForTimeout(300);
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']"); await page.waitForTimeout(400);
+  check("first pick kept", (await page.evaluate(() => window.vibecadView.measurePicks())).length === 1);
+  await click3d(40, 30, 0);  // bottom, seen from below
+  await page.waitForTimeout(900);
+  mt = await page.textContent("#measurePanel");
+  check("top to bottom: 12.7 mm apart", mt.includes("12.7 mm"), mt.slice(0, 300));
+  check("part mass needs a material", mt.includes("Set a material"), mt.slice(-200));
+  await shot("3_measure");
+  await page.keyboard.press("Escape");
+  check("Esc leaves measure mode", !(await page.evaluate(() => window.vibecadView.measuring())));
+
+  // ── section ──
+  await page.click(".vtools [data-view=iso]");
+  await page.click("#sectionBtn");
+  await page.waitForTimeout(300);
+  let clip = await page.evaluate(() => window.vibecadView.clip());
+  check("section on: a Y plane through the middle, the far half kept", clip.length === 1 && clip[0].normal[1] === 1 && near(-clip[0].constant, 19.05, 0.01), JSON.stringify(clip));
+  await page.click("#sectionPanel [data-ax=X]");
+  await page.evaluate(() => { const r = document.querySelector("#secT"); r.value = 0.25; r.dispatchEvent(new Event("input")); });
+  clip = await page.evaluate(() => window.vibecadView.clip());
+  // the iso camera is on the +X side: the kept half is -X, so the cut faces the camera
+  check("X plane at a quarter, cut facing the camera", clip[0].normal[0] === -1 && near(clip[0].constant, 12.7, 0.01), JSON.stringify(clip));
+  await shot("4_section");
+  await page.click("#sectionBtn");
+  check("section off", (await page.evaluate(() => window.vibecadView.clip())).length === 0);
+
+  // ── export ──
+  for (const fmt of ["step", "stl", "3mf", "svg"]) {
+    await page.click("#exportBtn");
+    const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), page.click(`#featMenu a[data-fmt="${fmt}"]`)]);
+    const p = await dl.path();
+    const size = require("fs").statSync(p).size;
+    const head = require("fs").readFileSync(p).slice(0, 20).toString();
+    check(`export ${fmt}`, dl.suggestedFilename() === `inch_test.${fmt}` && size > 1000 && (fmt !== "step" || head.startsWith("ISO-10303-21")) && (fmt !== "svg" || head.startsWith("<svg")), `${dl.suggestedFilename()} ${size} B`);
+  }
+
+  // ── shell an imported block with its top open (shell before drilling: OCCT can't offset through holes) ──
+  await newPart("shell_test");
+  await importFile("block_inches.step", { units: "in" });
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(400);
+  await click3d(25, 19, 12.7);
+  await page.click("#shellBtn");
+  check("shell form names the open face", (await page.textContent("#featMenu")).includes("Opens"));
+  await page.fill("#shT", "2");
+  await page.click("#shGo");
+  await idle();
+  st = await state();
+  check("shell builds", st.features.at(-1).type === "shell" && st.features.at(-1).status === "ok", JSON.stringify(st.features.at(-1).message));
+  const shellV = 50.8 * 38.1 * 12.7 - 46.8 * 34.1 * 10.7;
+  check("shell leaves 2 mm walls and floor", near(await vol(), shellV, 0.5), `${await vol()} (expected ${shellV.toFixed(1)})`);
+
+  // ── imported example as a base solid ──
+  await newPart("reuse_test");
+  await importFile("pillow_block.step");
+  const pv = await vol();
+  check("a STEP of a real part imports as the base solid", near(pv, 29540.964, 0.5), `${pv}`);
+
+  // ── sketch tools for real outlines: slot and polygon, drawn by clicking, fully constrained ──
+  await newPart("sketch_tools");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  const skf = (fn, a) => page.evaluate(([src, a]) => new Function("sk", "a", `return (${src})(sk, a)`)(window.vibecadSketch, a), [fn.toString(), a]);
+  const at = async (u, v) => { const [x, y] = await skf((s, a) => s.toScreen(a[0], a[1]), [u, v]); await page.mouse.click(x, y); await page.waitForTimeout(500); };
+  await page.keyboard.press("o");
+  check("O picks the slot tool", (await skf((s) => s.tool())) === "slot");
+  await at(-10, 0); await at(10, 0); await at(0, 4);
+  await page.waitForTimeout(600);
+  let d = await skf((s) => s.data());
+  check("slot drawn: two arcs, two sides, 0 DOF", d.entities.filter((e) => e.type === "arc").length === 2 && d.dof === 0, `${d.entities.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.keyboard.press("n");
+  partName = "6";  // the sides prompt
+  await at(0, 20); await at(6, 20);
+  await page.waitForTimeout(800);
+  d = await skf((s) => s.data());
+  check("hexagon drawn, still 0 DOF", d.entities.filter((e) => e.id.startsWith("hex")).length === 6 && d.dof === 0, `${d.entities.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "5");
+  await page.click("#ffGo");
+  await idle();
+  const slotA = 20 * 8 + Math.PI * 16, hexA = (3 * Math.sqrt(3) / 2) * 36;
+  check("slot and hexagon extrude to the right volume", near(await vol(), (slotA + hexA) * 5, 0.5), `${await vol()} (expected ${((slotA + hexA) * 5).toFixed(1)})`);
+
+  // ── round a corner in a sketch: a rectangle keeps its size, the corner becomes a tangent arc ──
+  await newPart("round_test");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.keyboard.press("r");
+  await at(0, 0); await at(30, 20);
+  await page.keyboard.press("s");
+  const dimOps = [{ op: "add_constraint", sketch: "sketch1", constraint: { type: "distance", on: ["rect1_bottom"], value: 30, name: "w" } },
+    { op: "add_constraint", sketch: "sketch1", constraint: { type: "distance", on: ["rect1_right"], value: 20, name: "h" } },
+    { op: "add_constraint", sketch: "sketch1", constraint: { type: "coincident", on: ["rect1_bottom.p1", "origin"] } }];
+  await page.evaluate((ops) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ops, message: "size it" }) }), dimOps);
+  await idle();
+  check("rectangle fully constrained", (await skf((s) => s.data().dof)) === 0);
+  await at(30, 20);  // the top-right corner
+  check("a corner point selected enables Round corner", !(await page.isDisabled("#sketchTools [data-act=roundcorner]")));
+  await page.keyboard.press("f");
+  await page.waitForSelector("#dimEdit:not([hidden])");
+  await page.fill("#dimEdit input", "4");
+  await page.press("#dimEdit input", "Enter");
+  await idle();
+  d = await skf((s) => s.data());
+  check("the corner became a tangent arc, still 0 DOF", d.entities.some((e) => e.type === "arc" && Math.abs(e.r - 4) < 1e-6) && d.dof === 0,
+    `${d.entities.map((e) => `${e.id}:${e.type}`).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "2");
+  await page.click("#ffGo");
+  await idle();
+  check("rounded plate: 30 × 20 less the corner", near(await vol(), (600 - 16 * (1 - Math.PI / 4)) * 2, 0.01), `${await vol()}`);
+
+  // ── extrude up to a face: a post sketched 12 above the plate grows down to the plate's top; then draft it ──
+  const plateVol = await vol();
+  await page.click("#newSketchBtn");
+  await page.fill("#nsOffset", "12");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.keyboard.press("r");
+  await at(8, 6); await at(16, 12);
+  await page.waitForTimeout(500);
+  await page.click("#extrudeBtn");
+  check("extrude offers distance / through all / up to face", (await page.$$eval("#ffExt option", (o) => o.map((x) => x.value))).join() === "blind,through_all,up_to_face");
+  await page.selectOption("#ffExt", "up_to_face");
+  await page.waitForFunction(() => document.querySelector("#ffFace option")?.textContent !== "loading…");
+  const faceOpts = await page.$$eval("#ffFace option", (o) => o.map((x) => x.textContent));
+  check("up to face lists the plate's top, 10 below the sketch", faceOpts[0] === "extrude1.end · 10 below", faceOpts.join(" | "));
+  check("the distance field becomes 'past it by' 0", (await page.textContent("#ffDistLbl")) === "past it by" && (await page.inputValue("#ffDist")) === "0");
+  check("direction is hidden for up to face", await page.$eval("#ffDir", (e) => e.closest(".row").hidden));
+  await shot("extrude_up_to_face");
+  await page.click("#ffGo");
+  await idle();
+  let pst = await state();
+  const postA = (await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json())));
+  check("post extruded down to the plate", postA.extent === "up_to_face" && postA.to_face.feature === "extrude1" && near(pst.bbox[2], 12, 1e-6) && pst.volume > plateVol + 100,
+    `${JSON.stringify(postA.to_face)} bbox ${JSON.stringify(pst.bbox)} vol ${pst.volume}`);
+  const postVol = pst.volume;
+  await page.dblclick("#tree li.feat[data-id=extrude2] .fid");
+  await page.waitForSelector("#efGo");
+  await page.waitForFunction(() => !document.querySelector("#exFaceRow").hidden && document.querySelector("#exFace option")?.textContent !== "loading…");
+  check("the edit form reopens on up to face, with the face chosen", (await page.inputValue("#exExt")) === "up_to_face" &&
+    (await page.$eval("#exFace", (s) => s.selectedOptions[0].textContent)).startsWith("extrude1.end"));
+  await page.fill("#exDraft", "5");
+  await page.click("#efGo");
+  await idle();
+  pst = await state();
+  check("a 5° draft tapers the post (less volume, same height)", pst.volume < postVol - 1 && pst.volume > plateVol, `${postVol} -> ${pst.volume}`);
+  const drafted = await page.evaluate(() => fetch("/api/feature/extrude2").then((r) => r.json()));
+  check("the draft is stored on the feature and nothing else changed", drafted.draft === 5 && drafted.extent === "up_to_face" && (drafted.distance ?? 0) === 0, JSON.stringify(drafted));
+
+  // ── two files chosen at once import one after the other ──
+  await newPart("multi_import");
+  await page.setInputFiles("#importFile", [path.join(FIX, "phone.step"), path.join(FIX, "pillow_block.step")]);
+  await page.waitForSelector("#imGo", { timeout: 30000 });
+  check("the first form says another file follows", (await page.textContent("#imGo")).includes("1 more"), await page.textContent("#imGo"));
+  await page.click("#imGo");
+  await page.waitForFunction(() => document.querySelector("#imGo")?.textContent === "Import" && !document.querySelector("#featMenu").hidden, null, { timeout: 30000 });
+  check("then the second file's form opens", (await page.inputValue("#imId")).startsWith("pillow_block"));
+  await page.click("#imGo");
+  await idle();
+  check("both files imported", (await state()).features.filter((f) => f.type === "import").length === 2);
+
+  // ── design around two imported parts: each reference has its own colour and an eye; Fit shows clashes and gaps ──
+  await newPart("fit_test");
+  await importFile("phone.step", { mode: "reference", place: "origin" });
+  await importFile("pillow_block.step", { mode: "reference" });
+  const [refA, refB] = (await state()).features.filter((f) => f.type === "import").map((f) => f.id);
+  const post = (ops, message) => page.evaluate(([ops, message]) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops, message }) }).then((r) => r.json()), [ops, message]);
+  await post([{ op: "update_feature", id: refB, set: { translate: [0, 120, 0] } },
+    { op: "add_feature", feature: { id: "plate_sk", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_rectangle", sketch: "plate_sk", id: "plate", width: 100, height: 170, center: [0, 0] },
+    { op: "add_feature", feature: { id: "plate", type: "extrude", profile: { sketch: "plate_sk" }, distance: 3, direction: "reverse" } },
+    { op: "add_feature", feature: { id: "boss_sk", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_rectangle", sketch: "boss_sk", id: "boss", width: 10, height: 10, center: [0, 0] },
+    { op: "add_feature", feature: { id: "boss", type: "extrude", profile: { sketch: "boss_sk" }, distance: 5 } }], "plate under the phone, a boss into it");
+  await idle();
+  const sw = await page.$$eval("#tree li.feat .refsw", (l) => l.map((x) => x.style.background));
+  check("each reference body has its own colour in the tree", sw.length === 2 && sw[0] !== sw[1], sw.join(" | "));
+  check("and in the view", (await page.evaluate(([a, b]) => window.vibecadView.refColorOf(a) !== window.vibecadView.refColorOf(b), [refA, refB])));
+  check("Clash is on with a solid and references", !(await page.isDisabled("#clashBtn")));
+  await page.click("#clashBtn");
+  await page.waitForSelector("#clashPanel .fitrow");
+  let rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("fit: the boss runs 500 mm³ into the phone", rowsTxt.some((t) => t.includes(refA) && t.includes("overlaps 500 mm³")), rowsTxt.join(" | "));
+  check("fit: the pillow block is clear, with its gap", rowsTxt.some((t) => t.includes(refB) && /clear, [\d.]+ mm gap/.test(t)), rowsTxt.join(" | "));
+  let fo = await page.evaluate(() => window.vibecadView.fitObjects());
+  check("the clash is drawn in red and the gap as a line", fo.some((o) => o.ref === refA && o.type === "Mesh") && fo.some((o) => o.ref === refB && o.type === "Line"), JSON.stringify(fo.slice(0, 6)));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("fit");
+  await page.click(`#tree li.feat[data-id=${refA}] .eye`);
+  await page.waitForTimeout(300);
+  fo = await page.evaluate(() => window.vibecadView.fitObjects());
+  check("the eye hides a reference and its clash", !(await page.evaluate((a) => window.vibecadView.refVisible(a), refA)) && fo.filter((o) => o.ref === refA).every((o) => !o.visible));
+  await page.click(`#tree li.feat[data-id=${refA}] .eye`);
+  check("and shows it again", await page.evaluate((a) => window.vibecadView.refVisible(a), refA));
+  await post([{ op: "remove_feature", id: "boss" }], "drop the boss");
+  await idle();
+  await page.waitForFunction((a) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(a) && x.textContent.includes("touching")), refA, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("fit updates on its own: the plate now just touches the phone", rowsTxt.some((t) => t.includes(refA) && t.includes("touching")), rowsTxt.join(" | "));
+  // cut a nest for the phone with a 0.5 mm clearance: Clash then shows exactly that gap
+  const plateOnly = await vol();
+  await page.click(`#tree li.feat[data-id=${refA}] .fid`);
+  await page.waitForSelector("#details [data-a=nest]");
+  await page.click("#details [data-a=nest]");
+  await page.waitForSelector("#coGo");
+  check("the nest form picks the selected reference", (await page.inputValue("#coTool")) === refA);
+  await page.fill("#coC", "0.5");
+  await shot("nest_form");
+  await page.click("#coGo");
+  await idle();
+  const nested = await vol();
+  check("the nest cuts into the plate under the phone", nested < plateOnly - 100, `${plateOnly} -> ${nested}`);
+  await page.waitForFunction((a) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(a) && x.textContent.includes("0.5 mm gap")), refA, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("Clash: the phone now sits 0.5 mm clear of the nest", rowsTxt.some((t) => t.includes(refA) && t.includes("clear, 0.5 mm gap")), rowsTxt.join(" | "));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("nest");
+  const nid = (await state()).features.find((f) => f.type === "boolean").id;
+  await page.dblclick(`#tree li.feat[data-id=${nid}] .fid`);
+  await page.waitForSelector("#efClr");
+  await page.fill("#efClr", "1");
+  await page.click("#efGo");
+  await idle();
+  await page.waitForFunction((a) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(a) && x.textContent.includes(" 1 mm gap")), refA, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("editing the clearance to 1 mm: a 1 mm gap and a deeper nest", rowsTxt.some((t) => t.includes(refA) && t.includes("clear, 1 mm gap")) && (await vol()) < nested, rowsTxt.join(" | "));
+  // place the pillow block by its faces: its base's underside against the plate's underside (seen from below)
+  await page.click(`#tree li.feat[data-id=${refB}] .fid`);
+  await page.waitForSelector("#details [data-a=mate]");
+  await page.click("#details [data-a=mate]");
+  check("placing asks for a face of the import first", (await page.textContent("#mateText")).includes(`click the flat face of it`));
+  await page.click("#gizmo .ax[data-ax=Z][data-sgn='-1']");
+  await page.waitForTimeout(600);
+  await click3d(0, 120, 0);
+  check("then for the face it goes against", (await page.textContent("#mateText")).includes("Now click the face"));
+  await click3d(0, -40, -3);
+  await page.waitForSelector("#maGo");
+  await shot("mate_form");
+  await page.click("#maGo");
+  await idle();
+  const placed = (await state()).features.find((f) => f.id === refB);
+  check("the import's rotation and position were rewritten", JSON.stringify(placed) !== "" && (await page.isHidden("#mateBar")),
+    JSON.stringify(await page.evaluate((b) => fetch(`/api/feature/${b}`).then((r) => r.json()), refB)));
+  await page.waitForFunction((b) => [...document.querySelectorAll("#clashPanel .fitrow")].some((x) => x.textContent.includes(b) && x.textContent.includes("touching")), refB, { timeout: 15000 })
+    .catch(() => {});
+  rowsTxt = await page.$$eval("#clashPanel .fitrow", (l) => l.map((x) => x.textContent));
+  check("Clash: the pillow block now hangs under the plate, touching it", rowsTxt.some((t) => t.includes(refB) && t.includes("touching")), rowsTxt.join(" | "));
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("mated");
+  await page.click("#clashBtn");
+  check("Clash off hides its panel", await page.isHidden("#clashPanel"));
+
+  // ── mirror half a profile across the Y axis in the sketch editor: select its lines, I, Enter (Y is the default) ──
+  await newPart("mirror_test");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.evaluate((ops) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ops, message: "half a tee" }) }),
+    [{ op: "add_polygon", sketch: "sketch1", id: "half", closed: false, points: [[0, 0], [20, 0], [20, 5], [5, 5], [5, 30], [0, 30]] }]);
+  await idle();
+  await page.waitForFunction(() => window.vibecadSketch.data()?.entities.length === 5);
+  check("Mirror is off with nothing selected", await page.isDisabled("#sketchTools [data-act=mirror]"));
+  const mids = [[10, 0], [20, 2.5], [12.5, 5], [5, 17.5], [2.5, 30]];
+  for (const [k, [u, v]] of mids.entries()) {
+    const [x, y] = await skf((s, a) => s.toScreen(a[0], a[1]), [u, v]);
+    if (k) await page.keyboard.down("Shift");
+    await page.mouse.click(x, y);
+    if (k) await page.keyboard.up("Shift");
+    await page.waitForTimeout(250);
+  }
+  check("Mirror is on with the half's lines selected", !(await page.isDisabled("#sketchTools [data-act=mirror]")));
+  await page.keyboard.press("i");
+  await page.waitForSelector("#dimEdit:not([hidden])");
+  await shot("sketch_mirror_prompt");
+  await page.press("#dimEdit input", "Enter");
+  await idle();
+  d = await skf((s) => s.data());
+  check("mirrored across Y: ten lines, still 0 DOF", d.entities.length === 10 && d.dof === 0, `${d.entities.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "4");
+  await page.click("#ffGo");
+  await idle();
+  check("the mirrored tee extrudes whole", near(await vol(), 2 * (20 * 5 + 5 * 25) * 4, 1e-6), `${await vol()}`);
+
+  // ── loft a square into a circle; sweep a round bar along a bent path ──
+  await newPart("loft_test");
+  const postOps = (ops, message) => page.evaluate(([ops, message]) => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops, message }) }).then((r) => r.json()), [ops, message]);
+  let r = await postOps([
+    { op: "add_feature", feature: { id: "sq", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_rectangle", sketch: "sq", id: "sq", width: 20, height: 20, center: [0, 0] },
+    { op: "add_feature", feature: { id: "rnd", type: "sketch", plane: { datum: "XY", offset: 25 } } },
+    { op: "add_circle", sketch: "rnd", id: "rnd", diameter: 16, center: [0, 0] }], "two sections");
+  await idle();
+  check("Loft is enabled with two sketches", !(await page.isDisabled("#loftBtn")), JSON.stringify(r).slice(0, 200));
+  await page.click("#loftBtn");
+  check("the loft form ticks both unused sketches", (await page.$$eval("#featMenu .checks input:checked", (x) => x.map((i) => i.value))).join() === "sq,rnd");
+  await shot("loft_form");
+  await page.click("#loGo");
+  await idle();
+  let lst = await state();
+  check("square-to-round loft: 25 tall, between the two prisms", near(lst.bbox[2], 25, 1e-6) && lst.volume > Math.PI * 64 * 25 && lst.volume < 400 * 25, `${JSON.stringify(lst.bbox)} ${lst.volume}`);
+  const smoothVol = lst.volume;
+  await page.dblclick("#tree li.feat[data-id=loft1] .fid");
+  await page.waitForSelector("#efRuled");
+  await page.check("#efRuled");
+  await page.click("#efGo");
+  await idle();
+  lst = await state();
+  // with two sections a smooth loft is already straight-sided: ruled changes the setting, not the shape
+  check("the loft edit form switches it to ruled", (await page.evaluate(() => fetch("/api/feature/loft1").then((r) => r.json()))).ruled === true && near(lst.volume, smoothVol, 1e-3),
+    `${smoothVol} -> ${lst.volume}`);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("loft");
+
+  await newPart("sweep_test");
+  r = await postOps([
+    { op: "add_feature", feature: { id: "bar", type: "sketch", plane: { datum: "XY" } } },
+    { op: "add_circle", sketch: "bar", id: "bar", diameter: 6, center: [0, 0] },
+    { op: "add_feature", feature: { id: "rail", type: "sketch", plane: { datum: "XZ" } } },
+    { op: "add_polygon", sketch: "rail", id: "rail", closed: false, points: [[0, 0], [0, 30], [25, 30]] }], "profile and path");
+  await idle();
+  await page.click("#sweepBtn");
+  check("the sweep form guesses profile and path", (await page.inputValue("#swProf")) === "bar" && (await page.inputValue("#swPath")) === "rail", JSON.stringify(r).slice(0, 300));
+  await shot("sweep_form");
+  await page.click("#swGo");
+  await idle();
+  lst = await state();
+  check("bar swept up 30 and across 25, mitred", near(lst.volume, Math.PI * 9 * 55, 0.05) && near(lst.bbox[0], 28, 1e-4) && near(lst.bbox[2], 33, 1e-4),
+    `${lst.volume} vs ${(Math.PI * 9 * 55).toFixed(2)} bbox ${JSON.stringify(lst.bbox)}`);
+  await page.click(".vtools [data-view=iso]");
+  await page.waitForTimeout(500);
+  await shot("sweep");
+
+  // ── offset an outline inward: select one edge, K, a negative distance; the ring extrudes ──
+  await newPart("offset_test");
+  await page.click("#newSketchBtn");
+  await page.click("#newMenu [data-d=XY]");
+  await page.waitForSelector("#sketchBar:not([hidden])", { timeout: 15000 });
+  await idle();
+  await page.evaluate(() => fetch("/api/ops", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ops: [{ op: "add_rectangle", sketch: "sketch1", id: "box", width: 30, height: 20, center: [0, 0] }], message: "box" }) }));
+  await idle();
+  await at(0, -10);  // the bottom edge
+  check("an edge selected enables Offset", !(await page.isDisabled("#sketchTools [data-act=offset]")));
+  await page.keyboard.press("k");
+  await page.waitForSelector("#dimEdit:not([hidden])");
+  await page.fill("#dimEdit input", "-2");
+  await page.press("#dimEdit input", "Enter");
+  await idle();
+  d = await skf((s) => s.data());
+  const pieces = d.entities.filter((e) => e.offset === "offset1");
+  check("the whole loop was offset inward, 0 DOF", pieces.length === 4 && d.dof === 0, `${pieces.map((e) => e.id).join()} dof ${d.dof}`);
+  await page.click("#extrudeBtn");
+  await page.fill("#ffDist", "3");
+  await page.click("#ffGo");
+  await idle();
+  check("a 2 mm wall: the ring between outline and offset", near(await vol(), (600 - 26 * 16) * 3, 0.01), `${await vol()}`);
+  await page.click('#tree li.feat[data-id="sketch1"] .fid');
+  await page.waitForSelector("#sketchBar:not([hidden])");
+  await idle();
+  await at(0, -8);  // a piece of the offset
+  await page.keyboard.press("Delete");
+  await idle();
+  check("deleting a piece removes the offset", !(await skf((s) => s.data().entities.some((e) => e.offset))));
+  await page.keyboard.press("Control+z");
+  await idle();
+  await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
+
+  // ── part properties: a material gives Measure a mass ──
+  await page.click("#propsBtn");
+  await page.fill("#ppMat", "PETG");
+  check("the density shows as you type", (await page.textContent("#ppDensity")).includes("1.27"));
+  await page.click("#ppSave");
+  await idle();
+  check("material saved", (await state()).material === "PETG");
+  await page.click("#measureBtn");
+  await page.waitForTimeout(1200);
+  const mass = (await vol()) / 1000 * 1.27;
+  check("Measure shows the mass", (await page.textContent("#measurePanel")).includes(`${mass.toFixed(1)} g`), (await page.textContent("#measurePanel")).slice(-160));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("?");
+  check("? lists the shortcuts", await page.isVisible("#keysDlg") && (await page.textContent("#keysList")).includes("Measure"));
+  await page.keyboard.press("Escape");
+
+  // ── the user's own parts (if given): open each, edit a parameter, undo ──
+  const parts = await page.$$eval("#partSelect option", (l) => l.map((o) => o.value).filter((v) => v.startsWith("userparts/")));
+  for (const p of parts) {
+    await open(p);
+    st = await state();
+    const errs = st.features.filter((f) => f.status === "error");
+    check(`${p} opens without errors`, !errs.length && st.volume > 0, errs.map((f) => `${f.id}: ${f.message}`).join("; "));
+    const prm = st.params.find((x) => typeof x.value === "number" && x.value > 1 && x.users.length);
+    if (!prm) continue;
+    const before = st.volume;
+    const inp = page.locator(`#params tr[data-param="${prm.name}"] input`), want = String(+(prm.value * 1.1).toFixed(3));
+    await inp.fill(want);
+    await inp.press("Enter");
+    let t = 0;
+    // the new expression shows before the rebuild finishes: wait for the evaluated value
+    for (; t < 240 && !near((await state()).params.find((x) => x.name === prm.name).value, +want, 1e-9); t++) await page.waitForTimeout(250);
+    await idle();
+    st = await state();
+    if (Math.abs(st.volume - before) < 1e-6) console.log("  debug:", t, want, JSON.stringify(st.params.find((x) => x.name === prm.name)), await page.$$eval("#log .msg", (l) => l.slice(-3).map((x) => x.textContent)));
+    check(`${p}: ${prm.name} +10% rebuilds and changes the part`, st.features.every((f) => f.status !== "error") && st.volume > 0 && Math.abs(st.volume - before) > 1e-6,
+      `${before} -> ${st.volume}`);
+    await page.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press("Control+z");
+    for (let t = 0; t < 240 && !near((await state()).volume, before, 1e-3); t++) await page.waitForTimeout(250);
+    await idle();
+    check(`${p}: undo restores it`, near((await state()).volume, before, 1e-3));
+    await shot(`user_${p.split("/").pop().replace(/\W+/g, "_")}`);
+  }
+
+  check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
+  const failed = results.filter((r) => !r.ok).length;
+  console.log(`\n${results.length - failed}/${results.length} passed`);
+  await browser.close();
+  process.exit(failed ? 1 : 0);
+})().catch((e) => { console.error("SCRIPT ERROR", e); process.exit(2); });

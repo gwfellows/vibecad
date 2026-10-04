@@ -6,6 +6,7 @@
 #   tests/gui/holes.js        holes from a picked face and from sketch points, sized from the fastener table
 #   tests/gui/imports.js      a STEP imported as reference geometry: shown, sketched on, its edges projected
 #   tests/gui/workflow.js     rebuild indicator, editing a fillet's edges, per-part conversations, attachments
+#   tests/gui/realparts.js    importing STEP/STL, holes, pattern/mirror/shell, measure, section, export (USERPARTS=dir: your parts too)
 #   tests/gui/modeling.js     a part modelled by hand from an empty file: sketch, extrude, sketch on face, cut, revolve
 #   scripts/gui_smoke.sh [screenshot_dir]      (ONLY=modeling,smoke to run a subset)
 # Needs node with playwright (npm i -g playwright) and a Chromium it can find.
@@ -16,7 +17,13 @@ WORK=$(mktemp -d)
 SHOTS=${1:-$WORK/shots}
 PORT=${PORT:-8791}
 mkdir -p "$WORK/root" "$WORK/agent_root" "$SHOTS"
-cp examples/*.vcad.json "$WORK/root/" && cp -r examples/imports "$WORK/root/"
+cp examples/*.vcad.json "$WORK/root/"
+cp -r examples/imports "$WORK/root/"
+if [[ -n "${USERPARTS:-}" ]]; then  # your own parts, opened and edited by realparts.js: USERPARTS=path/to/parts
+  mkdir -p "$WORK/root/userparts" && cp "$USERPARTS"/*.vcad.json "$WORK/root/userparts/"
+  [[ -d "$USERPARTS/imports" ]] && cp -r "$USERPARTS/imports" "$WORK/root/userparts/"
+fi
+uv run python tests/gui/make_fixtures.py "$WORK/fixtures" >/dev/null
 
 uv run vibecad-app --root "$WORK/root" --port "$PORT" >"$WORK/server.log" 2>&1 &
 S1=$!
@@ -45,12 +52,15 @@ run modeling "$PORT"
 run holes "$PORT"
 run imports "$PORT"
 run agent_panel $((PORT + 1))
+if [[ -z "${ONLY:-}" || ",$ONLY," == *",realparts,"* ]]; then
+  node "$REPO/tests/gui/realparts.js" "http://127.0.0.1:$PORT" "$SHOTS" "$WORK/fixtures" $THREE || status=1
+fi
 run sketch_editor $((PORT + 1))
 if [[ -z "${ONLY:-}" || ",$ONLY," == *",workflow,"* ]]; then  # uses both servers
   node "$REPO/tests/gui/workflow.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
 fi
 if [[ ",${ONLY:-}," == *",readme_shots,"* ]]; then  # README screenshots: ONLY=readme_shots scripts/gui_smoke.sh docs/img
-  node "$REPO/tests/gui/readme_shots.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
+  FIXTURES="$WORK/fixtures" node "$REPO/tests/gui/readme_shots.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1
 fi
 if [[ ",${ONLY:-}," == *",readme_gifs,"* ]]; then  # README GIFs: ONLY=readme_gifs scripts/gui_smoke.sh docs/img (needs ffmpeg)
   node "$REPO/tests/gui/readme_gifs.js" "http://127.0.0.1:$PORT" "http://127.0.0.1:$((PORT + 1))" "$SHOTS" $THREE || status=1

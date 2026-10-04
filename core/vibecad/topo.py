@@ -74,7 +74,6 @@ def list_edges(shape) -> list[TopoDS_Shape]:
     fillet, and asking it for points raises."""
     from OCP.BRep import BRep_Tool
     from OCP.TopoDS import TopoDS
-
     return [e for e in explore(shape, TopAbs_EDGE) if not BRep_Tool.Degenerated_s(TopoDS.Edge(e))]
 
 
