@@ -1,0 +1,840 @@
+{
+  "vibecad": "0.1",
+  "name": "Stage 1 Carriage",
+  "material": "6061 aluminum",
+  "process": "CNC or waterjet aluminum plate",
+  "design_notes": "Stage1 carriage (10mm 6061). Rides the base's MGN9 rails on two MGN9C blocks (M3 counterbored from the front, cbore 6mm so heads clear the stage2 rails and sit flush under the stage2 blocks). Front face: stage2 MGN9 rails (M3 tapped, depth 7). +Y: drive-belt jaw clamping the inner strand of the motor loop (1:1 with motor). -Y edge: two M5 tapped holes for the cascade idlers (axis Y, centred in the plate thickness at casc_x), casc_pz_top - casc_pz_bot = 166mm apart, which keeps both cascade clamps between the idlers over the full stroke. Posed at s1 (shared with all lift/ files). Shared dims: see lift/base_plate design_notes.",
+  "params": {
+    "plate_w": "80 mm",
+    "travel": "100 mm",
+    "rail_spacing": "50 mm",
+    "rail_hole_pitch": "20 mm",
+    "rail_holes_count": "8",
+    "s1": "50 mm",
+    "rail_length": "160 mm",
+    "rail_hole_end": "10 mm",
+    "mgn_h": "10 mm",
+    "mgn_bolt_y": "15 mm",
+    "mgn_bolt_z": "10 mm",
+    "base_t": "10 mm",
+    "c1_t": "10 mm",
+    "x_c1": "base_t + mgn_h",
+    "zr1": "20 mm",
+    "c1_h": "190 mm",
+    "c1_z0": "zr1 + s1",
+    "blk_rel": "30 mm",
+    "r2_rel": "15 mm",
+    "belt_t": "2.41 mm",
+    "belt_w": "10 mm",
+    "pul_od": "18.34 mm",
+    "drive_y": "56 mm",
+    "drive_belt_x": "23 mm",
+    "drive_clamp_rel": "35 mm",
+    "clamp_len": "20 mm",
+    "jaw_screw_off": "belt_w/2 + 2.5",
+    "casc_x": "x_c1 + c1_t/2",
+    "casc_pz_bot": "12 mm",
+    "casc_pz_top": "178 mm",
+    "djaw_y0": "plate_w/2 - 3",
+    "djaw_face_y": "drive_y - pul_od/2 - belt_t",
+    "djaw_x0": "drive_belt_x - jaw_screw_off - 3"
+  },
+  "features": [
+    {
+      "id": "c1_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "x_c1"
+      },
+      "entities": [
+        {
+          "id": "plate_bottom",
+          "p1": [
+            -40.0,
+            70.0
+          ],
+          "p2": [
+            40.0,
+            70.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_right",
+          "p1": [
+            40.0,
+            70.0
+          ],
+          "p2": [
+            40.0,
+            260.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_top",
+          "p1": [
+            40.0,
+            260.0
+          ],
+          "p2": [
+            -40.0,
+            260.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_left",
+          "p1": [
+            -40.0,
+            260.0
+          ],
+          "p2": [
+            -40.0,
+            70.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plate_bottom.p2",
+            "plate_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_right.p2",
+            "plate_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_top.p2",
+            "plate_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_left.p2",
+            "plate_bottom.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "-plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "c1_z0"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_right.p1"
+          ],
+          "value": "plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_right.p1"
+          ],
+          "value": "c1_z0"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_top.p1"
+          ],
+          "value": "plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_top.p1"
+          ],
+          "value": "c1_z0 + c1_h"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_left.p1"
+          ],
+          "value": "-plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_left.p1"
+          ],
+          "value": "c1_z0 + c1_h"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "extrude",
+      "intent": "stage1 plate: back face on the stage1 MGN9C blocks, front face carries the stage2 rails",
+      "profile": {
+        "sketch": "c1_sk"
+      },
+      "distance": "c1_t",
+      "mode": "new"
+    },
+    {
+      "id": "mgn_pts",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "c1",
+          "role": "end",
+          "note": "front face of stage1 plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "mb_1",
+          "at": [
+            -32.5,
+            95.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_2",
+          "at": [
+            -17.5,
+            95.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_3",
+          "at": [
+            -32.5,
+            105.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_4",
+          "at": [
+            -17.5,
+            105.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_5",
+          "at": [
+            17.5,
+            95.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_6",
+          "at": [
+            32.5,
+            95.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_7",
+          "at": [
+            17.5,
+            105.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_8",
+          "at": [
+            32.5,
+            105.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_1"
+          ],
+          "value": "-rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_1"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_2"
+          ],
+          "value": "-rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_2"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_2_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_3"
+          ],
+          "value": "-rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_3_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_3"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_3_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_4"
+          ],
+          "value": "-rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_4_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_4"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_4_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_5"
+          ],
+          "value": "rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_5_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_5"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_5_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_6"
+          ],
+          "value": "rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_6_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_6"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_6_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_7"
+          ],
+          "value": "rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_7_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_7"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_7_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_8"
+          ],
+          "value": "rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_8_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_8"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_8_y"
+        }
+      ]
+    },
+    {
+      "id": "mgn_holes",
+      "type": "hole",
+      "intent": "M3 SHCS from the front into the two stage1 MGN9C blocks (15x10 pattern); 6mm cbore keeps heads flush and clear of the stage2 rail edge",
+      "sketch": "mgn_pts",
+      "kind": "counterbore",
+      "size": "M3",
+      "cbore_diameter": "6 mm"
+    },
+    {
+      "id": "rail2_pts",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "c1",
+          "role": "end",
+          "note": "front face of stage1 plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "r2_1",
+          "at": [
+            -25.0,
+            95.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "r2_2",
+          "at": [
+            25.0,
+            95.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2_1"
+          ],
+          "value": "-rail_spacing/2",
+          "name": "r2_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2_1"
+          ],
+          "value": "c1_z0 + r2_rel + rail_hole_end",
+          "name": "r2_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2_2"
+          ],
+          "value": "rail_spacing/2",
+          "name": "r2_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2_2"
+          ],
+          "value": "c1_z0 + r2_rel + rail_hole_end",
+          "name": "r2_2_y"
+        }
+      ]
+    },
+    {
+      "id": "rail2_holes",
+      "type": "hole",
+      "intent": "M3 tapped for the stage2 MGN9 rail screws (first hole each rail); blind so they don't break into the stage1 block seats",
+      "sketch": "rail2_pts",
+      "kind": "tapped",
+      "size": "M3",
+      "depth": "7 mm"
+    },
+    {
+      "id": "rail2_holes_pat",
+      "type": "linear_pattern",
+      "intent": "MGN9 20mm hole pitch along the 160mm stage2 rails",
+      "features": [
+        "rail2_holes"
+      ],
+      "direction": "Z",
+      "spacing": "20 mm",
+      "count": 8.0
+    },
+    {
+      "id": "djaw_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "djaw_x0"
+      },
+      "entities": [
+        {
+          "id": "djaw_bottom",
+          "p1": [
+            37.0,
+            95.0
+          ],
+          "p2": [
+            44.42,
+            95.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "djaw_right",
+          "p1": [
+            44.42,
+            95.0
+          ],
+          "p2": [
+            44.42,
+            115.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "djaw_top",
+          "p1": [
+            44.42,
+            115.0
+          ],
+          "p2": [
+            37.0,
+            115.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "djaw_left",
+          "p1": [
+            37.0,
+            115.0
+          ],
+          "p2": [
+            37.0,
+            95.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "djaw_bottom.p2",
+            "djaw_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "djaw_right.p2",
+            "djaw_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "djaw_top.p2",
+            "djaw_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "djaw_left.p2",
+            "djaw_bottom.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "djaw_bottom.p1"
+          ],
+          "value": "djaw_y0"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "djaw_bottom.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "djaw_right.p1"
+          ],
+          "value": "djaw_face_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "djaw_right.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "djaw_top.p1"
+          ],
+          "value": "djaw_face_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "djaw_top.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel + clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "djaw_left.p1"
+          ],
+          "value": "djaw_y0"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "djaw_left.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel + clamp_len/2"
+        }
+      ]
+    },
+    {
+      "id": "drive_jaw",
+      "type": "extrude",
+      "intent": "jaw on stage1's +Y edge; its +Y face sits at the back of the drive belt's inner strand so a toothed clamp plate pins the belt to stage1",
+      "profile": {
+        "sketch": "djaw_sk"
+      },
+      "distance": "2*(jaw_screw_off + 3)"
+    },
+    {
+      "id": "djaw_pts",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "drive_jaw",
+          "role": "side",
+          "entity": "djaw_right",
+          "note": "+Y face of the drive jaw, where the belt back sits"
+        }
+      },
+      "entities": [
+        {
+          "id": "dj_1",
+          "at": [
+            -15.5,
+            105.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "dj_2",
+          "at": [
+            -30.5,
+            105.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dj_1"
+          ],
+          "value": "-(drive_belt_x - jaw_screw_off)",
+          "name": "dj_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dj_1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel",
+          "name": "dj_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dj_2"
+          ],
+          "value": "-(drive_belt_x + jaw_screw_off)",
+          "name": "dj_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dj_2"
+          ],
+          "value": "c1_z0 + drive_clamp_rel",
+          "name": "dj_2_y"
+        }
+      ]
+    },
+    {
+      "id": "idler_pts",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "c1",
+          "role": "side",
+          "entity": "plate_left",
+          "note": "-Y edge face of stage1 plate, carries the cascade idlers"
+        }
+      },
+      "entities": [
+        {
+          "id": "ip_bot",
+          "at": [
+            25.0,
+            82.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "ip_top",
+          "at": [
+            25.0,
+            248.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ip_bot"
+          ],
+          "value": "casc_x",
+          "name": "ip_bot_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ip_bot"
+          ],
+          "value": "c1_z0 + casc_pz_bot",
+          "name": "ip_bot_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ip_top"
+          ],
+          "value": "casc_x",
+          "name": "ip_top_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ip_top"
+          ],
+          "value": "c1_z0 + casc_pz_top",
+          "name": "ip_top_y"
+        }
+      ]
+    },
+    {
+      "id": "djaw_holes",
+      "type": "hole",
+      "intent": "M3 tapped for the drive-belt clamp plate screws, either side of the 10mm belt",
+      "sketch": "djaw_pts",
+      "kind": "tapped",
+      "size": "M3",
+      "depth": "6 mm"
+    },
+    {
+      "id": "idler_holes",
+      "type": "hole",
+      "intent": "M5 tapped into the plate edge for the shoulder bolts carrying the two cascade idlers (axis Y)",
+      "sketch": "idler_pts",
+      "kind": "tapped",
+      "size": "M5",
+      "depth": "14 mm"
+    }
+  ]
+}

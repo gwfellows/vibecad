@@ -1,0 +1,43 @@
+{
+  "vibecad": "0.1",
+  "name": "Cascading Lift Assembly",
+  "material": "assembly view",
+  "design_notes": "View-only assembly of the lift/ parts, imported from lift/step/*.step (re-export each part after edits, all at the same s1). Belts are imported as reference so they render pale green.",
+  "params": {},
+  "features": [
+    {
+      "id": "base_plate",
+      "type": "import",
+      "intent": "fixed base plate",
+      "file": "step/base_plate.step",
+      "mode": "new"
+    },
+    {
+      "id": "stage1",
+      "type": "import",
+      "intent": "stage1 carriage at s1",
+      "file": "step/stage1_carriage.step",
+      "mode": "add"
+    },
+    {
+      "id": "stage2",
+      "type": "import",
+      "intent": "stage2 carriage at 2*s1",
+      "file": "step/stage2_carriage.step",
+      "mode": "add"
+    },
+    {
+      "id": "hardware",
+      "type": "import",
+      "intent": "rails, blocks, motor, pulleys, clamp plates",
+      "file": "step/hardware_ref.step",
+      "mode": "add"
+    },
+    {
+      "id": "belts",
+      "type": "import",
+      "intent": "GT3 drive and cascade belts",
+      "file": "step/belts.step"
+    }
+  ]
+}

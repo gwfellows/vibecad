@@ -1,0 +1,853 @@
+{
+  "vibecad": "0.1",
+  "name": "Belts",
+  "material": "GT3 10mm (reference)",
+  "design_notes": "GT3 10mm belt paths for rendering / fit check, posed at s1 like the other lift/ files. Band runs from the pulley tooth OD (pul_od/2) out to pul_od/2 + belt_t. Drive loop length ~ 2*(idler_z - motor_z) + pi*PD = 2*162 + 60 = 384mm (128T GT3 closed, or open belt clamped at stage1). Cascade loop ~ 2*166 + 60 = 392mm, open belt, both ends in the base clamp.",
+  "params": {
+    "s1": "50 mm",
+    "zr1": "20 mm",
+    "c1_z0": "zr1 + s1",
+    "base_t": "10 mm",
+    "mgn_h": "10 mm",
+    "c1_t": "10 mm",
+    "x_c1": "base_t + mgn_h",
+    "pul_od": "18.34 mm",
+    "belt_t": "2.41 mm",
+    "belt_w": "10 mm",
+    "drive_y": "56 mm",
+    "drive_belt_x": "23 mm",
+    "motor_z": "25 mm",
+    "idler_z": "187 mm",
+    "casc_x": "x_c1 + c1_t/2",
+    "casc_belt_y": "47 mm",
+    "casc_pz_bot": "12 mm",
+    "casc_pz_top": "178 mm"
+  },
+  "features": [
+    {
+      "id": "dbelt_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "drive_belt_x - belt_w/2"
+      },
+      "entities": [
+        {
+          "id": "do_end1",
+          "center": [
+            56.0,
+            25.0
+          ],
+          "r": 11.58,
+          "start_angle": 180.0,
+          "end_angle": 360.0,
+          "type": "arc"
+        },
+        {
+          "id": "do_end2",
+          "center": [
+            56.0,
+            187.0
+          ],
+          "r": 11.58,
+          "start_angle": 0.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "do_side1",
+          "p1": [
+            44.42,
+            187.0
+          ],
+          "p2": [
+            44.42,
+            25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "do_side2",
+          "p1": [
+            67.58,
+            25.0
+          ],
+          "p2": [
+            67.58,
+            187.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "do_axis",
+          "p1": [
+            56.0,
+            25.0
+          ],
+          "p2": [
+            56.0,
+            187.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "do_mid",
+          "at": [
+            56.0,
+            106.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "di_end1",
+          "center": [
+            56.0,
+            25.0
+          ],
+          "r": 9.17,
+          "start_angle": 180.0,
+          "end_angle": 360.0,
+          "type": "arc"
+        },
+        {
+          "id": "di_end2",
+          "center": [
+            56.0,
+            187.0
+          ],
+          "r": 9.17,
+          "start_angle": 0.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "di_side1",
+          "p1": [
+            46.83,
+            187.0
+          ],
+          "p2": [
+            46.83,
+            25.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "di_side2",
+          "p1": [
+            65.17,
+            25.0
+          ],
+          "p2": [
+            65.17,
+            187.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "di_axis",
+          "p1": [
+            56.0,
+            25.0
+          ],
+          "p2": [
+            56.0,
+            187.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "di_mid",
+          "at": [
+            56.0,
+            106.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "do_end2.end",
+            "do_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "do_side1.p2",
+            "do_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "do_end1.end",
+            "do_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "do_side2.p2",
+            "do_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "do_end2",
+            "do_side1",
+            "do_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "do_side1",
+            "do_end1",
+            "do_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "do_end1",
+            "do_side2",
+            "do_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "do_side2",
+            "do_end2",
+            "do_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "do_axis.p1",
+            "do_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "do_axis.p2",
+            "do_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "do_end1",
+            "do_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "do_end1"
+          ],
+          "value": "pul_od + 2*belt_t",
+          "name": "do_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "do_axis"
+          ],
+          "value": "idler_z - motor_z",
+          "name": "do_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "do_axis"
+          ],
+          "value": 90.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "do_mid",
+            "do_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "do_mid"
+          ],
+          "value": "drive_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "do_mid"
+          ],
+          "value": "(motor_z + idler_z)/2"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "di_end2.end",
+            "di_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "di_side1.p2",
+            "di_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "di_end1.end",
+            "di_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "di_side2.p2",
+            "di_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "di_end2",
+            "di_side1",
+            "di_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "di_side1",
+            "di_end1",
+            "di_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "di_end1",
+            "di_side2",
+            "di_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "di_side2",
+            "di_end2",
+            "di_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "di_axis.p1",
+            "di_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "di_axis.p2",
+            "di_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "di_end1",
+            "di_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "di_end1"
+          ],
+          "value": "pul_od",
+          "name": "di_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "di_axis"
+          ],
+          "value": "idler_z - motor_z",
+          "name": "di_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "di_axis"
+          ],
+          "value": 90.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "di_mid",
+            "di_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "di_mid"
+          ],
+          "value": "drive_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "di_mid"
+          ],
+          "value": "(motor_z + idler_z)/2"
+        }
+      ]
+    },
+    {
+      "id": "drive_belt",
+      "type": "extrude",
+      "intent": "GT3 10mm drive loop: motor pulley -> top idler; stage1 clamps its inner (-Y) strand",
+      "profile": {
+        "sketch": "dbelt_sk",
+        "regions": [
+          "do_side1"
+        ]
+      },
+      "distance": "belt_w",
+      "mode": "new"
+    },
+    {
+      "id": "cbelt_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XZ",
+        "offset": "casc_belt_y - belt_w/2"
+      },
+      "entities": [
+        {
+          "id": "co_end1",
+          "center": [
+            25.0,
+            82.0
+          ],
+          "r": 11.58,
+          "start_angle": 180.0,
+          "end_angle": 360.0,
+          "type": "arc"
+        },
+        {
+          "id": "co_end2",
+          "center": [
+            25.0,
+            248.0
+          ],
+          "r": 11.58,
+          "start_angle": 0.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "co_side1",
+          "p1": [
+            13.42,
+            248.0
+          ],
+          "p2": [
+            13.42,
+            82.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "co_side2",
+          "p1": [
+            36.58,
+            82.0
+          ],
+          "p2": [
+            36.58,
+            248.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "co_axis",
+          "p1": [
+            25.0,
+            82.0
+          ],
+          "p2": [
+            25.0,
+            248.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "co_mid",
+          "at": [
+            25.0,
+            165.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "ci_end1",
+          "center": [
+            25.0,
+            82.0
+          ],
+          "r": 9.17,
+          "start_angle": 180.0,
+          "end_angle": 360.0,
+          "type": "arc"
+        },
+        {
+          "id": "ci_end2",
+          "center": [
+            25.0,
+            248.0
+          ],
+          "r": 9.17,
+          "start_angle": -0.0,
+          "end_angle": 180.0,
+          "type": "arc"
+        },
+        {
+          "id": "ci_side1",
+          "p1": [
+            15.83,
+            248.0
+          ],
+          "p2": [
+            15.83,
+            82.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "ci_side2",
+          "p1": [
+            34.17,
+            82.0
+          ],
+          "p2": [
+            34.17,
+            248.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "ci_axis",
+          "p1": [
+            25.0,
+            82.0
+          ],
+          "p2": [
+            25.0,
+            248.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "ci_mid",
+          "at": [
+            25.0,
+            165.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "co_end2.end",
+            "co_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "co_side1.p2",
+            "co_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "co_end1.end",
+            "co_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "co_side2.p2",
+            "co_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "co_end2",
+            "co_side1",
+            "co_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "co_side1",
+            "co_end1",
+            "co_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "co_end1",
+            "co_side2",
+            "co_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "co_side2",
+            "co_end2",
+            "co_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "co_axis.p1",
+            "co_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "co_axis.p2",
+            "co_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "co_end1",
+            "co_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "co_end1"
+          ],
+          "value": "pul_od + 2*belt_t",
+          "name": "co_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "co_axis"
+          ],
+          "value": "casc_pz_top - casc_pz_bot",
+          "name": "co_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "co_axis"
+          ],
+          "value": 90.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "co_mid",
+            "co_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "co_mid"
+          ],
+          "value": "casc_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "co_mid"
+          ],
+          "value": "c1_z0 + (casc_pz_bot + casc_pz_top)/2"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "ci_end2.end",
+            "ci_side1.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "ci_side1.p2",
+            "ci_end1.start"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "ci_end1.end",
+            "ci_side2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "ci_side2.p2",
+            "ci_end2.start"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "ci_end2",
+            "ci_side1",
+            "ci_side1.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "ci_side1",
+            "ci_end1",
+            "ci_side1.p2"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "ci_end1",
+            "ci_side2",
+            "ci_side2.p1"
+          ]
+        },
+        {
+          "type": "tangent",
+          "on": [
+            "ci_side2",
+            "ci_end2",
+            "ci_side2.p2"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "ci_axis.p1",
+            "ci_end1.center"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "ci_axis.p2",
+            "ci_end2.center"
+          ]
+        },
+        {
+          "type": "equal",
+          "on": [
+            "ci_end1",
+            "ci_end2"
+          ]
+        },
+        {
+          "type": "diameter",
+          "on": [
+            "ci_end1"
+          ],
+          "value": "pul_od",
+          "name": "ci_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "ci_axis"
+          ],
+          "value": "casc_pz_top - casc_pz_bot",
+          "name": "ci_length"
+        },
+        {
+          "type": "angle",
+          "on": [
+            "ci_axis"
+          ],
+          "value": 90.0
+        },
+        {
+          "type": "midpoint",
+          "on": [
+            "ci_mid",
+            "ci_axis"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ci_mid"
+          ],
+          "value": "casc_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ci_mid"
+          ],
+          "value": "c1_z0 + (casc_pz_bot + casc_pz_top)/2"
+        }
+      ]
+    },
+    {
+      "id": "cascade_belt",
+      "type": "extrude",
+      "intent": "GT3 10mm cascade loop around stage1's idlers: back strand clamped to the base, front strand clamped to stage2",
+      "profile": {
+        "sketch": "cbelt_sk",
+        "regions": [
+          "co_side1"
+        ]
+      },
+      "distance": "belt_w"
+    }
+  ]
+}

@@ -1,0 +1,2804 @@
+{
+  "vibecad": "0.1",
+  "name": "Hardware Reference",
+  "material": "reference only",
+  "design_notes": "Bought-part stand-ins (no vendor STEP supplied), posed at s1 in the shared lift/ world frame, for rendering and check_fit only: HIWIN MGN9 rails (9 x 6.5, 160 long) and MGN9C blocks (20 x 28.9, H 10, H1 2), NEMA17 (42.3 sq x 40), GT3 20T 10mm pulleys/idlers (OD 18.34, flange 24) and the three toothed belt clamp plates. Not for manufacture.",
+  "params": {
+    "rail_w": "9 mm",
+    "rail_h": "6.5 mm",
+    "rail_spacing": "50 mm",
+    "rail_length": "160 mm",
+    "mgn_w": "20 mm",
+    "mgn_l": "28.9 mm",
+    "mgn_h": "10 mm",
+    "mgn_gap": "2 mm",
+    "s1": "50 mm",
+    "base_t": "10 mm",
+    "c1_t": "10 mm",
+    "x_c1": "base_t + mgn_h",
+    "x_r2": "x_c1 + c1_t",
+    "zr1": "20 mm",
+    "c1_z0": "zr1 + s1",
+    "r2_rel": "15 mm",
+    "c2_z0": "c1_z0 + r2_rel + s1",
+    "blk_rel": "30 mm",
+    "drive_y": "56 mm",
+    "motor_z": "25 mm",
+    "idler_z": "187 mm",
+    "drive_belt_x": "23 mm",
+    "pul_od": "18.34 mm",
+    "flange_d": "24 mm",
+    "belt_t": "2.41 mm",
+    "belt_w": "10 mm",
+    "nema_w": "42.3 mm",
+    "nema_len": "40 mm",
+    "casc_x": "x_c1 + c1_t/2",
+    "casc_belt_y": "47 mm",
+    "casc_pz_bot": "12 mm",
+    "casc_pz_top": "178 mm",
+    "plate_w_half": "40 mm",
+    "jaw_w": "20 mm",
+    "clamp_len": "20 mm",
+    "jaw_screw_off": "belt_w/2 + 2.5",
+    "drive_clamp_rel": "35 mm",
+    "c2_clamp_rel": "30 mm",
+    "base_clamp_z": "170 mm",
+    "clamp_plate_t": "3 mm"
+  },
+  "features": [
+    {
+      "id": "rails1_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "base_t"
+      },
+      "entities": [
+        {
+          "id": "r1a_bottom",
+          "p1": [
+            -29.5,
+            20.0
+          ],
+          "p2": [
+            -20.5,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1a_right",
+          "p1": [
+            -20.5,
+            20.0
+          ],
+          "p2": [
+            -20.5,
+            180.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1a_top",
+          "p1": [
+            -20.5,
+            180.0
+          ],
+          "p2": [
+            -29.5,
+            180.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1a_left",
+          "p1": [
+            -29.5,
+            180.0
+          ],
+          "p2": [
+            -29.5,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1b_bottom",
+          "p1": [
+            20.5,
+            20.0
+          ],
+          "p2": [
+            29.5,
+            20.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1b_right",
+          "p1": [
+            29.5,
+            20.0
+          ],
+          "p2": [
+            29.5,
+            180.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1b_top",
+          "p1": [
+            29.5,
+            180.0
+          ],
+          "p2": [
+            20.5,
+            180.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r1b_left",
+          "p1": [
+            20.5,
+            180.0
+          ],
+          "p2": [
+            20.5,
+            20.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "r1a_bottom.p2",
+            "r1a_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1a_right.p2",
+            "r1a_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1a_top.p2",
+            "r1a_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1a_left.p2",
+            "r1a_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "r1a_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "r1a_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "r1a_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "r1a_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "r1a_bottom"
+          ],
+          "value": "rail_w",
+          "name": "r1a_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "r1a_right"
+          ],
+          "value": "rail_length",
+          "name": "r1a_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r1a_bottom.p1"
+          ],
+          "value": "-rail_spacing/2 - rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r1a_bottom.p1"
+          ],
+          "value": "zr1"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1b_bottom.p2",
+            "r1b_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1b_right.p2",
+            "r1b_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1b_top.p2",
+            "r1b_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r1b_left.p2",
+            "r1b_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "r1b_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "r1b_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "r1b_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "r1b_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "r1b_bottom"
+          ],
+          "value": "rail_w",
+          "name": "r1b_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "r1b_right"
+          ],
+          "value": "rail_length",
+          "name": "r1b_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r1b_bottom.p1"
+          ],
+          "value": "rail_spacing/2 - rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r1b_bottom.p1"
+          ],
+          "value": "zr1"
+        }
+      ]
+    },
+    {
+      "id": "rails1",
+      "type": "extrude",
+      "intent": "stage1 MGN9 rails on the base front face",
+      "profile": {
+        "sketch": "rails1_sk"
+      },
+      "distance": "rail_h",
+      "mode": "new"
+    },
+    {
+      "id": "rails2_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "x_r2"
+      },
+      "entities": [
+        {
+          "id": "r2a_1",
+          "p1": [
+            -29.5,
+            85.0
+          ],
+          "p2": [
+            -20.5,
+            85.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2a_2",
+          "p1": [
+            -20.5,
+            85.0
+          ],
+          "p2": [
+            -20.5,
+            245.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2a_3",
+          "p1": [
+            -20.5,
+            245.0
+          ],
+          "p2": [
+            -29.5,
+            245.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2a_4",
+          "p1": [
+            -29.5,
+            245.0
+          ],
+          "p2": [
+            -29.5,
+            85.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2b_1",
+          "p1": [
+            20.5,
+            85.0
+          ],
+          "p2": [
+            29.5,
+            85.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2b_2",
+          "p1": [
+            29.5,
+            85.0
+          ],
+          "p2": [
+            29.5,
+            245.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2b_3",
+          "p1": [
+            29.5,
+            245.0
+          ],
+          "p2": [
+            20.5,
+            245.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "r2b_4",
+          "p1": [
+            20.5,
+            245.0
+          ],
+          "p2": [
+            20.5,
+            85.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "r2a_1.p2",
+            "r2a_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2a_2.p2",
+            "r2a_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2a_3.p2",
+            "r2a_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2a_4.p2",
+            "r2a_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2a_1.p1"
+          ],
+          "value": "-rail_spacing/2 - rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2a_1.p1"
+          ],
+          "value": "c1_z0 + r2_rel"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2a_2.p1"
+          ],
+          "value": "-rail_spacing/2 + rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2a_2.p1"
+          ],
+          "value": "c1_z0 + r2_rel"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2a_3.p1"
+          ],
+          "value": "-rail_spacing/2 + rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2a_3.p1"
+          ],
+          "value": "c1_z0 + r2_rel + rail_length"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2a_4.p1"
+          ],
+          "value": "-rail_spacing/2 - rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2a_4.p1"
+          ],
+          "value": "c1_z0 + r2_rel + rail_length"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2b_1.p2",
+            "r2b_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2b_2.p2",
+            "r2b_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2b_3.p2",
+            "r2b_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "r2b_4.p2",
+            "r2b_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2b_1.p1"
+          ],
+          "value": "rail_spacing/2 - rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2b_1.p1"
+          ],
+          "value": "c1_z0 + r2_rel"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2b_2.p1"
+          ],
+          "value": "rail_spacing/2 + rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2b_2.p1"
+          ],
+          "value": "c1_z0 + r2_rel"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2b_3.p1"
+          ],
+          "value": "rail_spacing/2 + rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2b_3.p1"
+          ],
+          "value": "c1_z0 + r2_rel + rail_length"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "r2b_4.p1"
+          ],
+          "value": "rail_spacing/2 - rail_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "r2b_4.p1"
+          ],
+          "value": "c1_z0 + r2_rel + rail_length"
+        }
+      ]
+    },
+    {
+      "id": "rails2",
+      "type": "extrude",
+      "intent": "stage2 MGN9 rails on the stage1 front face",
+      "profile": {
+        "sketch": "rails2_sk"
+      },
+      "distance": "rail_h"
+    },
+    {
+      "id": "blocks1_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "base_t + mgn_gap"
+      },
+      "entities": [
+        {
+          "id": "b1a_1",
+          "p1": [
+            -35.0,
+            85.55
+          ],
+          "p2": [
+            -15.0,
+            85.55
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1a_2",
+          "p1": [
+            -15.0,
+            85.55
+          ],
+          "p2": [
+            -15.0,
+            114.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1a_3",
+          "p1": [
+            -15.0,
+            114.45
+          ],
+          "p2": [
+            -35.0,
+            114.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1a_4",
+          "p1": [
+            -35.0,
+            114.45
+          ],
+          "p2": [
+            -35.0,
+            85.55
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1b_1",
+          "p1": [
+            15.0,
+            85.55
+          ],
+          "p2": [
+            35.0,
+            85.55
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1b_2",
+          "p1": [
+            35.0,
+            85.55
+          ],
+          "p2": [
+            35.0,
+            114.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1b_3",
+          "p1": [
+            35.0,
+            114.45
+          ],
+          "p2": [
+            15.0,
+            114.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b1b_4",
+          "p1": [
+            15.0,
+            114.45
+          ],
+          "p2": [
+            15.0,
+            85.55
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "b1a_1.p2",
+            "b1a_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1a_2.p2",
+            "b1a_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1a_3.p2",
+            "b1a_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1a_4.p2",
+            "b1a_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1a_1.p1"
+          ],
+          "value": "-rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1a_1.p1"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1a_2.p1"
+          ],
+          "value": "-rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1a_2.p1"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1a_3.p1"
+          ],
+          "value": "-rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1a_3.p1"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1a_4.p1"
+          ],
+          "value": "-rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1a_4.p1"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_l/2"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1b_1.p2",
+            "b1b_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1b_2.p2",
+            "b1b_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1b_3.p2",
+            "b1b_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b1b_4.p2",
+            "b1b_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1b_1.p1"
+          ],
+          "value": "rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1b_1.p1"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1b_2.p1"
+          ],
+          "value": "rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1b_2.p1"
+          ],
+          "value": "c1_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1b_3.p1"
+          ],
+          "value": "rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1b_3.p1"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b1b_4.p1"
+          ],
+          "value": "rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b1b_4.p1"
+          ],
+          "value": "c1_z0 + blk_rel + mgn_l/2"
+        }
+      ]
+    },
+    {
+      "id": "blocks1",
+      "type": "extrude",
+      "intent": "stage1 MGN9C blocks (wrap the rail; top face at x_c1)",
+      "profile": {
+        "sketch": "blocks1_sk"
+      },
+      "distance": "mgn_h - mgn_gap"
+    },
+    {
+      "id": "blocks2_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "x_r2 + mgn_gap"
+      },
+      "entities": [
+        {
+          "id": "b2a_1",
+          "p1": [
+            -35.0,
+            150.55
+          ],
+          "p2": [
+            -15.0,
+            150.55
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2a_2",
+          "p1": [
+            -15.0,
+            150.55
+          ],
+          "p2": [
+            -15.0,
+            179.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2a_3",
+          "p1": [
+            -15.0,
+            179.45
+          ],
+          "p2": [
+            -35.0,
+            179.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2a_4",
+          "p1": [
+            -35.0,
+            179.45
+          ],
+          "p2": [
+            -35.0,
+            150.55
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2b_1",
+          "p1": [
+            15.0,
+            150.55
+          ],
+          "p2": [
+            35.0,
+            150.55
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2b_2",
+          "p1": [
+            35.0,
+            150.55
+          ],
+          "p2": [
+            35.0,
+            179.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2b_3",
+          "p1": [
+            35.0,
+            179.45
+          ],
+          "p2": [
+            15.0,
+            179.45
+          ],
+          "type": "line"
+        },
+        {
+          "id": "b2b_4",
+          "p1": [
+            15.0,
+            179.45
+          ],
+          "p2": [
+            15.0,
+            150.55
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "b2a_1.p2",
+            "b2a_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2a_2.p2",
+            "b2a_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2a_3.p2",
+            "b2a_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2a_4.p2",
+            "b2a_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2a_1.p1"
+          ],
+          "value": "-rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2a_1.p1"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2a_2.p1"
+          ],
+          "value": "-rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2a_2.p1"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2a_3.p1"
+          ],
+          "value": "-rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2a_3.p1"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2a_4.p1"
+          ],
+          "value": "-rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2a_4.p1"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_l/2"
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2b_1.p2",
+            "b2b_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2b_2.p2",
+            "b2b_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2b_3.p2",
+            "b2b_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "b2b_4.p2",
+            "b2b_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2b_1.p1"
+          ],
+          "value": "rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2b_1.p1"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2b_2.p1"
+          ],
+          "value": "rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2b_2.p1"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2b_3.p1"
+          ],
+          "value": "rail_spacing/2 + mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2b_3.p1"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_l/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "b2b_4.p1"
+          ],
+          "value": "rail_spacing/2 - mgn_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "b2b_4.p1"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_l/2"
+        }
+      ]
+    },
+    {
+      "id": "blocks2",
+      "type": "extrude",
+      "intent": "stage2 MGN9C blocks",
+      "profile": {
+        "sketch": "blocks2_sk"
+      },
+      "distance": "mgn_h - mgn_gap"
+    },
+    {
+      "id": "motor_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "-nema_len"
+      },
+      "entities": [
+        {
+          "id": "m_bottom",
+          "p1": [
+            34.85,
+            3.85
+          ],
+          "p2": [
+            77.15,
+            3.85
+          ],
+          "type": "line"
+        },
+        {
+          "id": "m_right",
+          "p1": [
+            77.15,
+            3.85
+          ],
+          "p2": [
+            77.15,
+            46.15
+          ],
+          "type": "line"
+        },
+        {
+          "id": "m_top",
+          "p1": [
+            77.15,
+            46.15
+          ],
+          "p2": [
+            34.85,
+            46.15
+          ],
+          "type": "line"
+        },
+        {
+          "id": "m_left",
+          "p1": [
+            34.85,
+            46.15
+          ],
+          "p2": [
+            34.85,
+            3.85
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "m_bottom.p2",
+            "m_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "m_right.p2",
+            "m_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "m_top.p2",
+            "m_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "m_left.p2",
+            "m_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "m_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "m_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "m_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "m_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "m_bottom"
+          ],
+          "value": "nema_w",
+          "name": "m_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "m_right"
+          ],
+          "value": "nema_w",
+          "name": "m_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "m_bottom.p1"
+          ],
+          "value": "(drive_y) - ((nema_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "m_bottom.p1"
+          ],
+          "value": "(motor_z) - ((nema_w) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "motor",
+      "type": "extrude",
+      "intent": "NEMA17 body behind the base, face against the base back",
+      "profile": {
+        "sketch": "motor_sk"
+      },
+      "distance": "nema_len"
+    },
+    {
+      "id": "pilot_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ"
+      },
+      "entities": [
+        {
+          "id": "pilot",
+          "center": [
+            56.0,
+            25.0
+          ],
+          "r": 11.0,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "pilot"
+          ],
+          "value": "22 mm",
+          "name": "pilot_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "pilot.center"
+          ],
+          "value": "drive_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "pilot.center"
+          ],
+          "value": "motor_z"
+        }
+      ]
+    },
+    {
+      "id": "pilot",
+      "type": "extrude",
+      "intent": "NEMA17 22mm pilot boss, sits in the base bore",
+      "profile": {
+        "sketch": "pilot_sk"
+      },
+      "distance": "2 mm"
+    },
+    {
+      "id": "shaft_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "2 mm"
+      },
+      "entities": [
+        {
+          "id": "shaft",
+          "center": [
+            56.0,
+            25.0
+          ],
+          "r": 2.5,
+          "type": "circle"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "diameter",
+          "on": [
+            "shaft"
+          ],
+          "value": "5 mm",
+          "name": "shaft_diameter"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "shaft.center"
+          ],
+          "value": "drive_y"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "shaft.center"
+          ],
+          "value": "motor_z"
+        }
+      ]
+    },
+    {
+      "id": "shaft",
+      "type": "extrude",
+      "intent": "5mm motor shaft, 24mm long from the motor face",
+      "profile": {
+        "sketch": "shaft_sk"
+      },
+      "distance": "22 mm"
+    },
+    {
+      "id": "dpul_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "motor_z"
+      },
+      "entities": [
+        {
+          "id": "dax",
+          "p1": [
+            0.0,
+            56.0
+          ],
+          "p2": [
+            40.0,
+            56.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "dp_1",
+          "p1": [
+            10.5,
+            56.0
+          ],
+          "p2": [
+            10.5,
+            64.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_2",
+          "p1": [
+            10.5,
+            64.0
+          ],
+          "p2": [
+            16.5,
+            64.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_3",
+          "p1": [
+            16.5,
+            64.0
+          ],
+          "p2": [
+            16.5,
+            68.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_4",
+          "p1": [
+            16.5,
+            68.0
+          ],
+          "p2": [
+            17.5,
+            68.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_5",
+          "p1": [
+            17.5,
+            68.0
+          ],
+          "p2": [
+            17.5,
+            65.17
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_6",
+          "p1": [
+            17.5,
+            65.17
+          ],
+          "p2": [
+            28.5,
+            65.17
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_7",
+          "p1": [
+            28.5,
+            65.17
+          ],
+          "p2": [
+            28.5,
+            68.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_8",
+          "p1": [
+            28.5,
+            68.0
+          ],
+          "p2": [
+            29.5,
+            68.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_9",
+          "p1": [
+            29.5,
+            68.0
+          ],
+          "p2": [
+            29.5,
+            56.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dp_10",
+          "p1": [
+            29.5,
+            56.0
+          ],
+          "p2": [
+            10.5,
+            56.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "fix",
+          "on": [
+            "dax.p1"
+          ],
+          "at": [
+            0.0,
+            "drive_y"
+          ]
+        },
+        {
+          "type": "fix",
+          "on": [
+            "dax.p2"
+          ],
+          "at": [
+            40.0,
+            "drive_y"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_1.p2",
+            "dp_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_2.p2",
+            "dp_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_3.p2",
+            "dp_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_4.p2",
+            "dp_5.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_5.p2",
+            "dp_6.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_6.p2",
+            "dp_7.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_7.p2",
+            "dp_8.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_8.p2",
+            "dp_9.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_9.p2",
+            "dp_10.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dp_10.p2",
+            "dp_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_1.p1"
+          ],
+          "value": "drive_belt_x - 12.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_1.p1"
+          ],
+          "value": "drive_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_2.p1"
+          ],
+          "value": "drive_belt_x - 12.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_2.p1"
+          ],
+          "value": "drive_y + 8"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_3.p1"
+          ],
+          "value": "drive_belt_x - 6.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_3.p1"
+          ],
+          "value": "drive_y + 8"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_4.p1"
+          ],
+          "value": "drive_belt_x - 6.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_4.p1"
+          ],
+          "value": "drive_y + flange_d/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_5.p1"
+          ],
+          "value": "drive_belt_x - 5.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_5.p1"
+          ],
+          "value": "drive_y + flange_d/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_6.p1"
+          ],
+          "value": "drive_belt_x - 5.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_6.p1"
+          ],
+          "value": "drive_y + pul_od/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_7.p1"
+          ],
+          "value": "drive_belt_x + 5.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_7.p1"
+          ],
+          "value": "drive_y + pul_od/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_8.p1"
+          ],
+          "value": "drive_belt_x + 5.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_8.p1"
+          ],
+          "value": "drive_y + flange_d/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_9.p1"
+          ],
+          "value": "drive_belt_x + 6.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_9.p1"
+          ],
+          "value": "drive_y + flange_d/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dp_10.p1"
+          ],
+          "value": "drive_belt_x + 6.5"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dp_10.p1"
+          ],
+          "value": "drive_y"
+        }
+      ]
+    },
+    {
+      "id": "drive_pulley",
+      "type": "revolve",
+      "intent": "GT3 20T 10mm motor pulley (hub toward motor); copy at idler_z is the top idler + spacer",
+      "profile": {
+        "sketch": "dpul_sk"
+      },
+      "axis": "dax"
+    },
+    {
+      "id": "top_idler",
+      "type": "linear_pattern",
+      "intent": "top drive idler on the slotted base mount",
+      "features": [
+        "drive_pulley"
+      ],
+      "direction": "Z",
+      "spacing": "idler_z - motor_z",
+      "count": 2.0
+    },
+    {
+      "id": "cpul_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "c1_z0 + casc_pz_bot"
+      },
+      "entities": [
+        {
+          "id": "cax",
+          "p1": [
+            25.0,
+            -30.0
+          ],
+          "p2": [
+            25.0,
+            -60.0
+          ],
+          "construction": true,
+          "type": "line"
+        },
+        {
+          "id": "cp_1",
+          "p1": [
+            25.0,
+            -40.0
+          ],
+          "p2": [
+            29.0,
+            -40.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_2",
+          "p1": [
+            29.0,
+            -40.0
+          ],
+          "p2": [
+            29.0,
+            -41.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_3",
+          "p1": [
+            29.0,
+            -41.0
+          ],
+          "p2": [
+            37.0,
+            -41.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_4",
+          "p1": [
+            37.0,
+            -41.0
+          ],
+          "p2": [
+            37.0,
+            -42.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_5",
+          "p1": [
+            37.0,
+            -42.0
+          ],
+          "p2": [
+            34.17,
+            -42.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_6",
+          "p1": [
+            34.17,
+            -42.0
+          ],
+          "p2": [
+            34.17,
+            -52.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_7",
+          "p1": [
+            34.17,
+            -52.0
+          ],
+          "p2": [
+            37.0,
+            -52.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_8",
+          "p1": [
+            37.0,
+            -52.0
+          ],
+          "p2": [
+            37.0,
+            -53.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_9",
+          "p1": [
+            37.0,
+            -53.0
+          ],
+          "p2": [
+            25.0,
+            -53.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cp_10",
+          "p1": [
+            25.0,
+            -53.0
+          ],
+          "p2": [
+            25.0,
+            -40.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "fix",
+          "on": [
+            "cax.p1"
+          ],
+          "at": [
+            "casc_x",
+            -30.0
+          ]
+        },
+        {
+          "type": "fix",
+          "on": [
+            "cax.p2"
+          ],
+          "at": [
+            "casc_x",
+            -60.0
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_1.p2",
+            "cp_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_2.p2",
+            "cp_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_3.p2",
+            "cp_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_4.p2",
+            "cp_5.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_5.p2",
+            "cp_6.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_6.p2",
+            "cp_7.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_7.p2",
+            "cp_8.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_8.p2",
+            "cp_9.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_9.p2",
+            "cp_10.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cp_10.p2",
+            "cp_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_1.p1"
+          ],
+          "value": "casc_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_1.p1"
+          ],
+          "value": "-plate_w_half"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_2.p1"
+          ],
+          "value": "casc_x + 4"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_2.p1"
+          ],
+          "value": "-plate_w_half"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_3.p1"
+          ],
+          "value": "casc_x + 4"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_3.p1"
+          ],
+          "value": "-casc_belt_y + belt_w/2 + 1"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_4.p1"
+          ],
+          "value": "casc_x + flange_d/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_4.p1"
+          ],
+          "value": "-casc_belt_y + belt_w/2 + 1"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_5.p1"
+          ],
+          "value": "casc_x + flange_d/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_5.p1"
+          ],
+          "value": "-casc_belt_y + belt_w/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_6.p1"
+          ],
+          "value": "casc_x + pul_od/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_6.p1"
+          ],
+          "value": "-casc_belt_y + belt_w/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_7.p1"
+          ],
+          "value": "casc_x + pul_od/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_7.p1"
+          ],
+          "value": "-casc_belt_y - belt_w/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_8.p1"
+          ],
+          "value": "casc_x + flange_d/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_8.p1"
+          ],
+          "value": "-casc_belt_y - belt_w/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_9.p1"
+          ],
+          "value": "casc_x + flange_d/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_9.p1"
+          ],
+          "value": "-casc_belt_y - belt_w/2 - 1"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cp_10.p1"
+          ],
+          "value": "casc_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cp_10.p1"
+          ],
+          "value": "-casc_belt_y - belt_w/2 - 1"
+        }
+      ]
+    },
+    {
+      "id": "casc_idler",
+      "type": "revolve",
+      "intent": "GT3 20T 10mm flanged idler + washer on an M5 shoulder bolt into stage1's -Y edge (bottom)",
+      "profile": {
+        "sketch": "cpul_sk"
+      },
+      "axis": "cax"
+    },
+    {
+      "id": "casc_idler_top",
+      "type": "linear_pattern",
+      "intent": "top cascade idler",
+      "features": [
+        "casc_idler"
+      ],
+      "direction": "Z",
+      "spacing": "casc_pz_top - casc_pz_bot",
+      "count": 2.0
+    },
+    {
+      "id": "dclamp_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "drive_belt_x - jaw_screw_off - 3"
+      },
+      "entities": [
+        {
+          "id": "dc_1",
+          "p1": [
+            46.83,
+            95.0
+          ],
+          "p2": [
+            49.83,
+            95.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dc_2",
+          "p1": [
+            49.83,
+            95.0
+          ],
+          "p2": [
+            49.83,
+            115.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dc_3",
+          "p1": [
+            49.83,
+            115.0
+          ],
+          "p2": [
+            46.83,
+            115.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "dc_4",
+          "p1": [
+            46.83,
+            115.0
+          ],
+          "p2": [
+            46.83,
+            95.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "dc_1.p2",
+            "dc_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dc_2.p2",
+            "dc_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dc_3.p2",
+            "dc_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "dc_4.p2",
+            "dc_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dc_1.p1"
+          ],
+          "value": "drive_y - pul_od/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dc_1.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dc_2.p1"
+          ],
+          "value": "drive_y - pul_od/2 + clamp_plate_t"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dc_2.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dc_3.p1"
+          ],
+          "value": "drive_y - pul_od/2 + clamp_plate_t"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dc_3.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel + clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "dc_4.p1"
+          ],
+          "value": "drive_y - pul_od/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "dc_4.p1"
+          ],
+          "value": "c1_z0 + drive_clamp_rel + clamp_len/2"
+        }
+      ]
+    },
+    {
+      "id": "drive_clamp",
+      "type": "extrude",
+      "intent": "toothed clamp plate pinning the drive belt's inner strand to stage1's jaw",
+      "profile": {
+        "sketch": "dclamp_sk"
+      },
+      "distance": "2*(jaw_screw_off + 3)"
+    },
+    {
+      "id": "bclamp_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "casc_x - pul_od/2"
+      },
+      "entities": [
+        {
+          "id": "bc_bottom",
+          "p1": [
+            -57.0,
+            160.0
+          ],
+          "p2": [
+            -37.0,
+            160.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bc_right",
+          "p1": [
+            -37.0,
+            160.0
+          ],
+          "p2": [
+            -37.0,
+            180.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bc_top",
+          "p1": [
+            -37.0,
+            180.0
+          ],
+          "p2": [
+            -57.0,
+            180.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "bc_left",
+          "p1": [
+            -57.0,
+            180.0
+          ],
+          "p2": [
+            -57.0,
+            160.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "bc_bottom.p2",
+            "bc_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bc_right.p2",
+            "bc_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bc_top.p2",
+            "bc_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "bc_left.p2",
+            "bc_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bc_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "bc_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bc_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "bc_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bc_bottom"
+          ],
+          "value": "jaw_w",
+          "name": "bc_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "bc_right"
+          ],
+          "value": "clamp_len",
+          "name": "bc_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "bc_bottom.p1"
+          ],
+          "value": "(-casc_belt_y) - ((jaw_w) / 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "bc_bottom.p1"
+          ],
+          "value": "(base_clamp_z) - ((clamp_len) / 2)"
+        }
+      ]
+    },
+    {
+      "id": "base_clamp",
+      "type": "extrude",
+      "intent": "toothed clamp plate holding both ends of the cascade belt to the base jaw",
+      "profile": {
+        "sketch": "bclamp_sk"
+      },
+      "distance": "clamp_plate_t"
+    },
+    {
+      "id": "sclamp_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "casc_x + pul_od/2 - clamp_plate_t"
+      },
+      "entities": [
+        {
+          "id": "sc_1",
+          "p1": [
+            -57.0,
+            155.0
+          ],
+          "p2": [
+            -37.0,
+            155.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "sc_2",
+          "p1": [
+            -37.0,
+            155.0
+          ],
+          "p2": [
+            -37.0,
+            175.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "sc_3",
+          "p1": [
+            -37.0,
+            175.0
+          ],
+          "p2": [
+            -57.0,
+            175.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "sc_4",
+          "p1": [
+            -57.0,
+            175.0
+          ],
+          "p2": [
+            -57.0,
+            155.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "sc_1.p2",
+            "sc_2.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sc_2.p2",
+            "sc_3.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sc_3.p2",
+            "sc_4.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "sc_4.p2",
+            "sc_1.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "sc_1.p1"
+          ],
+          "value": "-casc_belt_y - jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "sc_1.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "sc_2.p1"
+          ],
+          "value": "-casc_belt_y + jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "sc_2.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "sc_3.p1"
+          ],
+          "value": "-casc_belt_y + jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "sc_3.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel + clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "sc_4.p1"
+          ],
+          "value": "-casc_belt_y - jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "sc_4.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel + clamp_len/2"
+        }
+      ]
+    },
+    {
+      "id": "stage2_clamp",
+      "type": "extrude",
+      "intent": "toothed clamp plate pinning the cascade loop's front strand to stage2's jaw",
+      "profile": {
+        "sketch": "sclamp_sk"
+      },
+      "distance": "clamp_plate_t"
+    }
+  ]
+}

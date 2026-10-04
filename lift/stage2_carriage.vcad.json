@@ -1,0 +1,1253 @@
+{
+  "vibecad": "0.1",
+  "name": "Stage 2 Carriage",
+  "material": "6061 aluminum",
+  "process": "CNC or waterjet aluminum plate",
+  "design_notes": "Stage2 carriage (output). Rides the stage2 MGN9 rails (on stage1) on two MGN9C blocks, M3 counterbored from the front. A -Y tab carries a jaw whose -X face sits at the back of the cascade loop's front strand; a toothed clamp plate pins the strand, so stage2 = 2 x stage1 travel, driven both ways. Payload platform on top with 3 gussets (placed between the MGN screw columns so a hex key reaches every screw). Posed at c2_z0 = c1_z0 + r2_rel + s1. Shared dims: see lift/base_plate design_notes.",
+  "params": {
+    "plate_w": "80 mm",
+    "travel": "100 mm",
+    "rail_spacing": "50 mm",
+    "platform_depth": "80 mm",
+    "platform_t": "8 mm",
+    "platform_hole_inset": "15 mm",
+    "s1": "50 mm",
+    "mgn_h": "10 mm",
+    "mgn_bolt_y": "15 mm",
+    "mgn_bolt_z": "10 mm",
+    "base_t": "10 mm",
+    "c1_t": "10 mm",
+    "c2_t": "8 mm",
+    "x_c1": "base_t + mgn_h",
+    "x_c2": "x_c1 + c1_t + mgn_h",
+    "zr1": "20 mm",
+    "c1_z0": "zr1 + s1",
+    "r2_rel": "15 mm",
+    "c2_z0": "c1_z0 + r2_rel + s1",
+    "c2_h": "60 mm",
+    "blk_rel": "30 mm",
+    "belt_t": "2.41 mm",
+    "belt_w": "10 mm",
+    "pul_od": "18.34 mm",
+    "casc_x": "x_c1 + c1_t/2",
+    "casc_belt_y": "47 mm",
+    "c2_clamp_rel": "30 mm",
+    "clamp_len": "20 mm",
+    "jaw_w": "20 mm",
+    "jaw_screw_off": "belt_w/2 + 2.5",
+    "c2_jaw_x0": "casc_x + pul_od/2 + belt_t",
+    "tab_y_out": "casc_belt_y + jaw_w/2",
+    "gusset_len": "50 mm",
+    "gusset_h": "40 mm",
+    "gusset_t": "6 mm",
+    "platform_hole_y": "32 mm"
+  },
+  "features": [
+    {
+      "id": "c2_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "x_c2"
+      },
+      "entities": [
+        {
+          "id": "plate_bottom",
+          "p1": [
+            -40.0,
+            135.0
+          ],
+          "p2": [
+            40.0,
+            135.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_right",
+          "p1": [
+            40.0,
+            135.0
+          ],
+          "p2": [
+            40.0,
+            195.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_top",
+          "p1": [
+            40.0,
+            195.0
+          ],
+          "p2": [
+            -40.0,
+            195.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plate_left",
+          "p1": [
+            -40.0,
+            195.0
+          ],
+          "p2": [
+            -40.0,
+            135.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plate_bottom.p2",
+            "plate_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_right.p2",
+            "plate_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_top.p2",
+            "plate_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plate_left.p2",
+            "plate_bottom.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "-plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_bottom.p1"
+          ],
+          "value": "c2_z0"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_right.p1"
+          ],
+          "value": "plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_right.p1"
+          ],
+          "value": "c2_z0"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_top.p1"
+          ],
+          "value": "plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_top.p1"
+          ],
+          "value": "c2_z0 + c2_h"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plate_left.p1"
+          ],
+          "value": "-plate_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plate_left.p1"
+          ],
+          "value": "c2_z0 + c2_h"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "extrude",
+      "intent": "stage2 plate: back face on the stage2 MGN9C blocks",
+      "profile": {
+        "sketch": "c2_sk"
+      },
+      "distance": "c2_t",
+      "mode": "new"
+    },
+    {
+      "id": "tab_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "x_c2"
+      },
+      "entities": [
+        {
+          "id": "tab_bottom",
+          "p1": [
+            -57.0,
+            155.0
+          ],
+          "p2": [
+            -38.0,
+            155.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "tab_right",
+          "p1": [
+            -38.0,
+            155.0
+          ],
+          "p2": [
+            -38.0,
+            175.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "tab_top",
+          "p1": [
+            -38.0,
+            175.0
+          ],
+          "p2": [
+            -57.0,
+            175.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "tab_left",
+          "p1": [
+            -57.0,
+            175.0
+          ],
+          "p2": [
+            -57.0,
+            155.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "tab_bottom.p2",
+            "tab_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "tab_right.p2",
+            "tab_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "tab_top.p2",
+            "tab_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "tab_left.p2",
+            "tab_bottom.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "tab_bottom.p1"
+          ],
+          "value": "-tab_y_out"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "tab_bottom.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "tab_right.p1"
+          ],
+          "value": "-(plate_w/2 - 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "tab_right.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "tab_top.p1"
+          ],
+          "value": "-(plate_w/2 - 2)"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "tab_top.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel + clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "tab_left.p1"
+          ],
+          "value": "-tab_y_out"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "tab_left.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel + clamp_len/2"
+        }
+      ]
+    },
+    {
+      "id": "tab",
+      "type": "extrude",
+      "intent": "tab reaching out past the -Y edge to the cascade belt's front strand",
+      "profile": {
+        "sketch": "tab_sk"
+      },
+      "distance": "c2_t"
+    },
+    {
+      "id": "cjaw_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "c2_jaw_x0"
+      },
+      "entities": [
+        {
+          "id": "cjaw_bottom",
+          "p1": [
+            -57.0,
+            155.0
+          ],
+          "p2": [
+            -37.0,
+            155.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cjaw_right",
+          "p1": [
+            -37.0,
+            155.0
+          ],
+          "p2": [
+            -37.0,
+            175.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cjaw_top",
+          "p1": [
+            -37.0,
+            175.0
+          ],
+          "p2": [
+            -57.0,
+            175.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "cjaw_left",
+          "p1": [
+            -57.0,
+            175.0
+          ],
+          "p2": [
+            -57.0,
+            155.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "cjaw_bottom.p2",
+            "cjaw_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cjaw_right.p2",
+            "cjaw_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cjaw_top.p2",
+            "cjaw_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "cjaw_left.p2",
+            "cjaw_bottom.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cjaw_bottom.p1"
+          ],
+          "value": "-casc_belt_y - jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cjaw_bottom.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cjaw_right.p1"
+          ],
+          "value": "-casc_belt_y + jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cjaw_right.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel - clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cjaw_top.p1"
+          ],
+          "value": "-casc_belt_y + jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cjaw_top.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel + clamp_len/2"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cjaw_left.p1"
+          ],
+          "value": "-casc_belt_y - jaw_w/2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cjaw_left.p1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel + clamp_len/2"
+        }
+      ]
+    },
+    {
+      "id": "casc_jaw",
+      "type": "extrude",
+      "intent": "jaw whose -X face sits at the back of the cascade loop's front strand",
+      "profile": {
+        "sketch": "cjaw_sk"
+      },
+      "distance": "x_c2 - c2_jaw_x0 + 2"
+    },
+    {
+      "id": "mgn_pts",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "c2",
+          "role": "end",
+          "note": "front face of stage2 plate"
+        }
+      },
+      "entities": [
+        {
+          "id": "mb_1",
+          "at": [
+            -32.5,
+            160.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_2",
+          "at": [
+            -17.5,
+            160.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_3",
+          "at": [
+            -32.5,
+            170.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_4",
+          "at": [
+            -17.5,
+            170.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_5",
+          "at": [
+            17.5,
+            160.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_6",
+          "at": [
+            32.5,
+            160.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_7",
+          "at": [
+            17.5,
+            170.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "mb_8",
+          "at": [
+            32.5,
+            170.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_1"
+          ],
+          "value": "-rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_1"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_2"
+          ],
+          "value": "-rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_2"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_2_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_3"
+          ],
+          "value": "-rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_3_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_3"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_3_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_4"
+          ],
+          "value": "-rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_4_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_4"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_4_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_5"
+          ],
+          "value": "rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_5_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_5"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_5_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_6"
+          ],
+          "value": "rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_6_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_6"
+          ],
+          "value": "c2_z0 + blk_rel - mgn_bolt_z/2",
+          "name": "mb_6_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_7"
+          ],
+          "value": "rail_spacing/2 - mgn_bolt_y/2",
+          "name": "mb_7_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_7"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_7_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "mb_8"
+          ],
+          "value": "rail_spacing/2 + mgn_bolt_y/2",
+          "name": "mb_8_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "mb_8"
+          ],
+          "value": "c2_z0 + blk_rel + mgn_bolt_z/2",
+          "name": "mb_8_y"
+        }
+      ]
+    },
+    {
+      "id": "mgn_holes",
+      "type": "hole",
+      "intent": "M3 SHCS counterbored from the front into the two stage2 MGN9C blocks (15x10 pattern)",
+      "sketch": "mgn_pts",
+      "kind": "counterbore",
+      "size": "M3"
+    },
+    {
+      "id": "cjaw_pts",
+      "type": "sketch",
+      "plane": {
+        "datum": "YZ",
+        "offset": "c2_jaw_x0"
+      },
+      "entities": [
+        {
+          "id": "cj_1",
+          "at": [
+            -39.5,
+            165.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "cj_2",
+          "at": [
+            -54.5,
+            165.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cj_1"
+          ],
+          "value": "-(casc_belt_y - jaw_screw_off)",
+          "name": "cj_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cj_1"
+          ],
+          "value": "c2_z0 + c2_clamp_rel",
+          "name": "cj_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "cj_2"
+          ],
+          "value": "-(casc_belt_y + jaw_screw_off)",
+          "name": "cj_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "cj_2"
+          ],
+          "value": "c2_z0 + c2_clamp_rel",
+          "name": "cj_2_y"
+        }
+      ]
+    },
+    {
+      "id": "cjaw_holes",
+      "type": "hole",
+      "intent": "M3 tapped for the cascade clamp-plate screws, either side of the belt",
+      "sketch": "cjaw_pts",
+      "kind": "tapped",
+      "size": "M3",
+      "depth": "9 mm",
+      "direction": "normal"
+    },
+    {
+      "id": "plat_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XY",
+        "offset": "c2_z0 + c2_h - platform_t"
+      },
+      "entities": [
+        {
+          "id": "plat_bottom",
+          "p1": [
+            40.0,
+            -40.0
+          ],
+          "p2": [
+            128.0,
+            -40.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plat_right",
+          "p1": [
+            128.0,
+            -40.0
+          ],
+          "p2": [
+            128.0,
+            40.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plat_top",
+          "p1": [
+            128.0,
+            40.0
+          ],
+          "p2": [
+            40.0,
+            40.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "plat_left",
+          "p1": [
+            40.0,
+            40.0
+          ],
+          "p2": [
+            40.0,
+            -40.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "plat_bottom.p2",
+            "plat_right.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plat_right.p2",
+            "plat_top.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plat_top.p2",
+            "plat_left.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "plat_left.p2",
+            "plat_bottom.p1"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plat_bottom"
+          ]
+        },
+        {
+          "type": "horizontal",
+          "on": [
+            "plat_top"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plat_right"
+          ]
+        },
+        {
+          "type": "vertical",
+          "on": [
+            "plat_left"
+          ]
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plat_bottom"
+          ],
+          "value": "c2_t + platform_depth",
+          "name": "plat_width"
+        },
+        {
+          "type": "distance",
+          "on": [
+            "plat_right"
+          ],
+          "value": "plate_w",
+          "name": "plat_height"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "plat_bottom.p1"
+          ],
+          "value": "x_c2"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "plat_bottom.p1"
+          ],
+          "value": "-plate_w/2"
+        }
+      ]
+    },
+    {
+      "id": "platform",
+      "type": "extrude",
+      "intent": "payload platform, top flush with the stage2 plate top, cantilevered forward",
+      "profile": {
+        "sketch": "plat_sk"
+      },
+      "distance": "platform_t"
+    },
+    {
+      "id": "gusset_sk",
+      "type": "sketch",
+      "plane": {
+        "datum": "XZ",
+        "offset": "rail_spacing/2"
+      },
+      "entities": [
+        {
+          "id": "g_top",
+          "p1": [
+            47.0,
+            188.0
+          ],
+          "p2": [
+            98.0,
+            188.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "g_hyp",
+          "p1": [
+            98.0,
+            188.0
+          ],
+          "p2": [
+            47.0,
+            147.0
+          ],
+          "type": "line"
+        },
+        {
+          "id": "g_back",
+          "p1": [
+            47.0,
+            147.0
+          ],
+          "p2": [
+            47.0,
+            188.0
+          ],
+          "type": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "coincident",
+          "on": [
+            "g_top.p2",
+            "g_hyp.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "g_hyp.p2",
+            "g_back.p1"
+          ]
+        },
+        {
+          "type": "coincident",
+          "on": [
+            "g_back.p2",
+            "g_top.p1"
+          ]
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "g_top.p1"
+          ],
+          "value": "x_c2 + c2_t - 1"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "g_top.p1"
+          ],
+          "value": "c2_z0 + c2_h - platform_t + 1"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "g_hyp.p1"
+          ],
+          "value": "x_c2 + c2_t + gusset_len"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "g_hyp.p1"
+          ],
+          "value": "c2_z0 + c2_h - platform_t + 1"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "g_back.p1"
+          ],
+          "value": "x_c2 + c2_t - 1"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "g_back.p1"
+          ],
+          "value": "c2_z0 + c2_h - platform_t - gusset_h"
+        }
+      ]
+    },
+    {
+      "id": "gusset",
+      "type": "extrude",
+      "intent": "gusset under the platform (first of 3), between the MGN screw columns",
+      "profile": {
+        "sketch": "gusset_sk"
+      },
+      "distance": "gusset_t",
+      "direction": "symmetric"
+    },
+    {
+      "id": "gussets",
+      "type": "linear_pattern",
+      "intent": "3 gussets at Y = -25, 0, +25 carry the cantilevered payload moment into the plate",
+      "features": [
+        "gusset"
+      ],
+      "direction": "Y",
+      "spacing": "rail_spacing/2",
+      "count": 3.0
+    },
+    {
+      "id": "plat_pts",
+      "type": "sketch",
+      "plane": {
+        "face": {
+          "feature": "platform",
+          "role": "end",
+          "note": "top face of payload platform"
+        }
+      },
+      "entities": [
+        {
+          "id": "ph_1",
+          "at": [
+            63.0,
+            -32.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "ph_2",
+          "at": [
+            113.0,
+            -32.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "ph_3",
+          "at": [
+            63.0,
+            32.0
+          ],
+          "type": "point"
+        },
+        {
+          "id": "ph_4",
+          "at": [
+            113.0,
+            32.0
+          ],
+          "type": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ph_1"
+          ],
+          "value": "x_c2 + c2_t + 15",
+          "name": "ph_1_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ph_1"
+          ],
+          "value": "-platform_hole_y",
+          "name": "ph_1_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ph_2"
+          ],
+          "value": "x_c2 + c2_t + platform_depth - 15",
+          "name": "ph_2_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ph_2"
+          ],
+          "value": "-platform_hole_y",
+          "name": "ph_2_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ph_3"
+          ],
+          "value": "x_c2 + c2_t + 15",
+          "name": "ph_3_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ph_3"
+          ],
+          "value": "platform_hole_y",
+          "name": "ph_3_y"
+        },
+        {
+          "type": "distance_x",
+          "on": [
+            "origin",
+            "ph_4"
+          ],
+          "value": "x_c2 + c2_t + platform_depth - 15",
+          "name": "ph_4_x"
+        },
+        {
+          "type": "distance_y",
+          "on": [
+            "origin",
+            "ph_4"
+          ],
+          "value": "platform_hole_y",
+          "name": "ph_4_y"
+        }
+      ]
+    },
+    {
+      "id": "plat_holes",
+      "type": "hole",
+      "intent": "4x M4 clearance for the payload, clear of the gussets",
+      "sketch": "plat_pts",
+      "size": "M4"
+    }
+  ]
+}
